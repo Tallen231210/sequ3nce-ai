@@ -1,0 +1,891 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><!-- Design directions explored for the teams pitch deck on 2026-09-09. Tyler chose 7 (Blueprint × Dashboard) and asked to keep
+     4 (Swiss) and 6 (Swiss × Dashboard) around in case we go back. Open this file in a browser; the wordmark loads from apps/web/public. -->
+<style>[hidden]{display:none!important}</style></head><body><title>Teams Deck Directions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;600&family=Archivo:wght@500;800;900&family=IBM+Plex+Mono:wght@400;600&family=Sora:wght@600;700&family=Manrope:wght@400;600;700&family=Geist:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* ---------- page chrome (theme-aware) ---------- */
+  :root {
+    --bg: #f6f7f6; --ink: #151716; --mute: #6a6f6d; --line: #dcdfde; --card: #ffffff; --accent: #0d9488; --accent-ink: #0f766e;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0f1211; --ink: #ecefee; --mute: #9aa19e; --line: #262b29; --card: #171b1a; --accent: #2dd4bf; --accent-ink: #5eead4; }
+  }
+  :root[data-theme="dark"] { --bg: #0f1211; --ink: #ecefee; --mute: #9aa19e; --line: #262b29; --card: #171b1a; --accent: #2dd4bf; --accent-ink: #5eead4; }
+
+  body { background: var(--bg); color: var(--ink); font-family: Geist, system-ui, -apple-system, sans-serif; margin: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 44px 28px 96px; }
+  header h1 { font-size: 30px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 10px; text-wrap: balance; }
+  header p { color: var(--mute); max-width: 68ch; line-height: 1.55; margin: 0 0 8px; font-size: 15px; }
+  header .fixed { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  header .fixed span { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; color: var(--mute); }
+  nav.jump { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 22px; font-size: 13px; }
+  nav.jump a { color: var(--accent-ink); text-decoration: none; }
+  nav.jump a:hover, nav.jump a:focus-visible { text-decoration: underline; outline: none; }
+
+  .dir { margin-top: 56px; border-top: 1px solid var(--line); padding-top: 26px; }
+  .dir-head { display: grid; grid-template-columns: 56px 1.15fr .85fr; gap: 20px 28px; align-items: start; }
+  .dir-head .num { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: var(--accent-ink); padding-top: 8px; }
+  .dir-head h2 { margin: 0 0 8px; font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+  .dir-head .pitch { color: var(--mute); line-height: 1.55; font-size: 15px; margin: 0; max-width: 58ch; }
+  .meta { display: grid; grid-template-columns: 96px 1fr; gap: 6px 14px; font-size: 13px; margin: 0; padding-top: 6px; }
+  .meta dt { color: var(--mute); }
+  .meta dd { margin: 0; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 22px; }
+  .frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: zoom-in; box-shadow: 0 6px 20px rgba(0,0,0,.06); }
+  .frame:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cap { font-size: 12px; color: var(--mute); margin-top: 7px; }
+  @media (max-width: 960px) {
+    .dir-head { grid-template-columns: 40px 1fr; }
+    .dir-head .meta { grid-column: 2; }
+    .row { grid-template-columns: 1fr; }
+  }
+
+  /* lightbox */
+  #lb[hidden] { display: none; }
+  #lb { position: fixed; inset: 0; background: rgba(8,10,10,.88); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; }
+  #lb .lbframe { position: relative; width: min(92vw, 1240px); aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; background: #fff; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  #lb .lbbar { display: flex; align-items: center; gap: 16px; color: #d7dbd9; font-size: 13px; }
+  #lb button { font: inherit; color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  #lb button:hover, #lb button:focus-visible { background: rgba(255,255,255,.22); outline: none; }
+
+  /* ---------- slide canvas: every slide is drawn at 960×540 and scaled ---------- */
+  .slide { position: absolute; left: 0; top: 0; width: 960px; height: 540px; transform-origin: 0 0; box-sizing: border-box; overflow: hidden; background: #fff; color: #111; }
+  .slide * { box-sizing: border-box; }
+  .slide table, .slide td, .slide th { color: inherit; }
+  .slide img.logo { display: block; height: auto; }
+
+  /* ===== 1 · LEDGER — editorial, financial-report ===== */
+  .d1 { background: #fbfbf9; color: #131313; font-family: 'Public Sans', system-ui, sans-serif; padding: 52px 64px; }
+  .d1 .serif { font-family: Fraunces, Georgia, serif; font-weight: 500; letter-spacing: -.02em; line-height: 1.02; }
+  .d1 .kick { font-size: 11.5px; letter-spacing: .18em; text-transform: uppercase; color: #5f6368; }
+  .d1 .rule { height: 1px; background: #d6d6d0; }
+  .d1 .folio { position: absolute; right: 64px; bottom: 40px; font-size: 11.5px; color: #8a8a86; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+  .d1 .teal { color: #0f766e; }
+  .d1 table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .d1 td { padding: 13px 0; border-top: 1px solid #d6d6d0; vertical-align: top; line-height: 1.45; }
+  .d1 tr:last-child td { border-bottom: 1px solid #d6d6d0; }
+  .d1 td.n { font-family: Fraunces, Georgia, serif; font-size: 30px; color: #0f766e; width: 150px; font-variant-numeric: tabular-nums; line-height: 1; padding-top: 12px; }
+  .d1 td.v { text-align: right; font-family: Fraunces, Georgia, serif; font-size: 22px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .d1 td.v small { font-family: 'Public Sans', sans-serif; font-size: 12px; color: #6b6b67; }
+  .d1 .sub { color: #6b6b67; font-size: 12.5px; }
+  .d1 .top { display: flex; justify-content: space-between; align-items: center; }
+
+  /* ===== 2 · BLUEPRINT — system drawing ===== */
+  .d2 { background: #fff; background-image: linear-gradient(#e2efec 1px, transparent 1px), linear-gradient(90deg, #e2efec 1px, transparent 1px); background-size: 24px 24px; color: #0b1f1d; font-family: Archivo, system-ui, sans-serif; padding: 48px 60px; }
+  .d2 .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #0f766e; }
+  .d2 h1 { font-weight: 800; letter-spacing: -.03em; line-height: .95; margin: 0; }
+  .d2 .box { border: 2px solid #0b1f1d; background: #fff; padding: 11px 14px; font-weight: 700; font-size: 14px; }
+  .d2 .box.t { border-color: #0d9488; color: #0d9488; }
+  .d2 .box small { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 400; color: #4b5a58; margin-top: 3px; letter-spacing: .06em; }
+  .d2 .link { flex: 1; height: 2px; background: #0b1f1d; min-width: 18px; }
+  .d2 .dim { position: relative; height: 2px; background: #0d9488; }
+  .d2 .dim::before, .d2 .dim::after { content: ""; position: absolute; top: -5px; width: 2px; height: 12px; background: #0d9488; }
+  .d2 .dim::before { left: 0; } .d2 .dim::after { right: 0; }
+  .d2 .spec { position: relative; background: #fff; border: 1px solid #b9d6d1; padding: 22px 24px; }
+  .d2 .spec::before, .d2 .spec::after { content: ""; position: absolute; width: 14px; height: 14px; border: 2px solid #0d9488; }
+  .d2 .spec::before { left: -2px; top: -2px; border-right: 0; border-bottom: 0; }
+  .d2 .spec::after { right: -2px; bottom: -2px; border-left: 0; border-top: 0; }
+  .d2 .line { display: flex; align-items: baseline; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; padding: 7px 0; }
+  .d2 .line .lead { flex: 1; border-bottom: 1px dotted #7fb3ab; transform: translateY(-4px); }
+  .d2 .line b { font-weight: 600; }
+  .d2 .tick { position: absolute; top: -9px; width: 2px; height: 20px; background: #0b1f1d; }
+  .d2 .note { border: 1.5px dashed #0d9488; padding: 10px 12px; font-size: 12.5px; line-height: 1.4; background: rgba(255,255,255,.9); }
+
+  /* ===== 3 · PANEL — colour-block keynote ===== */
+  .d3 { background: #fff; color: #0f172a; font-family: Manrope, system-ui, sans-serif; display: grid; grid-template-columns: 42% 1fr; padding: 0; }
+  .d3 .panel { background: #134e4a; color: #fff; padding: 48px 44px; display: flex; flex-direction: column; justify-content: space-between; }
+  .d3 .panel .tag { font-size: 11.5px; letter-spacing: .2em; text-transform: uppercase; color: #99f6e4; font-weight: 700; }
+  .d3 .panel .big { font-family: Sora, system-ui, sans-serif; font-weight: 700; font-size: 92px; letter-spacing: -.045em; line-height: .9; color: #99f6e4; }
+  .d3 .panel .big.mid { font-size: 64px; }
+  .d3 .panel p { margin: 10px 0 0; font-size: 16px; line-height: 1.4; color: #ccfbf1; max-width: 26ch; }
+  .d3 .side { padding: 48px 48px; display: flex; flex-direction: column; justify-content: center; }
+  .d3 h1 { font-family: Sora, system-ui, sans-serif; font-weight: 700; letter-spacing: -.03em; line-height: 1.02; margin: 0; }
+  .d3 .kick { font-size: 11.5px; letter-spacing: .2em; text-transform: uppercase; color: #0d9488; font-weight: 700; margin-bottom: 14px; }
+  .d3 .steps { margin-top: 24px; display: flex; flex-direction: column; gap: 0; }
+  .d3 .step { display: grid; grid-template-columns: 26px 1fr; gap: 14px; align-items: start; padding-bottom: 18px; position: relative; }
+  .d3 .step::before { content: ""; position: absolute; left: 12px; top: 26px; bottom: 0; width: 2px; background: #e2e8f0; }
+  .d3 .step:last-child::before { display: none; }
+  .d3 .step i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #0d9488; background: #fff; display: block; }
+  .d3 .step i.on { background: #0d9488; }
+  .d3 .step b { display: block; font-size: 15px; }
+  .d3 .step span { color: #64748b; font-size: 13px; }
+  .d3 .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  .d3 .card { border: 1px solid #e2e8f0; border-top: 4px solid #0d9488; border-radius: 12px; padding: 18px 18px 14px; }
+  .d3 .card .name { font-weight: 700; font-size: 14px; }
+  .d3 .card .price { font-family: Sora, sans-serif; font-weight: 700; font-size: 34px; letter-spacing: -.03em; margin: 6px 0 2px; }
+  .d3 .card .sub { color: #64748b; font-size: 12px; }
+  .d3 .card ul { list-style: none; margin: 12px 0 0; padding: 0; font-size: 12.5px; }
+  .d3 .card li { padding: 5px 0; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; gap: 8px; }
+  .d3 .card li b { font-weight: 700; white-space: nowrap; }
+
+  /* ===== 4 · SWISS — house Geist, grid and restraint ===== */
+  .d4 { background: #fff; color: #0a0a0a; font-family: Geist, system-ui, sans-serif; padding: 44px 56px; display: grid; grid-template-rows: auto 1fr auto; }
+  .d4 .top { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: #71717a; letter-spacing: .04em; }
+  .d4 h1 { font-weight: 600; letter-spacing: -.045em; line-height: .95; margin: 0; }
+  .d4 .bar { width: 56px; height: 6px; background: #14b8a6; margin-bottom: 20px; }
+  .d4 .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+  .d4 .col { border-top: 1.5px solid #0a0a0a; padding-top: 14px; }
+  .d4 .col .n { font-size: 60px; font-weight: 600; letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .d4 .col .n small { font-size: 16px; letter-spacing: 0; font-weight: 500; color: #71717a; margin-left: 4px; }
+  .d4 .col b { display: block; font-size: 14px; margin-top: 10px; }
+  .d4 .col p { margin: 4px 0 0; font-size: 12.5px; color: #71717a; line-height: 1.45; }
+  .d4 .sub { color: #71717a; font-size: 15px; margin-top: 12px; }
+  .d4 .rows { font-size: 12.5px; }
+  .d4 .rows div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #e4e4e7; }
+  .d4 .rows div b { font-weight: 600; white-space: nowrap; }
+  .d4 .price { font-size: 52px; font-weight: 600; letter-spacing: -.05em; line-height: 1; margin: 6px 0 10px; }
+  .d4 .price small { font-size: 14px; color: #71717a; letter-spacing: 0; font-weight: 500; }
+  .d4 .total { border-top: 1.5px solid #0a0a0a; margin-top: 18px; padding-top: 10px; display: flex; justify-content: space-between; font-size: 13px; }
+  .d4 .total b { font-weight: 600; }
+
+  /* ===== 5 · DASHBOARD — the deck looks like the product ===== */
+  .d5 { background: #f3f5f6; color: #0f172a; font-family: 'Instrument Sans', system-ui, sans-serif; padding: 34px 44px; }
+  .d5 .win { background: #fff; border: 1px solid #e1e6e9; border-radius: 12px; box-shadow: 0 10px 30px rgba(15,23,42,.06); overflow: hidden; height: 100%; display: flex; flex-direction: column; }
+  .d5 .tb { height: 34px; border-bottom: 1px solid #e9edf0; display: flex; align-items: center; gap: 6px; padding: 0 14px; font-size: 11.5px; color: #64748b; }
+  .d5 .tb i { width: 9px; height: 9px; border-radius: 50%; background: #e1e6e9; display: inline-block; }
+  .d5 .tb .t { margin-left: 8px; font-weight: 600; color: #334155; }
+  .d5 .tb .r { margin-left: auto; }
+  .d5 .body { padding: 26px 28px; flex: 1; }
+  .d5 .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .d5 h1 { font-weight: 600; letter-spacing: -.03em; line-height: 1.05; margin: 0; }
+  .d5 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .d5 .tile { border: 1px solid #e1e6e9; border-radius: 10px; padding: 14px 16px; background: #fff; }
+  .d5 .tile .l { font-size: 11px; color: #64748b; letter-spacing: .04em; text-transform: uppercase; font-weight: 600; }
+  .d5 .tile .v { font-size: 30px; font-weight: 600; letter-spacing: -.03em; margin-top: 4px; }
+  .d5 .tile .v.t { color: #0f766e; }
+  .d5 .tile .s { font-size: 11.5px; color: #64748b; margin-top: 2px; }
+  .d5 .pill { display: inline-block; font-size: 11px; font-weight: 600; background: #ccfbf1; color: #0f766e; border-radius: 999px; padding: 3px 9px; }
+  .d5 .bar { height: 10px; background: #edf0f2; border-radius: 999px; overflow: hidden; }
+  .d5 .bar b { display: block; height: 100%; background: #0d9488; border-radius: 999px; }
+  .d5 .spark { display: flex; align-items: flex-end; gap: 3px; height: 26px; margin-top: 8px; }
+  .d5 .spark i { flex: 1; background: #cbd5e1; border-radius: 2px 2px 0 0; display: block; }
+  .d5 .spark i.t { background: #0d9488; }
+  .d5 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .d5 th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #64748b; padding: 8px 10px; border-bottom: 1px solid #e9edf0; font-weight: 600; }
+  .d5 td { padding: 9px 10px; border-bottom: 1px solid #f1f4f6; vertical-align: middle; }
+  .d5 td.k { color: #475569; width: 34%; }
+  .d5 tr.tot td { border-top: 2px solid #e1e6e9; font-weight: 600; }
+  .d5 .mini { display: flex; align-items: center; gap: 8px; }
+  .d5 .mini .bar { width: 120px; }
+
+  /* ===== hybrids: the Dashboard window frame around the Swiss and Blueprint interiors ===== */
+  .fr { background: #f3f5f6; padding: 28px 38px; font-family: 'Instrument Sans', system-ui, sans-serif; }
+  .fr .win { background: #fff; border: 1px solid #e1e6e9; border-radius: 12px; box-shadow: 0 10px 30px rgba(15,23,42,.06); overflow: hidden; height: 100%; display: flex; flex-direction: column; }
+  .fr .tb { height: 34px; flex: none; border-bottom: 1px solid #e9edf0; display: flex; align-items: center; gap: 6px; padding: 0 14px; font-size: 11.5px; color: #64748b; background: #fff; }
+  .fr .tb i { width: 9px; height: 9px; border-radius: 50%; background: #e1e6e9; display: inline-block; }
+  .fr .tb .t { margin-left: 8px; font-weight: 600; color: #334155; }
+  .fr .tb .r { margin-left: auto; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; }
+  .fr .tb .pill { font-size: 11px; font-weight: 600; background: #ccfbf1; color: #0f766e; border-radius: 999px; padding: 3px 9px; margin-left: 10px; }
+  .fr .inner { flex: 1; min-height: 0; position: relative; }
+  .fr .inner.d4 { padding: 32px 44px 34px; }
+  .fr .inner.d2 { padding: 30px 44px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Five directions for the teams deck</h1>
+    <p>Same copy, same light ground, same twelve slides. What changes is the visual system: type, layout, how the accent is spent, and how the numbers are drawn. Each direction shows the cover, the guarantee slide, and the pricing slide, so the three hardest slides are compared like-for-like.</p>
+    <p>Click any slide to see it full size. Arrow keys move between slides, Esc closes. Directions 6 and 7 are the two hybrids you asked for: Swiss and Blueprint, each inside the Dashboard frame.</p>
+    <div class="fixed">
+      <span>Copy unchanged</span><span>Light mode</span><span>Turquoise family</span><span>Wordmark on every cover</span><span>No stock photos</span>
+    </div>
+    <nav class="jump">
+      <a href="#d1">1 · Ledger</a><a href="#d2">2 · Blueprint</a><a href="#d3">3 · Panel</a><a href="#d4">4 · Swiss</a><a href="#d5">5 · Dashboard</a><a href="#d6">6 · Swiss × Dashboard</a><a href="#d7">7 · Blueprint × Dashboard</a>
+    </nav>
+  </header>
+
+  <!-- ================= 1 · LEDGER ================= -->
+  <section class="dir" id="d1">
+    <div class="dir-head">
+      <div class="num">01</div>
+      <div>
+        <h2>Ledger</h2>
+        <p class="pitch">Reads like a well-set financial report. A serif display face for titles and numbers, hairline rules instead of cards, tabular figures everywhere, and the accent reserved for the numbers that matter. Calm, expensive, owner-facing.</p>
+      </div>
+      <dl class="meta">
+        <dt>Type</dt><dd>Fraunces (display) + Public Sans (body)</dd>
+        <dt>Ground</dt><dd>Paper white, no cards, hairlines only</dd>
+        <dt>Accent</dt><dd>Deep teal, numbers and key words only</dd>
+        <dt>Build effort</dt><dd>Medium: new fonts, tables replace cards</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <div>
+        <div class="frame" tabindex="0" data-cap="1 · Ledger — cover">
+          <div class="slide d1">
+            <div class="top"><img class="logo" src="../../apps/web/public/logo.png" alt="" style="width:150px"><span class="kick">Offer overview · For Teams</span></div>
+            <div style="position:absolute;left:64px;right:64px;bottom:96px">
+              <div class="rule" style="margin-bottom:26px"></div>
+              <div class="serif" style="font-size:70px">Sales Ops &amp;<br>Management Placement<span class="teal">.</span></div>
+            </div>
+            <div class="folio">01 — 12</div>
+          </div>
+        </div>
+        <div class="cap">Cover</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="1 · Ledger — the guarantee">
+          <div class="slide d1">
+            <div class="kick">05 · The guarantee</div>
+            <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:52px;margin-top:22px;align-items:start">
+              <div>
+                <div class="serif" style="font-size:50px">Double the bottom line in <span class="teal">sixty days.</span></div>
+                <p class="sub" style="margin-top:18px;line-height:1.55;max-width:34ch">Manager placed within 14 days of kickoff. Full system live before the manager's first day, so they walk into a built operation rather than a blank CRM.</p>
+              </div>
+              <table>
+                <tr><td class="n">0</td><td><b>Kickoff.</b><br><span class="sub">Diagnostic, scorecard, comp plan, CRM and Sequ3nce configuration begin.</span></td></tr>
+                <tr><td class="n">14</td><td><b>Manager placed.</b><br><span class="sub">Into a finished system: pipeline, cadences, scripts, reporting already live.</span></td></tr>
+                <tr><td class="n">60</td><td><b>Bottom line doubled.</b><br><span class="sub">The window the guarantee runs against, measured in Sequ3nce.</span></td></tr>
+              </table>
+            </div>
+            <div class="folio">05 — 12</div>
+          </div>
+        </div>
+        <div class="cap">The guarantee</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="1 · Ledger — pricing">
+          <div class="slide d1">
+            <div class="kick">09 · Pricing</div>
+            <div class="serif" style="font-size:36px;margin-top:14px">Two structures. Same delivery, <span class="teal">different risk allocation.</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:44px;margin-top:24px">
+              <div>
+                <div class="serif" style="font-size:22px;margin-bottom:10px">A · Build &amp; Software</div>
+                <table>
+                  <tr><td>90-day build and placement<br><span class="sub">40 / 30 / 30 across the 90 days</span></td><td class="v">$30,000</td></tr>
+                  <tr><td>Sequ3nce + reporting, ongoing<br><span class="sub">12-month term · $3k / $4k / $5k by team size</span></td><td class="v">$3,000<small>/mo</small></td></tr>
+                  <tr><td>First-year total, entry tier</td><td class="v teal">$57,000</td></tr>
+                </table>
+              </div>
+              <div>
+                <div class="serif" style="font-size:22px;margin-bottom:10px">B · Build &amp; Revenue Share</div>
+                <table>
+                  <tr><td>90-day build and placement<br><span class="sub">60 / 20 / 20 across the 90 days</span></td><td class="v">$12,500</td></tr>
+                  <tr><td>Ongoing, Sequ3nce included<br><span class="sub">12-month minimum · steps to 4% and 3% as you scale</span></td><td class="v">5%<small> of cash collected</small></td></tr>
+                  <tr><td>First-year total at $100k/mo</td><td class="v teal">$72,500</td></tr>
+                </table>
+              </div>
+            </div>
+            <div class="folio">09 — 12</div>
+          </div>
+        </div>
+        <div class="cap">Pricing</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 2 · BLUEPRINT ================= -->
+  <section class="dir" id="d2">
+    <div class="dir-head">
+      <div class="num">02</div>
+      <div>
+        <h2>Blueprint</h2>
+        <p class="pitch">The offer is a system build, so the deck is drawn like an engineering drawing. Faint grid paper, monospace labels with drawing numbers, boxes and dimension lines in teal ink, a heavy display face for the titles. The most distinctive of the five.</p>
+      </div>
+      <dl class="meta">
+        <dt>Type</dt><dd>Archivo Black (display) + IBM Plex Mono (labels)</dd>
+        <dt>Ground</dt><dd>White with a faint teal grid</dd>
+        <dt>Accent</dt><dd>Teal as ink: lines, ticks, corner brackets</dd>
+        <dt>Build effort</dt><dd>Higher: every visual redrawn in the drawing style</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <div>
+        <div class="frame" tabindex="0" data-cap="2 · Blueprint — cover">
+          <div class="slide d2">
+            <div style="display:flex;justify-content:space-between;align-items:center"><img class="logo" src="../../apps/web/public/logo.png" alt="" style="width:140px"><span class="mono">DWG 01 · Sales operation · Rev A</span></div>
+            <h1 style="font-size:64px;margin-top:40px;max-width:11ch">Sales Ops &amp; Management Placement</h1>
+            <div style="position:absolute;left:60px;right:60px;bottom:52px">
+              <div style="display:flex;align-items:center;gap:0">
+                <div class="box t">Sales manager<small>placed day 14</small></div><div class="link"></div>
+                <div class="box">Sequ3nce<small>system of record</small></div><div class="link"></div>
+                <div class="box">CRM &amp; pipeline<small>stages · fields · automations</small></div><div class="link"></div>
+                <div class="box">Cadences &amp; scripts<small>setter + closer motion</small></div>
+              </div>
+              <div style="margin-top:22px;width:46%"><div class="dim"></div><div class="mono" style="margin-top:8px">0 → 14 days · placement</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Cover</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="2 · Blueprint — the guarantee">
+          <div class="slide d2">
+            <div class="mono">Section 05 · Guarantee</div>
+            <h1 style="font-size:54px;margin-top:14px;max-width:14ch">Double the bottom line in <span style="color:#0d9488">60 days.</span></h1>
+            <div style="position:absolute;left:60px;right:60px;top:268px">
+              <div style="position:relative;height:2px;background:#0b1f1d">
+                <div style="position:absolute;left:0;top:0;height:2px;width:23.3%;background:#0d9488"></div>
+                <span class="tick" style="left:0"></span><span class="tick" style="left:23.3%;background:#0d9488"></span><span class="tick" style="right:0"></span>
+              </div>
+              <div style="position:relative;height:20px;margin-top:12px">
+                <span class="mono" style="position:absolute;left:0">0d · Kickoff</span>
+                <span class="mono" style="position:absolute;left:23.3%">14d · Manager placed</span>
+                <span class="mono" style="position:absolute;right:0">60d · Bottom line ×2</span>
+              </div>
+            </div>
+            <div style="position:absolute;left:60px;right:60px;bottom:48px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+              <div class="note"><b>Day 0.</b> Diagnostic, scorecard, comp plan, CRM and Sequ3nce configuration start.</div>
+              <div class="note"><b>Day 14.</b> Manager walks into a finished system, not a blank CRM.</div>
+              <div class="note"><b>Day 60.</b> The window the guarantee runs against, measured in Sequ3nce.</div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">The guarantee</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="2 · Blueprint — pricing">
+          <div class="slide d2">
+            <div class="mono">Spec sheet · Pricing</div>
+            <h1 style="font-size:36px;margin-top:12px">Two structures. Same delivery, different risk allocation.</h1>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:26px">
+              <div class="spec">
+                <div class="mono" style="margin-bottom:6px">Option A · Build &amp; Software</div>
+                <div class="line"><span>Build &amp; placement, 40/30/30</span><span class="lead"></span><b>$30,000</b></div>
+                <div class="line"><span>Sequ3nce + reporting, 12 mo</span><span class="lead"></span><b>$3,000/mo</b></div>
+                <div class="line"><span>Scales with team</span><span class="lead"></span><b>$3k · $4k · $5k</b></div>
+                <div class="line"><span>Paid in full at signing</span><span class="lead"></span><b>−10%</b></div>
+                <div class="line" style="color:#0d9488;margin-top:6px"><span>First year, entry tier</span><span class="lead"></span><b>$57,000</b></div>
+              </div>
+              <div class="spec">
+                <div class="mono" style="margin-bottom:6px">Option B · Build &amp; Revenue Share</div>
+                <div class="line"><span>Build &amp; placement, 60/20/20</span><span class="lead"></span><b>$12,500</b></div>
+                <div class="line"><span>Ongoing, 12-mo minimum</span><span class="lead"></span><b>5% cash collected</b></div>
+                <div class="line"><span>Sequ3nce</span><span class="lead"></span><b>Included</b></div>
+                <div class="line"><span>Step-downs at $250k · $500k</span><span class="lead"></span><b>4% · 3%</b></div>
+                <div class="line" style="color:#0d9488;margin-top:6px"><span>First year at $100k/mo</span><span class="lead"></span><b>$72,500</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Pricing</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 3 · PANEL ================= -->
+  <section class="dir" id="d3">
+    <div class="dir-head">
+      <div class="num">03</div>
+      <div>
+        <h2>Panel</h2>
+        <p class="pitch">One deep-teal panel per slide carries the single number that matters, in mint, at poster size. Everything else sits on white. It gives a video call something to look at from across the room, and it makes each slide's point unmissable.</p>
+      </div>
+      <dl class="meta">
+        <dt>Type</dt><dd>Sora (display) + Manrope (body)</dd>
+        <dt>Ground</dt><dd>White, with a deep teal panel on every slide</dd>
+        <dt>Accent</dt><dd>Teal-900 blocks with mint numerals</dd>
+        <dt>Build effort</dt><dd>Medium: new fonts, split layout on each slide</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <div>
+        <div class="frame" tabindex="0" data-cap="3 · Panel — cover">
+          <div class="slide d3">
+            <div class="panel">
+              <div class="tag">For Teams</div>
+              <div><div class="big">14<br>days</div><p>to a placed sales manager, running a system we built.</p></div>
+            </div>
+            <div class="side">
+              <img class="logo" src="../../apps/web/public/logo.png" alt="" style="width:170px;margin-bottom:auto">
+              <h1 style="font-size:52px">Sales Ops &amp; Management Placement</h1>
+              <p style="color:#64748b;font-size:15px;margin:16px 0 auto;max-width:34ch">We place a fully-managed sales manager into your business, build the sales operation around them, and manage them until your bottom line doubles.</p>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Cover</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="3 · Panel — the guarantee">
+          <div class="slide d3">
+            <div class="panel">
+              <div class="tag">The guarantee</div>
+              <div><div class="big">2×</div><p>bottom line, within 60 days of kickoff.</p></div>
+            </div>
+            <div class="side">
+              <div class="kick">How the 60 days run</div>
+              <h1 style="font-size:36px">Placed in 14 days, into a system that is already live.</h1>
+              <div class="steps">
+                <div class="step"><i class="on"></i><div><b>Day 0 · Kickoff</b><span>Diagnostic, scorecard, comp plan, CRM and Sequ3nce configuration.</span></div></div>
+                <div class="step"><i class="on"></i><div><b>Day 14 · Manager placed</b><span>Into a finished system rather than a blank CRM.</span></div></div>
+                <div class="step"><i></i><div><b>Day 60 · Bottom line doubled</b><span>The window the guarantee runs against.</span></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">The guarantee</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="3 · Panel — pricing">
+          <div class="slide d3" style="grid-template-columns:30% 1fr">
+            <div class="panel">
+              <div class="tag">Pricing</div>
+              <div><div class="big">2</div><p>structures. Same delivery, different risk allocation.</p></div>
+            </div>
+            <div class="side" style="padding:40px 40px">
+              <div class="cards">
+                <div class="card">
+                  <div class="name">A · Build &amp; Software</div>
+                  <div class="price">$30,000</div>
+                  <div class="sub">+ $3,000/mo Sequ3nce, 12-month term</div>
+                  <ul>
+                    <li><span>Build, 40 / 30 / 30</span><b>$30,000</b></li>
+                    <li><span>Scales with team</span><b>$3k · $4k · $5k</b></li>
+                    <li><span>Paid in full at signing</span><b>−10%</b></li>
+                    <li><span>First year, entry tier</span><b style="color:#0d9488">$57,000</b></li>
+                  </ul>
+                </div>
+                <div class="card">
+                  <div class="name">B · Build &amp; Revenue Share</div>
+                  <div class="price">$12,500</div>
+                  <div class="sub">+ 5% of cash collected, 12-month minimum</div>
+                  <ul>
+                    <li><span>Build, 60 / 20 / 20</span><b>$12,500</b></li>
+                    <li><span>Sequ3nce</span><b>Included</b></li>
+                    <li><span>Steps down as you scale</span><b>5% · 4% · 3%</b></li>
+                    <li><span>First year at $100k/mo</span><b style="color:#0d9488">$72,500</b></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Pricing</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 4 · SWISS ================= -->
+  <section class="dir" id="d4">
+    <div class="dir-head">
+      <div class="num">04</div>
+      <div>
+        <h2>Swiss</h2>
+        <p class="pitch">Keeps the house typeface and strips everything else back: a strict grid, big tight-set type, thin black rules instead of cards, and the accent spent once per slide as a short bar. The Stripe-and-Linear school of restraint. Closest to what's live, so the cheapest to adopt.</p>
+      </div>
+      <dl class="meta">
+        <dt>Type</dt><dd>Geist only (the site's current face)</dd>
+        <dt>Ground</dt><dd>Pure white, rules not cards</dd>
+        <dt>Accent</dt><dd>One teal bar and one teal word per slide</dd>
+        <dt>Build effort</dt><dd>Low: spacing and type sizes, no new fonts</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <div>
+        <div class="frame" tabindex="0" data-cap="4 · Swiss — cover">
+          <div class="slide d4">
+            <div class="top"><img class="logo" src="../../apps/web/public/logo.png" alt="" style="width:132px"><span>Offer overview · For Teams</span></div>
+            <div></div>
+            <div>
+              <div class="bar"></div>
+              <h1 style="font-size:74px">Sales Ops &amp;<br>Management Placement</h1>
+              <div class="sub">A managed sales manager, placed in 14 days, into a system we build first.</div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Cover</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="4 · Swiss — the guarantee">
+          <div class="slide d4">
+            <div class="top"><span>05 · The guarantee</span><span>Sequ3nce for Teams</span></div>
+            <div style="display:flex;align-items:flex-end;padding-bottom:36px">
+              <div><div class="bar"></div><h1 style="font-size:58px">Double the bottom line<br>in 60 days.</h1></div>
+            </div>
+            <div class="cols">
+              <div class="col"><div class="n">0<small>days</small></div><b>Kickoff</b><p>Diagnostic, scorecard, comp plan, CRM and Sequ3nce configuration.</p></div>
+              <div class="col"><div class="n">14<small>days</small></div><b>Manager placed</b><p>Into a finished system rather than a blank CRM.</p></div>
+              <div class="col"><div class="n" style="color:#0f766e">60<small>days</small></div><b>Bottom line doubled</b><p>The window the guarantee runs against.</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">The guarantee</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="4 · Swiss — pricing">
+          <div class="slide d4">
+            <div class="top"><span>09 · Pricing</span><span>Sequ3nce for Teams</span></div>
+            <div style="padding:18px 0 8px"><div class="bar"></div><h1 style="font-size:38px">Two structures. Same delivery, different risk allocation.</h1></div>
+            <div>
+              <div class="cols" style="grid-template-columns:1fr 1fr;gap:40px">
+                <div class="col">
+                  <b style="font-size:13px">A · Build &amp; Software</b>
+                  <div class="price">$30,000 <small>+ $3,000/mo</small></div>
+                  <div class="rows">
+                    <div><span>Build, 40 / 30 / 30 · Sequ3nce 12-month term</span></div>
+                    <div><span>Scales with team</span><b>$3k · $4k · $5k</b></div>
+                    <div><span>Paid in full at signing</span><b>−10%</b></div>
+                  </div>
+                </div>
+                <div class="col">
+                  <b style="font-size:13px">B · Build &amp; Revenue Share</b>
+                  <div class="price">$12,500 <small>+ 5% of cash collected</small></div>
+                  <div class="rows">
+                    <div><span>Build, 60 / 20 / 20 · 12-month minimum · Sequ3nce included</span></div>
+                    <div><span>Steps down as you scale</span><b>5% · 4% · 3%</b></div>
+                    <div><span>Requires $100k/mo cash collected</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="total"><span>First-year total</span><span><b>A</b> $57,000 entry tier &nbsp;·&nbsp; <b>B</b> $72,500 at $100k/mo &nbsp;·&nbsp; <b>B</b> $92,500 at $150k/mo</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Pricing</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 5 · DASHBOARD ================= -->
+  <section class="dir" id="d5">
+    <div class="dir-head">
+      <div class="num">05</div>
+      <div>
+        <h2>Dashboard</h2>
+        <p class="pitch">Every slide is framed like a Sequ3nce screen: app-grey ground, white window, KPI tiles, pills, progress bars and monospace figures. The owner is looking at the kind of view they will be reading their numbers from. Sells the software while it explains the offer.</p>
+      </div>
+      <dl class="meta">
+        <dt>Type</dt><dd>Instrument Sans (UI) + JetBrains Mono (figures)</dd>
+        <dt>Ground</dt><dd>App grey with a white window on each slide</dd>
+        <dt>Accent</dt><dd>Teal as a metric colour: pills, bars, positive figures</dd>
+        <dt>Build effort</dt><dd>Higher: a small UI kit built for the deck</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <div>
+        <div class="frame" tabindex="0" data-cap="5 · Dashboard — cover">
+          <div class="slide d5">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">Sequ3nce · For Teams</span><span class="r">Offer overview</span></div>
+              <div class="body" style="display:grid;grid-template-columns:1.1fr 1fr;gap:34px;align-items:center">
+                <div>
+                  <img class="logo" src="../../apps/web/public/logo.png" alt="" style="width:150px;margin-bottom:22px">
+                  <h1 style="font-size:44px">Sales Ops &amp; Management Placement</h1>
+                  <p style="color:#64748b;font-size:13.5px;line-height:1.5;margin:14px 0 0;max-width:38ch">A managed sales manager placed into your business, with the full operation built around them and measured in Sequ3nce.</p>
+                </div>
+                <div class="tiles" style="grid-template-columns:1fr 1fr">
+                  <div class="tile"><div class="l">To placement</div><div class="v mono t">14d</div><div class="s">manager in the seat</div><div class="spark"><i style="height:30%"></i><i style="height:45%"></i><i style="height:60%"></i><i style="height:70%"></i><i class="t" style="height:100%"></i></div></div>
+                  <div class="tile"><div class="l">Managed by us</div><div class="v mono">90d</div><div class="s">build · install · release</div><div class="spark"><i class="t" style="height:40%"></i><i class="t" style="height:100%"></i><i style="height:55%"></i><i style="height:35%"></i><i style="height:25%"></i></div></div>
+                  <div class="tile" style="grid-column:1 / -1"><div class="l">Guarantee</div><div class="v mono t">2× bottom line</div><div class="s">within 60 days · <span class="pill">measured in Sequ3nce</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Cover</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="5 · Dashboard — the guarantee">
+          <div class="slide d5">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">The guarantee</span><span class="r">Slide 5 of 12</span></div>
+              <div class="body">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px">
+                  <h1 style="font-size:36px;max-width:16ch">Double the bottom line in 60 days.</h1>
+                  <span class="pill" style="margin-top:8px">Manager placed · day 14</span>
+                </div>
+                <div style="margin-top:26px">
+                  <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#64748b;margin-bottom:8px" class="mono"><span>Day 0 · kickoff</span><span style="margin-left:-6%">Day 14 · placed</span><span>Day 60 · doubled</span></div>
+                  <div class="bar" style="height:14px"><b style="width:23.3%"></b></div>
+                </div>
+                <div class="tiles" style="margin-top:26px">
+                  <div class="tile"><div class="l">Kickoff</div><div class="v mono">Day 0</div><div class="s">Diagnostic, scorecard, comp plan, CRM + Sequ3nce config.</div></div>
+                  <div class="tile"><div class="l">Manager placed</div><div class="v mono t">Day 14</div><div class="s">Into a finished system, not a blank CRM.</div></div>
+                  <div class="tile"><div class="l">Bottom line</div><div class="v mono t">2×</div><div class="s">By day 60. The window the guarantee runs against.</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">The guarantee</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="5 · Dashboard — pricing">
+          <div class="slide d5">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">Pricing</span><span class="r">Two structures · same delivery</span></div>
+              <div class="body" style="padding-top:18px">
+                <h1 style="font-size:28px;margin-bottom:14px">Two structures. Same delivery, different risk allocation.</h1>
+                <table>
+                  <tr><th></th><th>A · Build &amp; Software</th><th>B · Build &amp; Revenue Share</th></tr>
+                  <tr><td class="k">90-day build and placement</td><td class="mono"><b>$30,000</b> <span style="color:#64748b">40 / 30 / 30</span></td><td class="mono"><b>$12,500</b> <span style="color:#64748b">60 / 20 / 20</span></td></tr>
+                  <tr><td class="k">Ongoing</td><td class="mono"><b>$3,000/mo</b> <span style="color:#64748b">12-month term</span></td><td class="mono"><b>5%</b> <span style="color:#64748b">of cash collected · 12-mo min</span></td></tr>
+                  <tr><td class="k">Sequ3nce</td><td class="mono">$3k · $4k · $5k <span style="color:#64748b">by team size</span></td><td><span class="pill">Included</span></td></tr>
+                  <tr><td class="k">As you scale</td><td class="mono"><span style="color:#64748b">−10% paid in full</span></td><td class="mono">5% · 4% · 3%</td></tr>
+                  <tr class="tot"><td class="k">First-year total</td><td><div class="mini"><div class="bar"><b style="width:62%"></b></div><span class="mono">$57,000</span></div></td><td><div class="mini"><div class="bar"><b style="width:78%;background:#94a3b8"></b></div><span class="mono">$72,500 <span style="color:#64748b;font-weight:400">at $100k/mo</span></span></div></td></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Pricing</div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ================= 6 · SWISS × DASHBOARD ================= -->
+  <section class="dir" id="d6">
+    <div class="dir-head">
+      <div class="num">06</div>
+      <div>
+        <h2>Swiss × Dashboard</h2>
+        <p class="pitch">The Swiss interior inside the Dashboard's window. App-grey ground, a white window with a title bar, and the slide counter living in the chrome like a screen would show it. Inside, nothing changes: Geist, thin black rules, big tight numerals, one teal bar per slide.</p>
+      </div>
+      <dl class="meta">
+        <dt>Type</dt><dd>Geist, with mono figures in the title bar only</dd>
+        <dt>Ground</dt><dd>App grey; white window on every slide</dd>
+        <dt>Accent</dt><dd>One teal bar per slide, teal pill in the chrome</dd>
+        <dt>Build effort</dt><dd>Low: the Swiss build plus one window wrapper</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <div>
+        <div class="frame" tabindex="0" data-cap="6 · Swiss × Dashboard — cover">
+          <div class="slide fr">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">Sequ3nce · For Teams</span><span class="r">1 / 12</span></div>
+              <div class="inner d4">
+                <div class="top"><img class="logo" src="../../apps/web/public/logo.png" alt="" style="width:126px"><span>Offer overview</span></div>
+                <div></div>
+                <div>
+                  <div class="bar"></div>
+                  <h1 style="font-size:66px">Sales Ops &amp;<br>Management Placement</h1>
+                  <div class="sub">A managed sales manager, placed in 14 days, into a system we build first.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Cover</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="6 · Swiss × Dashboard — the guarantee">
+          <div class="slide fr">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">The guarantee</span><span class="pill">Manager placed · day 14</span><span class="r">5 / 12</span></div>
+              <div class="inner d4">
+                <div class="top"><span>05 · The guarantee</span><span>Sequ3nce for Teams</span></div>
+                <div style="display:flex;align-items:flex-end;padding-bottom:26px">
+                  <div><div class="bar"></div><h1 style="font-size:52px">Double the bottom line<br>in 60 days.</h1></div>
+                </div>
+                <div class="cols">
+                  <div class="col"><div class="n">0<small>days</small></div><b>Kickoff</b><p>Diagnostic, scorecard, comp plan, CRM and Sequ3nce configuration.</p></div>
+                  <div class="col"><div class="n">14<small>days</small></div><b>Manager placed</b><p>Into a finished system rather than a blank CRM.</p></div>
+                  <div class="col"><div class="n" style="color:#0f766e">60<small>days</small></div><b>Bottom line doubled</b><p>The window the guarantee runs against.</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">The guarantee</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="6 · Swiss × Dashboard — pricing">
+          <div class="slide fr">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">Pricing</span><span class="r">9 / 12</span></div>
+              <div class="inner d4">
+                <div class="top"><span>09 · Pricing</span><span>Two structures · same delivery</span></div>
+                <div style="padding:14px 0 6px"><div class="bar"></div><h1 style="font-size:34px">Two structures. Same delivery, different risk allocation.</h1></div>
+                <div>
+                  <div class="cols" style="grid-template-columns:1fr 1fr;gap:40px">
+                    <div class="col">
+                      <b style="font-size:13px">A · Build &amp; Software</b>
+                      <div class="price">$30,000 <small>+ $3,000/mo</small></div>
+                      <div class="rows">
+                        <div><span>Build, 40 / 30 / 30 · Sequ3nce 12-month term</span></div>
+                        <div><span>Scales with team</span><b>$3k · $4k · $5k</b></div>
+                        <div><span>Paid in full at signing</span><b>−10%</b></div>
+                      </div>
+                    </div>
+                    <div class="col">
+                      <b style="font-size:13px">B · Build &amp; Revenue Share</b>
+                      <div class="price">$12,500 <small>+ 5% of cash collected</small></div>
+                      <div class="rows">
+                        <div><span>Build, 60 / 20 / 20 · 12-month minimum · Sequ3nce included</span></div>
+                        <div><span>Steps down as you scale</span><b>5% · 4% · 3%</b></div>
+                        <div><span>Requires $100k/mo cash collected</span></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="total"><span>First-year total</span><span><b>A</b> $57,000 entry tier &nbsp;·&nbsp; <b>B</b> $72,500 at $100k/mo &nbsp;·&nbsp; <b>B</b> $92,500 at $150k/mo</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Pricing</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 7 · BLUEPRINT × DASHBOARD ================= -->
+  <section class="dir" id="d7">
+    <div class="dir-head">
+      <div class="num">07</div>
+      <div>
+        <h2>Blueprint × Dashboard</h2>
+        <p class="pitch">The drawing sits inside a window, like a CAD canvas. Grid paper fills the white window, the drawing number and revision live in the title bar, and the app-grey ground frames it. Inside, the Blueprint system is untouched: Archivo, Plex Mono labels, boxes, dimension lines and corner brackets in teal ink.</p>
+      </div>
+      <dl class="meta">
+        <dt>Type</dt><dd>Archivo Black (display) + IBM Plex Mono (labels)</dd>
+        <dt>Ground</dt><dd>App grey; grid paper inside the window</dd>
+        <dt>Accent</dt><dd>Teal as ink, plus the title-bar pill</dd>
+        <dt>Build effort</dt><dd>Higher: the Blueprint build plus the window wrapper</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <div>
+        <div class="frame" tabindex="0" data-cap="7 · Blueprint × Dashboard — cover">
+          <div class="slide fr">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">DWG 01 · Sales operation</span><span class="pill">Rev A</span><span class="r">1 / 12</span></div>
+              <div class="inner d2">
+                <div style="display:flex;justify-content:space-between;align-items:center"><img class="logo" src="../../apps/web/public/logo.png" alt="" style="width:130px"><span class="mono">Sequ3nce · For Teams</span></div>
+                <h1 style="font-size:56px;margin-top:26px;max-width:11ch">Sales Ops &amp; Management Placement</h1>
+                <div style="position:absolute;left:44px;right:44px;bottom:34px">
+                  <div style="display:flex;align-items:center;gap:0">
+                    <div class="box t">Sales manager<small>placed day 14</small></div><div class="link"></div>
+                    <div class="box">Sequ3nce<small>system of record</small></div><div class="link"></div>
+                    <div class="box">CRM &amp; pipeline<small>stages · fields · automations</small></div><div class="link"></div>
+                    <div class="box">Cadences &amp; scripts<small>setter + closer motion</small></div>
+                  </div>
+                  <div style="margin-top:18px;width:46%"><div class="dim"></div><div class="mono" style="margin-top:8px">0 → 14 days · placement</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Cover</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="7 · Blueprint × Dashboard — the guarantee">
+          <div class="slide fr">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">Section 05 · Guarantee</span><span class="pill">Manager placed · day 14</span><span class="r">5 / 12</span></div>
+              <div class="inner d2">
+                <div class="mono">Section 05 · Guarantee</div>
+                <h1 style="font-size:48px;margin-top:12px;max-width:14ch">Double the bottom line in <span style="color:#0d9488">60 days.</span></h1>
+                <div style="position:absolute;left:44px;right:44px;top:228px">
+                  <div style="position:relative;height:2px;background:#0b1f1d">
+                    <div style="position:absolute;left:0;top:0;height:2px;width:23.3%;background:#0d9488"></div>
+                    <span class="tick" style="left:0"></span><span class="tick" style="left:23.3%;background:#0d9488"></span><span class="tick" style="right:0"></span>
+                  </div>
+                  <div style="position:relative;height:20px;margin-top:12px">
+                    <span class="mono" style="position:absolute;left:0">0d · Kickoff</span>
+                    <span class="mono" style="position:absolute;left:23.3%">14d · Manager placed</span>
+                    <span class="mono" style="position:absolute;right:0">60d · Bottom line ×2</span>
+                  </div>
+                </div>
+                <div style="position:absolute;left:44px;right:44px;bottom:32px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+                  <div class="note"><b>Day 0.</b> Diagnostic, scorecard, comp plan, CRM and Sequ3nce configuration start.</div>
+                  <div class="note"><b>Day 14.</b> Manager walks into a finished system, not a blank CRM.</div>
+                  <div class="note"><b>Day 60.</b> The window the guarantee runs against, measured in Sequ3nce.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">The guarantee</div>
+      </div>
+      <div>
+        <div class="frame" tabindex="0" data-cap="7 · Blueprint × Dashboard — pricing">
+          <div class="slide fr">
+            <div class="win">
+              <div class="tb"><i></i><i></i><i></i><span class="t">Spec sheet · Pricing</span><span class="r">9 / 12</span></div>
+              <div class="inner d2">
+                <div class="mono">Spec sheet · Pricing</div>
+                <h1 style="font-size:32px;margin-top:10px">Two structures. Same delivery, different risk allocation.</h1>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:22px">
+                  <div class="spec">
+                    <div class="mono" style="margin-bottom:6px">Option A · Build &amp; Software</div>
+                    <div class="line"><span>Build &amp; placement, 40/30/30</span><span class="lead"></span><b>$30,000</b></div>
+                    <div class="line"><span>Sequ3nce + reporting, 12 mo</span><span class="lead"></span><b>$3,000/mo</b></div>
+                    <div class="line"><span>Scales with team</span><span class="lead"></span><b>$3k · $4k · $5k</b></div>
+                    <div class="line"><span>Paid in full at signing</span><span class="lead"></span><b>−10%</b></div>
+                    <div class="line" style="color:#0d9488;margin-top:6px"><span>First year, entry tier</span><span class="lead"></span><b>$57,000</b></div>
+                  </div>
+                  <div class="spec">
+                    <div class="mono" style="margin-bottom:6px">Option B · Build &amp; Revenue Share</div>
+                    <div class="line"><span>Build &amp; placement, 60/20/20</span><span class="lead"></span><b>$12,500</b></div>
+                    <div class="line"><span>Ongoing, 12-mo minimum</span><span class="lead"></span><b>5% cash collected</b></div>
+                    <div class="line"><span>Sequ3nce</span><span class="lead"></span><b>Included</b></div>
+                    <div class="line"><span>Step-downs at $250k · $500k</span><span class="lead"></span><b>4% · 3%</b></div>
+                    <div class="line" style="color:#0d9488;margin-top:6px"><span>First year at $100k/mo</span><span class="lead"></span><b>$72,500</b></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap">Pricing</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dir" style="padding-bottom:0">
+    <div class="dir-head">
+      <div class="num">→</div>
+      <div>
+        <h2>How to pick</h2>
+        <p class="pitch">Say the number or name, including 6 or 7 for the hybrids. I will rebuild all twelve slides in that direction on the live page, keeping every word as it is, and then we go through the content slide by slide. Mixing is fine too, for example Swiss type with the Dashboard pricing table.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="lb" hidden>
+  <div class="lbframe"></div>
+  <div class="lbbar"><button type="button" class="prev">← Prev</button><span id="lbcap"></span><button type="button" class="next">Next →</button><button type="button" class="close">Close · Esc</button></div>
+</div>
+
+<script>
+  (function () {
+    var frames = Array.prototype.slice.call(document.querySelectorAll('.frame'));
+    function fit() {
+      frames.forEach(function (f) {
+        var s = f.querySelector('.slide');
+        if (s) s.style.transform = 'scale(' + (f.clientWidth / 960) + ')';
+      });
+      fitLb();
+    }
+    var lb = document.getElementById('lb');
+    var lbf = lb.querySelector('.lbframe');
+    var cap = document.getElementById('lbcap');
+    var cur = -1;
+    function fitLb() {
+      var c = lbf.querySelector('.slide');
+      if (c) c.style.transform = 'scale(' + (lbf.clientWidth / 960) + ')';
+    }
+    function open(i) {
+      cur = (i + frames.length) % frames.length;
+      lbf.innerHTML = '';
+      lbf.appendChild(frames[cur].querySelector('.slide').cloneNode(true));
+      cap.textContent = frames[cur].getAttribute('data-cap');
+      lb.hidden = false;
+      fitLb();
+    }
+    function close() { lb.hidden = true; cur = -1; }
+    frames.forEach(function (f, i) {
+      f.addEventListener('click', function () { open(i); });
+      f.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(i); } });
+    });
+    lb.querySelector('.close').addEventListener('click', close);
+    lb.querySelector('.prev').addEventListener('click', function () { open(cur - 1); });
+    lb.querySelector('.next').addEventListener('click', function () { open(cur + 1); });
+    lb.addEventListener('click', function (e) { if (e.target === lb) close(); });
+    document.addEventListener('keydown', function (e) {
+      if (lb.hidden) return;
+      if (e.key === 'Escape') close();
+      if (e.key === 'ArrowRight') open(cur + 1);
+      if (e.key === 'ArrowLeft') open(cur - 1);
+    });
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(document.body);
+    window.addEventListener('resize', fit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+    fit();
+  })();
+</script>
+</body></html>
