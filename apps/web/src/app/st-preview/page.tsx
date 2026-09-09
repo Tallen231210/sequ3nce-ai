@@ -7,6 +7,20 @@
 import { notFound } from "next/navigation";
 import { SetterTeamsView } from "../dashboard/setter-data/components/setters/SetterTeamsSection";
 import { RosterIdentityInputs } from "../dashboard/setter-eods/RosterIdentityInputs";
+import { DataHealthView } from "../dashboard/setter-eods/DataHealthCard";
+
+const HEALTH = {
+  weekStartKey: "2026-09-07", weekEndKey: "2026-09-09", timezone: "America/New_York", truncated: [], bookings: 186, followUps: 6,
+  accuracy: { bookings: 186, due: 186, sourceKnown: 168, contactKnown: 170, showKnown: 121, allKnown: 104, sourcePct: 90, contactPct: 91, showPct: 65, score: 56 },
+  lanes: { dm: 29, outbound: 59, confirmation: 65, selfBookedUncontacted: 5, unattributed: 28 },
+  drags: {
+    untaggedSelfBooks: { total: 25, byCloser: [{ name: "Ryleigh Harris", count: 6 }, { name: "Brittany Thatcher", count: 5 }, { name: "Joseph Adham", count: 5 }, { name: "Muzaffar Amoako", count: 5 }, { name: "Karl Dargan", count: 4 }] },
+    missingInitials: { total: 8, bySetter: [{ name: "Erten", count: 8 }] },
+    notRecolored: { total: 31, byCloser: [{ name: "Joseph Adham", count: 12 }, { name: "Karl Dargan", count: 10 }, { name: "Brittany Thatcher", count: 9 }] },
+    leadMissing: 13, handMadeUntagged: 19,
+    eodMissed: [{ name: "Sophie", days: ["2026-09-08"] }],
+  },
+} as never;
 import { SetterContext, type SetterHome } from "../setter/_components/SetterContext";
 import SetterEodPage from "../setter/eod/page";
 
@@ -713,6 +727,7 @@ export default function SetterTeamsPreview() {
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-6">
       <SetterTeamsView data={FIXTURE} />
+      <DataHealthView data={HEALTH} />
       <div className="rounded-lg border border-border bg-neutral-50 p-4">
         <p className="mb-3 text-sm font-medium">Confirmation setter&apos;s EOD form (setter app)</p>
         <SetterContext.Provider value={{ sessionToken: "preview", home: CONFIRMATION_HOME, refresh: () => {} }}>

@@ -428,4 +428,15 @@ crons.cron(
   {},
 );
 
+// Weekly data-health post (setter_teams teams): the accuracy score for the
+// finished week and what dragged it down. Hourly, gated on the team's local
+// hour AND Monday. Minute 50 collides only with the cheap Fathom poll.
+// crons.cron, never crons.interval.
+crons.cron(
+  "setter-data-health-weekly",
+  "50 * * * *",
+  internal.dataHealthNotifications.runWeeklyDataHealth,
+  {},
+);
+
 export default crons;
