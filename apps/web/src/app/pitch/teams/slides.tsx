@@ -1,6 +1,7 @@
 import React from "react";
 import type { TeamSlide } from "./BlueprintDeck";
 import { PRICING_SLIDES } from "./pricing";
+import { COMMITMENTS_SLIDE } from "./terms";
 import { Accent, Check, Cross, H, Icon, Mono, P, Spec, Stat } from "./theme";
 import { ArcDrawing, FloorScale, GuaranteeLine, OperationChain, OperationStack, ResumeSheet } from "./visuals";
 
@@ -117,11 +118,11 @@ export const TEAMS_SLIDES: TeamSlide[] = [
   },
   // 5 — The guarantee
   {
-    bar: "Section 05 · Guarantee",
+    bar: "The guarantee",
     pill: "Manager placed · day 14",
     body: (
       <div className="w-full">
-        <Mono className="mb-4">Section 05 · Guarantee</Mono>
+        <Mono className="mb-4">04 · The guarantee</Mono>
         <H>
           Double the bottom line <Accent>in 60 days.</Accent>
         </H>
@@ -135,12 +136,14 @@ export const TEAMS_SLIDES: TeamSlide[] = [
       </div>
     ),
   },
-  // 6 — What's included (three pillars)
+  // 6 — The four commitments, right after the guarantee they protect
+  COMMITMENTS_SLIDE,
+  // 7 — What's included (three pillars)
   {
     bar: "What's included",
     body: (
       <div className="w-full">
-        <Mono className="mb-4">04 · What&apos;s included</Mono>
+        <Mono className="mb-4">06 · What&apos;s included</Mono>
         <H size="md">
           The full sales operation. <Accent>Not a placement plus advice.</Accent>
         </H>
@@ -192,13 +195,13 @@ export const TEAMS_SLIDES: TeamSlide[] = [
       </div>
     ),
   },
-  // 7 — The 90-day arc
+  // 8 — The 90-day arc
   {
     bar: "The 90-day arc",
     pill: "Build · Install · Release",
     body: (
       <div className="w-full">
-        <Mono className="mb-4">06 · The 90-day arc</Mono>
+        <Mono className="mb-4">07 · The 90-day arc</Mono>
         <H>
           Build. Install. <Accent>Release.</Accent>
         </H>
@@ -221,14 +224,14 @@ export const TEAMS_SLIDES: TeamSlide[] = [
       </div>
     ),
   },
-  // 8 — Why Sequ3nce matters, with the manager's actual screen (sample data)
+  // 9 — Why Sequ3nce matters, with the manager's actual screen (sample data)
   {
     bar: "Why Sequ3nce matters",
     pill: "Sample account",
     body: (
       <div className="grid grid-cols-1 lg:grid-cols-[38%_1fr] gap-10 items-center w-full">
         <div>
-          <Mono className="mb-4">07 · Why Sequ3nce matters</Mono>
+          <Mono className="mb-4">08 · Why Sequ3nce matters</Mono>
           <H size="md">What separates this from consulting.</H>
           <P className="mt-5">
             Sequ3nce is our in-house sales sequencing and cadence software. The manager runs their team out of it. The owner reads their numbers out

@@ -145,26 +145,6 @@ export function ArcDrawing() {
   );
 }
 
-/** First-year totals as measured bars. */
-export function TotalsBars({ rows }: { rows: { label: string; value: number; accent?: boolean }[] }) {
-  const max = Math.max(...rows.map((r) => r.value));
-  return (
-    <div className="w-full space-y-2.5">
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-3">
-          <Mono ink caps={false} className="w-48 shrink-0 text-right text-[11.5px]">{r.label}</Mono>
-          <div className="flex-1 h-5 border border-[#b9d6d1] bg-white">
-            <div className={`h-full ${r.accent ? "bg-[#0d9488]" : "bg-[#0b1f1d]"}`} style={{ width: `${(r.value / max) * 100}%` }} />
-          </div>
-          <div className="w-24 shrink-0 text-[13px] font-semibold tabular-nums text-[#0b1f1d]" style={{ fontFamily: MONO_FONT }}>
-            ${r.value.toLocaleString()}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** Where the money goes: the manager's share and ours, drawn as one dimensioned bar. */
 export function LoadBar() {
   return (
