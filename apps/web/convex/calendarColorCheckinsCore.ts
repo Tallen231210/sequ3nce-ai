@@ -61,6 +61,41 @@ const STATE_RANK: Record<RecolorState, number> = {
 const CALL_LOOKAHEAD_MS = 3 * 60 * 60 * 1000;
 
 /**
+ * Is this event row on its closer's OWN calendar? Copies on a teammate's
+ * subscribed calendar are not theirs to recolor. Events with no subscription
+ * came through the closer's direct connection and are theirs by definition
+ * (same rule as the Team Performance recount). Shared with the setter-team
+ * pass so both read the same copy's colour.
+ */
+export function buildOwnCopySelector(
+  closers: Array<{ _id: Id<"closers">; email?: string }>,
+  subs: Array<{ _id: Id<"closerCalendarSubscriptions">; closerId: Id<"closers">; enabled?: boolean } & Parameters<typeof isOwnCapacityCalendar>[0]>,
+): (ev: { subscriptionId?: Id<"closerCalendarSubscriptions"> }) => boolean {
+  const emailByCloser = new Map(closers.map((c) => [String(c._id), c.email]));
+  const ownSubIds = new Set<string>();
+  for (const sub of subs) {
+    if (sub.enabled === false) continue;
+    if (isOwnCapacityCalendar(sub, emailByCloser.get(String(sub.closerId)))) {
+      ownSubIds.add(String(sub._id));
+    }
+  }
+  return (ev) => !ev.subscriptionId || ownSubIds.has(String(ev.subscriptionId));
+}
+
+/** Of a closer's own copies of one booking, the one with the best recolor verdict. */
+export function pickBestOwnCopy<T extends Doc<"calendarEvents">>(
+  own: T[],
+  nowMs: number,
+): { state: RecolorState; ev: T } | null {
+  let best: { state: RecolorState; ev: T } | null = null;
+  for (const ev of own) {
+    const state = recolorState(ev, nowMs);
+    if (!best || STATE_RANK[state] < STATE_RANK[best.state]) best = { state, ev };
+  }
+  return best;
+}
+
+/**
  * One verdict per sales booking on a closer's own calendar with a start in
  * [startMs, endMs). A booking that appears on a teammate's subscribed
  * calendar is not that teammate's to recolor and is not reported for them.
@@ -99,18 +134,7 @@ export async function collectRecolorStates(
       .take(1000),
   ]);
 
-  const emailByCloser = new Map(closers.map((c) => [String(c._id), c.email]));
-  const ownSubIds = new Set<string>();
-  for (const sub of subs) {
-    if (sub.enabled === false) continue;
-    if (isOwnCapacityCalendar(sub, emailByCloser.get(String(sub.closerId)))) {
-      ownSubIds.add(String(sub._id));
-    }
-  }
-  // Events with no subscription came through the closer's direct connection
-  // and are theirs by definition (same rule as the Team Performance recount).
-  const isOwnCopy = (ev: Doc<"calendarEvents">) =>
-    !ev.subscriptionId || ownSubIds.has(String(ev.subscriptionId));
+  const isOwnCopy = buildOwnCopySelector(closers, subs);
 
   const eventIdsWithCalls = new Set<string>();
   for (const c of calls) {
@@ -133,13 +157,7 @@ export async function collectRecolorStates(
     }
 
     for (const [closerId, own] of ownByCloser) {
-      let best: { state: RecolorState; ev: Doc<"calendarEvents"> } | null = null;
-      for (const ev of own) {
-        const state = recolorState(ev, nowMs);
-        if (!best || STATE_RANK[state] < STATE_RANK[best.state]) {
-          best = { state, ev };
-        }
-      }
+      const best = pickBestOwnCopy(own, nowMs);
       if (!best) continue;
       out.push({
         closerId,

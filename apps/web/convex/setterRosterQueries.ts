@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
+import { parseEventName } from "./lib/eventName";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -336,14 +337,12 @@ export const bookingTypes = internalQuery({
     const byType: Record<string, { count: number; hosts: Record<string, number> }> = {};
     let noEventName = 0;
     for (const e of rows as any[]) {
-      const desc = String(e.description ?? "");
-      // "Event Name" then the type on the following line.
-      const m = desc.match(/Event Name\s*[\r\n]+\s*(.+)/);
-      if (!m) {
+      // "Event Name" then the type on the following line (lib/eventName).
+      const type = parseEventName(e.description);
+      if (!type) {
         noEventName += 1;
         continue;
       }
-      const type = m[1].trim().slice(0, 70);
       const row = (byType[type] ??= { count: 0, hosts: {} });
       row.count += 1;
       // Who the meeting is with, which is how we can tell whether a booking
@@ -403,9 +402,8 @@ export const findBookingType = internalQuery({
       if (rows.length === 0) break;
       scanned += rows.length;
       for (const e of rows as any[]) {
-        const m = String(e.description ?? "").match(/Event Name\s*[\r\n]+\s*(.+)/);
-        if (!m) continue;
-        const type = m[1].trim().slice(0, 70);
+        const type = parseEventName(e.description);
+        if (!type) continue;
         byType[type] = (byType[type] ?? 0) + 1;
         if (args.contains && type.toLowerCase().includes(args.contains.toLowerCase())) {
           matched += 1;
@@ -456,9 +454,8 @@ export const qualificationSignals = internalQuery({
         .take(1000);
       if (rows.length === 0) break;
       for (const e of rows as any[]) {
-        const m = String(e.description ?? "").match(/Event Name\s*[\r\n]+\s*(.+)/);
-        if (!m) continue;
-        const type = m[1].trim();
+        const type = parseEventName(e.description);
+        if (!type) continue;
         const tier = /minus/i.test(type) ? "minus" : /\+/.test(type) ? "plus" : null;
         if (!tier) continue;
         // Match the booking to a lead by the prospect name on the event.

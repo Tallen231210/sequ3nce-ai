@@ -23,6 +23,7 @@ import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { normalizeEmail } from "./setterCloserMatcher";
+import { lookupLeadsByEmailNorm } from "./setterLeadLookup";
 
 export interface MatchedBooking {
   setterLeadId: Id<"setterLeads">;
@@ -84,29 +85,13 @@ export async function buildBookingMatcherIndex(
   // emailNorm is stamped at ingest and backfilled per team; a lead from
   // before the backfill reaches it simply doesn't match, exactly as a lead
   // outside the old 20k window didn't.
-  const uniqueGuestEmails = new Set<string>();
+  const guestEmails: string[] = [];
   for (const e of eventsWithProspects) {
     const guest = e.attendees!.find((a) => a.isOrganizer !== true);
     const norm = normalizeEmail(guest?.email);
-    if (norm) uniqueGuestEmails.add(norm);
-    if (uniqueGuestEmails.size >= 5_000) break; // budget guard, logged below
+    if (norm) guestEmails.push(norm);
   }
-  if (uniqueGuestEmails.size >= 5_000) {
-    console.warn(
-      `[bookingMatcher] >5k unique guest emails in range for team ${teamId} — matching capped`,
-    );
-  }
-  const leadsByNormEmail = new Map<string, Doc<"setterLeads">>();
-  for (const norm of uniqueGuestEmails) {
-    const lead = (await ctx.db
-      .query("setterLeads")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_team_and_email_norm", (q: any) =>
-        q.eq("teamId", teamId).eq("emailNorm", norm),
-      )
-      .first()) as Doc<"setterLeads"> | null;
-    if (lead) leadsByNormEmail.set(norm, lead);
-  }
+  const { leads: leadsByNormEmail } = await lookupLeadsByEmailNorm(ctx, teamId, guestEmails, 5_000);
 
   // Match + dedup per (lead, week). Keep the earliest booking per week —
   // represents the FIRST time the prospect booked that week.

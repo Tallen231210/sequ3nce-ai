@@ -3,7 +3,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { buildMatcherIndex, findCallsForLead } from "./setterCloserMatcher";
 import { readDailyStatsRange, dayKeyOf, DAY_MS } from "./setterRollups";
-import { setterIdsFor } from "./setterRoster";
+import { bookingSetterIdsFor } from "./setterRoster";
 import {
   buildBookingMatcherIndex,
   type MatchedBooking,
@@ -472,7 +472,8 @@ export async function computeScorecard(
     const rollupsReady = team?.setterRollupsBackfilledAt !== undefined;
     // Who counts as a setter. Null until a manager assigns roles; then only
     // those ids feed dials, connects and cadence (see readDialConnectCounts).
-    const setterIds = await setterIdsFor(ctx, args.teamId as Id<"teams">);
+    // Booking setters only: a confirmation setter's Close user never counts here.
+    const setterIds = await bookingSetterIdsFor(ctx, args.teamId as Id<"teams">);
     const allowedSetters = setterIds ? new Set(setterIds) : null;
     const droppedCounts = new Map<string, { dials: number; connects: number }>();
 

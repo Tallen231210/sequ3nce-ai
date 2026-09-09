@@ -207,6 +207,31 @@ export async function setterIdsFor(
 }
 
 /**
+ * The BOOKING setters: setterIdsFor minus anyone the EOD roster marks as a
+ * confirmation setter (E2's Sophie). Her day has no dials or sets to speak
+ * of, so her Close user must not sit in the booking setters' rows or totals
+ * — Tyler, 2026-09-09. When no roles were ever assigned this stays null
+ * (count everyone), because "everyone except X" can't be said in that shape.
+ */
+export async function bookingSetterIdsFor(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  teamId: Id<"teams">,
+): Promise<string[] | null> {
+  const ids = await setterIdsFor(ctx, teamId);
+  if (ids === null) return null;
+  const roster = (await ctx.db
+    .query("setterRoster")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+    .take(200)) as Doc<"setterRoster">[];
+  const confirmation = new Set(
+    roster.filter((r) => r.role === "confirmation" && r.crmUserId).map((r) => r.crmUserId as string),
+  );
+  return confirmation.size === 0 ? ids : ids.filter((id) => !confirmation.has(id));
+}
+
+/**
  * Fill every unassigned roster row with role "other" (not sales floor).
  *
  * For teams too big to classify by hand: the manager marks the setters and

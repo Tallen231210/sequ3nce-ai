@@ -22,6 +22,7 @@ import { internalQuery, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { scanRangeDesc } from "./lib/rangeScan";
+import { parseEventName } from "./lib/eventName";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -179,9 +180,8 @@ async function buildReport(
     // Booking links are named in the description, and different links are
     // frequently how a business separates good leads from poor ones. We have
     // synced this field for months and never read it.
-    const m = String(e.description ?? "").match(/Event Name\s*[\r\n]+\s*(.+)/);
-    if (!m) continue;
-    const name = m[1].trim().slice(0, 70);
+    const name = parseEventName(e.description);
+    if (!name) continue;
     typeCounts[name] = (typeCounts[name] ?? 0) + 1;
   }
 

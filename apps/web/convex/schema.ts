@@ -149,6 +149,10 @@ export default defineSchema({
     setterEodScorecardSlackChannelId: v.optional(v.string()),
     setterEodScorecardSlackChannelName: v.optional(v.string()),
     setterEodDiscordWebhookUrl: v.optional(v.string()),
+    // Weekly data-health post (Mondays, team-local hour): the accuracy score
+    // and what drags it down. Posts to the setter scorecard channel above.
+    setterDataHealthEnabled: v.optional(v.boolean()),
+    setterDataHealthHourLocal: v.optional(v.number()),
     // Manager EOD digest — the recordings-only end-of-day report for
     // managers/owners. Same config shape as the cash digest; the two are
     // siblings, not replacements.
@@ -565,6 +569,14 @@ export default defineSchema({
      * AI's guesses summed to more than the team collected.
      */
     closerCountAiContractValue: v.optional(v.boolean()),
+    /**
+     * The words that name this team's booking lanes, matched inside the
+     * Calendly "Event Name" a booking link writes into the calendar event:
+     * DM setters ("instagram", "davud", "lazar") and the self-booked funnel
+     * ("facebook", "main training"). Set by setterRosterLink.setLanePatterns.
+     */
+    setterDmEventNamePatterns: v.optional(v.array(v.string())),
+    setterFunnelEventNamePatterns: v.optional(v.array(v.string())),
 
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.
@@ -871,6 +883,10 @@ export default defineSchema({
   })
     .index("by_closer", ["closerId"])
     .index("by_team_and_time", ["teamId", "startTime"])
+    // "Booked on day D" for the confirmation setter's prefill — one indexed
+    // read instead of a month of start times. Rows without bookedAt (synced
+    // before 2026-08-13) simply fall outside any range.
+    .index("by_team_and_booked_at", ["teamId", "bookedAt"])
     .index("by_closer_and_uid", ["closerId", "uid"])
     .index("by_coaching_call", ["coachingCallId"])
     // Used by per-subscription upsert / cleanup / cascade-delete so we don't
@@ -1430,6 +1446,17 @@ export default defineSchema({
     tag: v.optional(v.string()),
     active: v.boolean(),
     setterRepId: v.optional(v.id("setterReps")),
+    /**
+     * What this person's day is made of. "booking" (absent = booking) dials
+     * and sets; "confirmation" calls leads who booked themselves through the
+     * funnel to get them to show (E2's Sophie). The EOD form, the scorecard
+     * and the Setter Data lanes all key off it — a confirmation setter's
+     * numbers never mix into the booking setters' totals.
+     */
+    role: v.optional(v.union(v.literal("booking"), v.literal("confirmation"))),
+    /** The CRM user id (Close/GHL) this roster row IS — the join to
+     *  setterLeadEvents.ghlUserId. Written by setterRosterLink. */
+    crmUserId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])
@@ -1522,6 +1549,23 @@ export default defineSchema({
      *  and later payments count (defs agreed 2026-09-01). Self-reported;
      *  the measured cross-check lives on call attribution. */
     cashCollected: v.optional(v.number()),
+    /**
+     * The confirmation setter's day (roster role "confirmation", 2026-09-09):
+     * self-booked funnel calls that came in, how many she contacted, reached
+     * and confirmed, how many moved or cancelled, and of the confirmed calls
+     * on today's calendar how many showed. Absent on booking-role entries.
+     */
+    newSelfBooked: v.optional(v.number()),
+    contacted: v.optional(v.number()),
+    reached: v.optional(v.number()),
+    confirmed: v.optional(v.number()),
+    rescheduled: v.optional(v.number()),
+    cancelled: v.optional(v.number()),
+    confirmedOnCalendar: v.optional(v.number()),
+    confirmedShowed: v.optional(v.number()),
+    /** Which field set this entry was filed with, so the board renders it
+     *  right even if the person's role changes later. Absent = booking. */
+    formShape: v.optional(v.union(v.literal("booking"), v.literal("confirmation"))),
     note: v.optional(v.string()),
     submittedAt: v.number(),
   })
