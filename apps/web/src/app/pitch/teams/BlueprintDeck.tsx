@@ -65,8 +65,11 @@ export function BlueprintDeck({ slides }: { slides: TeamSlide[] }) {
               backgroundSize: "24px 24px",
             }}
           >
+            {/* The body shrinks to its content and is centred as a block; text inside
+                stays left-aligned, so narrow slides sit in the middle of the canvas
+                instead of against its left edge. */}
             <div className="absolute inset-0 flex items-center justify-center px-8 py-7 md:px-14 md:py-8">
-              <div className="w-full max-w-6xl">{s.body}</div>
+              <div className="max-w-6xl">{s.body}</div>
             </div>
           </div>
         </div>
