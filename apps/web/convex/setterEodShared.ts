@@ -4,8 +4,9 @@
 // the two can never drift apart on validation or field names.
 // ============================================================================
 
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import type { EodShape } from "./setterEodFields";
 
 export const FIELD_MAX = 2000; // beyond this is a typo, not hustle
 export const CASH_MAX = 100_000_000; // matches the closer-side ceiling
@@ -20,10 +21,69 @@ export interface EodNumbers {
   callsShown?: number;
   callsClosed?: number;
   cashCollected?: number;
+  // The confirmation setter's day (formShape "confirmation"); absent otherwise.
+  newSelfBooked?: number;
+  contacted?: number;
+  reached?: number;
+  confirmed?: number;
+  rescheduled?: number;
+  cancelled?: number;
+  confirmedOnCalendar?: number;
+  confirmedShowed?: number;
+  formShape?: EodShape;
 }
 
-/** Throws ConvexError with a human message on any bad number. */
-export function validateEodNumbers(n: EodNumbers): void {
+/** The confirmation setter's fields, as mutation args — both submit paths accept them. */
+export const CONFIRMATION_ARGS = {
+  newSelfBooked: v.optional(v.number()),
+  contacted: v.optional(v.number()),
+  reached: v.optional(v.number()),
+  confirmed: v.optional(v.number()),
+  rescheduled: v.optional(v.number()),
+  cancelled: v.optional(v.number()),
+  confirmedOnCalendar: v.optional(v.number()),
+  confirmedShowed: v.optional(v.number()),
+} as const;
+
+/** Same range check for every optional confirmation-day number. */
+function checkOptionalCount(label: string, val: number | undefined): void {
+  if (val === undefined) return;
+  if (!Number.isInteger(val) || val < 0 || val > FIELD_MAX) {
+    throw new ConvexError(`Check the ${label} number`);
+  }
+}
+
+/** The confirmation setter's invariants: reached ≤ contacted ≤ new self-books; showed ≤ on the calendar. */
+export function validateConfirmationNumbers(n: EodNumbers): void {
+  const labeled: Array<[string, number | undefined]> = [
+    ["new self-booked calls", n.newSelfBooked],
+    ["contacted", n.contacted],
+    ["reached", n.reached],
+    ["confirmed", n.confirmed],
+    ["rescheduled", n.rescheduled],
+    ["cancelled", n.cancelled],
+    ["calls on the calendar", n.confirmedOnCalendar],
+    ["showed", n.confirmedShowed],
+  ];
+  for (const [k, val] of labeled) checkOptionalCount(k, val);
+  if (n.contacted !== undefined && n.newSelfBooked !== undefined && n.contacted > n.newSelfBooked) {
+    throw new ConvexError("Contacted can't be more than the new self-booked calls");
+  }
+  if (n.reached !== undefined && n.contacted !== undefined && n.reached > n.contacted) {
+    throw new ConvexError("Reached can't be more than contacted");
+  }
+  if (n.confirmedShowed !== undefined && n.confirmedOnCalendar !== undefined && n.confirmedShowed > n.confirmedOnCalendar) {
+    throw new ConvexError("Showed can't be more than the calls on the calendar");
+  }
+}
+
+/** Throws ConvexError with a human message on any bad number. The shape
+ *  picks the guards: a confirmation setter's day has different invariants. */
+export function validateEodNumbers(n: EodNumbers, shape: EodShape = "booking"): void {
+  if (shape === "confirmation") {
+    validateConfirmationNumbers(n);
+    return;
+  }
   const labeled: Array<[string, number | undefined]> = [
     ["dials", n.dials],
     ["pick ups", n.pickUps],
@@ -93,6 +153,17 @@ export function buildEodDoc(
     callsShown: n.callsShown,
     callsClosed: n.callsClosed,
     cashCollected: n.cashCollected,
+    // Every field the table knows must be copied here: both submit paths
+    // REPLACE the day's document with this, so anything missing is deleted.
+    newSelfBooked: n.newSelfBooked,
+    contacted: n.contacted,
+    reached: n.reached,
+    confirmed: n.confirmed,
+    rescheduled: n.rescheduled,
+    cancelled: n.cancelled,
+    confirmedOnCalendar: n.confirmedOnCalendar,
+    confirmedShowed: n.confirmedShowed,
+    formShape: n.formShape,
     note: note?.trim().slice(0, 500) || undefined,
     submittedAt: Date.now(),
   };

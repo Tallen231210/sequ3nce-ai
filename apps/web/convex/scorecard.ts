@@ -124,7 +124,8 @@ export const getScorecardWeek = query({
       .query("setterRoster")
       .withIndex("by_team", (q) => q.eq("teamId", caller.teamId))
       .collect();
-    const active = roster.filter((r) => r.active);
+    // Booking setters only: a confirmation setter files a different form.
+    const active = roster.filter((r) => r.active && r.role !== "confirmation");
 
     const dayKeys = spanDayKeys(
       args.weekStart,

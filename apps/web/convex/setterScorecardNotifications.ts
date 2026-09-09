@@ -71,7 +71,7 @@ export const getSetterScorecardData = internalQuery({
         .query("setterRoster")
         .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
         .collect()
-    ).filter((r: any) => r.active);
+    ).filter((r: any) => r.active && r.role !== "confirmation");
 
     const byRoster = new Map<string, SetterDayRow>();
     for (const r of roster) {

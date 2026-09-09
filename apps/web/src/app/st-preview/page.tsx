@@ -7,6 +7,29 @@
 import { notFound } from "next/navigation";
 import { SetterTeamsView } from "../dashboard/setter-data/components/setters/SetterTeamsSection";
 import { RosterIdentityInputs } from "../dashboard/setter-eods/RosterIdentityInputs";
+import { SetterContext, type SetterHome } from "../setter/_components/SetterContext";
+import SetterEodPage from "../setter/eod/page";
+
+const CONFIRMATION_HOME: SetterHome = {
+  name: "Sophie",
+  pod: null,
+  role: "confirmation",
+  eodFields: [
+    { key: "newSelfBooked", label: "New self-booked calls", hint: "people who booked themselves through the funnel that day — prefilled from the calendar", optional: true, measured: true },
+    { key: "contacted", label: "Contacted", hint: "of those, how many you called or texted — prefilled from Close", optional: true, measured: true },
+    { key: "reached", label: "Reached", hint: "of those, how many you actually spoke to, or who replied", optional: true, measured: true },
+    { key: "confirmed", label: "Confirmed", hint: "said yes, they'll be there", optional: true },
+    { key: "rescheduled", label: "Rescheduled", hint: "moved to another time — still alive", optional: true },
+    { key: "cancelled", label: "Cancelled or disqualified", hint: "gone", optional: true },
+    { key: "confirmedOnCalendar", label: "Your calls on that day's calendar", hint: "self-booked calls scheduled that day that you had contacted — prefilled", optional: true, measured: true },
+    { key: "confirmedShowed", label: "…of those, showed", hint: "how many of them turned up — prefilled where we know", optional: true, measured: true },
+  ],
+  teamName: "E2 Influencers",
+  today: "2026-09-09",
+  filedToday: false,
+  todayEntry: null,
+  recentDays: [{ dayKey: "2026-09-09", filed: false }, { dayKey: "2026-09-08", filed: true }],
+};
 
 const FIXTURE = {
  "comparison": [
@@ -690,6 +713,12 @@ export default function SetterTeamsPreview() {
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-6">
       <SetterTeamsView data={FIXTURE} />
+      <div className="rounded-lg border border-border bg-neutral-50 p-4">
+        <p className="mb-3 text-sm font-medium">Confirmation setter&apos;s EOD form (setter app)</p>
+        <SetterContext.Provider value={{ sessionToken: "preview", home: CONFIRMATION_HOME, refresh: () => {} }}>
+          <SetterEodPage />
+        </SetterContext.Provider>
+      </div>
       <div className="rounded-lg border border-border p-4">
         <p className="mb-2 text-sm font-medium">Roster row editor (Setter EODs tab)</p>
         <div className="flex items-center gap-3">

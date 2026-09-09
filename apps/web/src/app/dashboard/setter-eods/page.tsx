@@ -265,7 +265,22 @@ export default function SetterEodsPage() {
                         const e = row.entries[dk];
                         return (
                           <td key={dk} className="px-3 py-2.5 text-right align-top">
-                            {e ? (
+                            {e && e.formShape === "confirmation" ? (
+                              <div
+                                className="tabular-nums leading-snug"
+                                title={`new self-booked ${e.newSelfBooked ?? "—"} · contacted ${e.contacted ?? "—"} · reached ${e.reached ?? "—"} · confirmed ${e.confirmed ?? "—"} · rescheduled ${e.rescheduled ?? "—"} · cancelled ${e.cancelled ?? "—"} · on calendar ${e.confirmedOnCalendar ?? "—"} · showed ${e.confirmedShowed ?? "—"}${e.note ? `\n${e.note}` : ""}`}
+                              >
+                                <div className="font-semibold">
+                                  {e.contacted ?? "—"}/{e.newSelfBooked ?? "—"} contacted
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {e.reached ?? "—"}r · {e.confirmed ?? "—"}c
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {e.confirmedShowed ?? "—"}/{e.confirmedOnCalendar ?? "—"} showed
+                                </div>
+                              </div>
+                            ) : e ? (
                               <div
                                 className="tabular-nums leading-snug"
                                 title={`dials ${e.dials} · pick ups ${e.pickUps} · sets ${e.sets} · new leads ${e.newLeadsHit} · follow ups ${e.followUps}${e.note ? `\n${e.note}` : ""}`}
@@ -291,8 +306,10 @@ export default function SetterEodsPage() {
             )}
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            d = dials · p = pick ups · n = new leads hit · f = follow ups. Hover
-            a cell for the full numbers and any note.
+            d = dials · p = pick ups · n = new leads hit · f = follow ups. A
+            confirmation setter&apos;s cell reads contacted/new self-books, r =
+            reached, c = confirmed, showed/on the calendar. Hover a cell for the
+            full numbers and any note.
           </p>
         </section>
       </div>

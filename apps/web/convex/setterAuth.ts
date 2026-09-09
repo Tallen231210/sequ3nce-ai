@@ -306,6 +306,10 @@ export type SetterIdentity = {
   teamId: Id<"teams">;
   name: string;
   pod?: string;
+  /** "booking" (absent) or "confirmation" — decides the EOD form shape. */
+  role?: "booking" | "confirmation";
+  tag?: string;
+  crmUserId?: string;
 };
 
 /** Shared resolver for queries/mutations in other files. Deactivating the
@@ -329,6 +333,9 @@ export async function resolveSetterSessionCtx(
     teamId: roster.teamId,
     name: roster.name,
     pod: roster.pod,
+    role: roster.role,
+    tag: roster.tag,
+    crmUserId: roster.crmUserId,
   };
 }
 

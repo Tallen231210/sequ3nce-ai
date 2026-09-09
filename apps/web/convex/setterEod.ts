@@ -5,7 +5,8 @@ import { resolveAuthUser } from "./setterGhlOauth";
 import { generateShareToken } from "./lib/shareSecurity";
 import { internal } from "./_generated/api";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
-import { validateEodNumbers, buildEodDoc } from "./setterEodShared";
+import { validateEodNumbers, buildEodDoc, CONFIRMATION_ARGS } from "./setterEodShared";
+import { fieldsForShape, shapeForRole } from "./setterEodFields";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -242,11 +243,25 @@ export const getEodBoard = query({
             sets: e.sets,
             newLeadsHit: e.newLeadsHit,
             followUps: e.followUps,
+            callsOnCalendar: e.callsOnCalendar ?? null,
+            callsShown: e.callsShown ?? null,
+            callsClosed: e.callsClosed ?? null,
+            cashCollected: e.cashCollected ?? null,
+            // The confirmation setter's day, when that is what was filed.
+            formShape: e.formShape ?? "booking",
+            newSelfBooked: e.newSelfBooked ?? null,
+            contacted: e.contacted ?? null,
+            reached: e.reached ?? null,
+            confirmed: e.confirmed ?? null,
+            rescheduled: e.rescheduled ?? null,
+            cancelled: e.cancelled ?? null,
+            confirmedOnCalendar: e.confirmedOnCalendar ?? null,
+            confirmedShowed: e.confirmedShowed ?? null,
             note: e.note ?? null,
           };
         }
       }
-      rows.push({ rosterId: r._id, name: r.name, entries });
+      rows.push({ rosterId: r._id, name: r.name, role: shapeForRole(r.role), entries });
     }
     rows.sort((a, b) => a.name.localeCompare(b.name));
     return { dayKeys, rows };
@@ -277,10 +292,13 @@ export const getEodFormContext = query({
       )
       .first();
 
+    const shape = shapeForRole(row.role);
     return {
       setterName: row.name,
       teamName: (team as any)?.name ?? "your team",
       today,
+      role: shape,
+      eodFields: fieldsForShape(shape),
       existing: existing
         ? {
             dials: existing.dials,
@@ -292,6 +310,14 @@ export const getEodFormContext = query({
             callsShown: existing.callsShown ?? null,
             callsClosed: existing.callsClosed ?? null,
             cashCollected: existing.cashCollected ?? null,
+            newSelfBooked: existing.newSelfBooked ?? null,
+            contacted: existing.contacted ?? null,
+            reached: existing.reached ?? null,
+            confirmed: existing.confirmed ?? null,
+            rescheduled: existing.rescheduled ?? null,
+            cancelled: existing.cancelled ?? null,
+            confirmedOnCalendar: existing.confirmedOnCalendar ?? null,
+            confirmedShowed: existing.confirmedShowed ?? null,
             note: existing.note ?? "",
           }
         : null,
@@ -311,6 +337,7 @@ export const submitEod = mutation({
     callsShown: v.optional(v.number()),
     callsClosed: v.optional(v.number()),
     cashCollected: v.optional(v.number()),
+    ...CONFIRMATION_ARGS,
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -320,7 +347,9 @@ export const submitEod = mutation({
       .first();
     if (!row || !row.active) throw new ConvexError("This link is no longer active");
 
-    validateEodNumbers(args);
+    const shape = shapeForRole(row.role);
+    const numbers = { ...args, formShape: shape };
+    validateEodNumbers(numbers, shape);
 
     const team = await ctx.db.get(row.teamId);
     const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
@@ -335,7 +364,7 @@ export const submitEod = mutation({
       )
       .first();
 
-    const doc = buildEodDoc(row.teamId, row._id, today, args, args.note);
+    const doc = buildEodDoc(row.teamId, row._id, today, numbers, args.note);
     if (existing) {
       await ctx.db.replace(existing._id, doc);
     } else {

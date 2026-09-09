@@ -8,7 +8,8 @@ import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { resolveSetterSessionCtx } from "./setterAuth";
-import { validateEodNumbers, buildEodDoc } from "./setterEodShared";
+import { validateEodNumbers, buildEodDoc, CONFIRMATION_ARGS } from "./setterEodShared";
+import { fieldsForShape, shapeForRole } from "./setterEodFields";
 import { stripSetterToken } from "./lib/setterTitleMatch";
 import { getContentForCallTx } from "./callContent";
 
@@ -45,6 +46,15 @@ function entryView(entry: any) {
     callsShown: entry.callsShown ?? null,
     callsClosed: entry.callsClosed ?? null,
     cashCollected: entry.cashCollected ?? null,
+    newSelfBooked: entry.newSelfBooked ?? null,
+    contacted: entry.contacted ?? null,
+    reached: entry.reached ?? null,
+    confirmed: entry.confirmed ?? null,
+    rescheduled: entry.rescheduled ?? null,
+    cancelled: entry.cancelled ?? null,
+    confirmedOnCalendar: entry.confirmedOnCalendar ?? null,
+    confirmedShowed: entry.confirmedShowed ?? null,
+    formShape: entry.formShape ?? "booking",
     note: entry.note ?? "",
     submittedAt: entry.submittedAt,
   };
@@ -84,9 +94,13 @@ export const getSetterHome = query({
       recentDays.push({ dayKey, filed });
     }
 
+    const shape = shapeForRole(me.role);
     return {
       name: me.name,
       pod: me.pod ?? null,
+      role: shape,
+      /** The fields this person's form shows — the server decides. */
+      eodFields: fieldsForShape(shape),
       teamName: (team as any)?.name ?? "your team",
       today,
       filedToday: !!entry,
@@ -133,6 +147,7 @@ export const submitEod = mutation({
     callsShown: v.optional(v.number()),
     callsClosed: v.optional(v.number()),
     cashCollected: v.optional(v.number()),
+    ...CONFIRMATION_ARGS,
     note: v.optional(v.string()),
     /** Omitted = today. A past day (≤ SETTER_EOD_LOOKBACK_DAYS back) files
      *  or replaces THAT day — the backfill path after a definitions change. */
@@ -142,7 +157,10 @@ export const submitEod = mutation({
     const me = await resolveSetterSessionCtx(ctx, args.sessionToken);
     if (!me) throw new ConvexError("Signed out — log in again");
 
-    validateEodNumbers(args);
+    // The roster role decides the shape, never the client.
+    const shape = shapeForRole(me.role);
+    const numbers = { ...args, formShape: shape };
+    validateEodNumbers(numbers, shape);
 
     const team = await ctx.db.get(me.teamId);
     const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
@@ -156,7 +174,7 @@ export const submitEod = mutation({
       )
       .first();
 
-    const doc = buildEodDoc(me.teamId, me.rosterId, dayKey, args, args.note);
+    const doc = buildEodDoc(me.teamId, me.rosterId, dayKey, numbers, args.note);
     if (existing) {
       await ctx.db.replace(existing._id, doc);
     } else {
