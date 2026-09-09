@@ -5,7 +5,6 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Card } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
 import { SetterTeamDrill, type DrillSelection } from "./SetterTeamDrill";
 import { ConfirmationTable, LaneTable, type ConfirmationLaneRow, type LaneRow } from "./SetterTeamsTables";
 import type { FunctionReturnType } from "convex/server";
@@ -20,14 +19,10 @@ export type SetterTeamsData = NonNullable<FunctionReturnType<typeof api.setterTe
 export function SetterTeamsSection({ rangeStart, rangeEnd }: { rangeStart: number; rangeEnd: number }) {
   const { clerkId } = useTeam();
   const data = useQuery(api.setterTeamQueries.getSetterTeams, clerkId ? { clerkId, rangeStart, rangeEnd } : "skip");
-  if (data === null) return null;
-  if (data === undefined) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  // Nothing while loading either: most teams don't have the flag, and a
+  // spinner that collapses to nothing would jump the leaderboard on every
+  // range change.
+  if (data === null || data === undefined) return null;
   return <SetterTeamsView data={data} />;
 }
 
@@ -133,7 +128,7 @@ export function SetterTeamsView({ data }: { data: SetterTeamsData }) {
         title="Needs a look"
         nameHeader="Why"
         rows={data.unattributed}
-        onRow={() => setSelection({ kind: "lane", lane: "unattributed", name: "Needs a look" })}
+        onRow={(r) => setSelection({ kind: "person", lane: "unattributed", id: r.id, name: r.name })}
       />
 
       <SetterTeamDrill selection={selection} records={data.records} timezone={data.range.timezone} onClose={() => setSelection(null)} />

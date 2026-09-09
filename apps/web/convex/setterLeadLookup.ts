@@ -30,11 +30,12 @@ export async function lookupLeadsByEmailNorm(
   const unique = new Set<string>();
   let capped = false;
   for (const e of emailNorms) {
+    if (!e || unique.has(e)) continue;
     if (unique.size >= cap) {
       capped = true;
       break;
     }
-    if (e) unique.add(e);
+    unique.add(e);
   }
   if (capped) {
     console.warn(`[leadLookup] >${cap} unique guest emails for team ${teamId} — matching capped`);

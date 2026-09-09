@@ -47,10 +47,15 @@ const first = (s: string) => norm(s).split(" ")[0] ?? "";
 export const autoLinkRoster = internalMutation({
   args: { teamId: v.id("teams"), overwrite: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const [roster, reps] = await Promise.all([
+    const [roster, allReps, roles] = await Promise.all([
       ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", args.teamId)).take(200),
       ctx.db.query("setterReps").withIndex("by_team", (q) => q.eq("teamId", args.teamId)).take(500),
+      ctx.db.query("setterRoleAssignments").withIndex("by_team", (q) => q.eq("teamId", args.teamId)).take(500),
     ]);
+    // Never bind a roster row to a closer's CRM user by a shared first name:
+    // their confirmation dials would then read as setting.
+    const notSetters = new Set(roles.filter((r) => r.role !== "setter").map((r) => r.crmUserId));
+    const reps = allReps.filter((rep) => !notSetters.has(rep.ghlUserId));
     const linked: Array<{ roster: string; crmUser: string; by: "full" | "first" }> = [];
     const unmatched: string[] = [];
     for (const r of roster) {
@@ -73,6 +78,8 @@ interface LinkPatch {
   role?: "booking" | "confirmation";
   tag?: string;
   crmUserId?: string;
+  /** CLI only: accept a CRM user id the team's synced user list doesn't carry (yet). */
+  allowUnknownCrmUser?: boolean;
 }
 
 /** Validate and write role / tag / CRM user on one roster row. Shared by the CLI and the manager UI. */
@@ -101,9 +108,18 @@ async function applyRosterLink(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .withIndex("by_team_and_ghl_user_id", (q: any) => q.eq("teamId", row.teamId).eq("ghlUserId", id))
         .first()) as Doc<"setterReps"> | null;
+      if (!rep && !args.allowUnknownCrmUser) throw new ConvexError("That CRM user isn't in this team's synced user list");
       patch.crmUserId = id;
       patch.setterRepId = rep?._id;
     }
+  }
+  // A confirmation setter is recognised on the calendar by her tag ("(s)");
+  // without one, a bare first letter would prefix-match other setters and
+  // her lane would drain into Outbound.
+  const role = patch.role ?? row.role;
+  const tag = args.tag !== undefined ? patch.tag : row.tag;
+  if (role === "confirmation" && !tag) {
+    throw new ConvexError("A confirmation setter needs a calendar tag first — the initials closers write on her bookings");
   }
   await ctx.db.patch(row._id, patch);
   return patch;
@@ -123,7 +139,7 @@ export const setRoleAndLink = internalMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.rosterId);
     if (!row) throw new ConvexError("No such roster row");
-    const patch = await applyRosterLink(ctx, row, args);
+    const patch = await applyRosterLink(ctx, row, { ...args, allowUnknownCrmUser: true });
     return { ok: true, name: row.name, ...patch };
   },
 });

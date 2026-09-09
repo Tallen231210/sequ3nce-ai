@@ -20,7 +20,9 @@ export function dataHealthLines(d: DataHealthWeek): string[] {
   const a = d.accuracy;
   const lines: string[] = [];
   lines.push(`Accuracy ${pct(a.score)} — ${a.allKnown} of ${a.due} due bookings had source, contact and show known.`);
-  lines.push(`Source known ${pct(a.sourcePct)} · contact known ${pct(a.contactPct)} · show verdict known ${pct(a.showPct)} (of ${a.due} due).`);
+  lines.push(
+    `Source known ${pct(a.sourcePct)} · contact known ${pct(a.contactPct)} (of all ${a.bookings}) · show verdict known ${pct(a.showPct)} (of ${a.due} due).`,
+  );
   lines.push(
     `Bookings ${d.bookings}: DM ${d.lanes.dm} · outbound ${d.lanes.outbound} · confirmation ${d.lanes.confirmation} · self-booked not contacted ${d.lanes.selfBookedUncontacted} · needs a look ${d.lanes.unattributed}` +
       (d.followUps > 0 ? ` · ${d.followUps} follow-ups not counted as sets` : "") +

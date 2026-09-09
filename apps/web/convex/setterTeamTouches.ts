@@ -1,81 +1,86 @@
 // ============================================================================
-// Who touched which lead, from Close activity: one indexed scan per roster
-// member with a CRM user over the window plus a week back, and one scan of
-// inbound texts. Closers' confirmation dials are deliberately not read — they
-// are not setting. Feeds the setter-team pass (setterTeamBookings).
+// Who touched which lead, from Close activity: one point read per lead the
+// range's bookings belong to (by_team_and_contact, newest first), trimmed to
+// the window in memory. Reading per lead keeps the budget proportional to
+// the bookings on screen rather than to the team's whole dialling volume —
+// per-setter scans could pass Convex's 32k-document transaction limit on a
+// busy floor. Every user's touches are kept (closers included); the
+// attribution rules decide who gets credit.
 // ============================================================================
 
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import type { RosterRef } from "./lib/setterTeamAttribution";
 
-const TOUCH_TAKE = 6_000;
-const INBOUND_TAKE = 5_000;
+/** Lead-event rows one call may read in total; past it the remaining leads go unread and the result says so. */
+const TOUCH_BUDGET = 12_000;
+/** Rows per lead, newest first; a lead worked harder than this in one window is beyond any setter. */
+const PER_LEAD_TAKE = 400;
 
 export interface RawTouch {
   crmUserId: string;
   kind: "dial" | "sms";
   at: number;
+  /** Seconds on the line for a dial; null for texts or when Close sent none. */
+  durationSec: number | null;
+}
+
+export interface LeadTouches {
+  /** Outbound dials and texts, oldest first. */
+  touches: RawTouch[];
+  /** Times the lead texted back. */
+  inboundAt: number[];
 }
 
 export interface SetterTouches {
-  /** Close lead id → outbound dials and texts by roster members. */
-  touchesByContact: Map<string, RawTouch[]>;
-  /** "lead|user" → times a call by that user connected (≥ the team's threshold). */
-  connectedByContactUser: Map<string, number[]>;
-  /** Close lead id → times the lead texted back. */
-  inboundByContact: Map<string, number[]>;
+  byContact: Map<string, LeadTouches>;
   truncated: string[];
 }
 
-export async function loadSetterTouches(
+export async function loadLeadTouches(
   ctx: QueryCtx,
   teamId: Id<"teams">,
-  rosters: RosterRef[],
+  contactIds: Iterable<string>,
   fromMs: number,
   toMs: number,
 ): Promise<SetterTouches> {
+  const byContact = new Map<string, LeadTouches>();
   const truncated: string[] = [];
-  const touchesByContact = new Map<string, RawTouch[]>();
-  const connectedByContactUser = new Map<string, number[]>();
-  const inboundByContact = new Map<string, number[]>();
-
-  for (const r of rosters) {
-    if (!r.crmUserId) continue;
-    const crmUserId = r.crmUserId;
+  let budget = TOUCH_BUDGET;
+  let unread = 0;
+  let clipped = 0;
+  for (const contactId of new Set(contactIds)) {
+    if (budget <= 0) {
+      unread += 1;
+      continue;
+    }
     const rows = await ctx.db
       .query("setterLeadEvents")
-      .withIndex("by_team_and_setter_and_time", (q) =>
-        q.eq("teamId", teamId).eq("ghlUserId", crmUserId).gte("occurredAt", fromMs).lte("occurredAt", toMs),
-      )
-      .take(TOUCH_TAKE);
-    if (rows.length >= TOUCH_TAKE) truncated.push(`touches:${r.name}`);
+      .withIndex("by_team_and_contact", (q) => q.eq("teamId", teamId).eq("ghlContactId", contactId))
+      .order("desc")
+      .take(Math.min(PER_LEAD_TAKE, budget));
+    budget -= rows.length;
+    if (rows.length >= PER_LEAD_TAKE) clipped += 1;
+    const lead: LeadTouches = { touches: [], inboundAt: [] };
     for (const e of rows) {
+      if (e.occurredAt < fromMs || e.occurredAt > toMs) continue;
       if (e.eventType === "dial_outbound" || e.eventType === "sms_outbound") {
-        const list = touchesByContact.get(e.ghlContactId) ?? [];
-        list.push({ crmUserId, kind: e.eventType === "dial_outbound" ? "dial" : "sms", at: e.occurredAt });
-        touchesByContact.set(e.ghlContactId, list);
-      } else if (e.eventType === "connected") {
-        const k = `${e.ghlContactId}|${crmUserId}`;
-        const list = connectedByContactUser.get(k) ?? [];
-        list.push(e.occurredAt);
-        connectedByContactUser.set(k, list);
+        if (!e.ghlUserId) continue;
+        const details = e.details as { callDurationSec?: unknown } | undefined;
+        const durationSec = typeof details?.callDurationSec === "number" ? details.callDurationSec : null;
+        lead.touches.push({
+          crmUserId: e.ghlUserId,
+          kind: e.eventType === "dial_outbound" ? "dial" : "sms",
+          at: e.occurredAt,
+          durationSec,
+        });
+      } else if (e.eventType === "sms_inbound") {
+        lead.inboundAt.push(e.occurredAt);
       }
     }
+    lead.touches.sort((a, b) => a.at - b.at);
+    byContact.set(contactId, lead);
   }
-
-  const inbound = await ctx.db
-    .query("setterLeadEvents")
-    .withIndex("by_team_and_type_and_time", (q) =>
-      q.eq("teamId", teamId).eq("eventType", "sms_inbound").gte("occurredAt", fromMs).lte("occurredAt", toMs),
-    )
-    .take(INBOUND_TAKE);
-  if (inbound.length >= INBOUND_TAKE) truncated.push("inbound");
-  for (const e of inbound) {
-    const list = inboundByContact.get(e.ghlContactId) ?? [];
-    list.push(e.occurredAt);
-    inboundByContact.set(e.ghlContactId, list);
-  }
-
-  return { touchesByContact, connectedByContactUser, inboundByContact, truncated };
+  if (clipped > 0) truncated.push(`touches: ${clipped} lead${clipped === 1 ? "" : "s"} clipped`);
+  if (unread > 0) truncated.push(`touches: ${unread} lead${unread === 1 ? "" : "s"} unread`);
+  return { byContact, truncated };
 }

@@ -99,6 +99,7 @@ export const getSetterScorecardData = internalQuery({
       for (const e of entries) {
         const row = byRoster.get(String(e.rosterId));
         if (!row) continue; // deactivated setter — absence is information
+        if (e.formShape === "confirmation") continue; // a confirmation day, whatever the roster says now
         // Blank means "not reporting", 0 means "the real answer is zero" —
         // the rule printed on the setters' handout. A day where nobody
         // typed a cash figure renders "—", never a misleading $0.

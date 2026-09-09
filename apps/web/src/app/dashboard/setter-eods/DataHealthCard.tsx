@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import { useUser } from "@clerk/nextjs";
-import { Activity, Loader2 } from "lucide-react";
+import { Activity } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 
@@ -27,14 +28,9 @@ export function DataHealthCard() {
   const { user } = useUser();
   const clerkId = user?.id;
   const data = useQuery(api.dataHealthQueries.getDataHealthWeek, clerkId ? { clerkId } : "skip");
-  if (data === null) return null;
-  if (data === undefined) {
-    return (
-      <section className="rounded-xl border border-border bg-card p-5">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-      </section>
-    );
-  }
+  // Hidden while loading too — most teams don't have the flag, and a
+  // placeholder card that vanishes would jump the page.
+  if (data === null || data === undefined) return null;
   return (
     <DataHealthView data={data}>
       <WeeklyPostRow />
@@ -115,6 +111,7 @@ function WeeklyPostRow() {
   const [enabled, setEnabled] = useState(false);
   const [hour, setHour] = useState(9);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (config) {
       setEnabled(config.enabled);
@@ -124,13 +121,22 @@ function WeeklyPostRow() {
   if (!config || !clerkId) return null;
 
   async function persist(next: { enabled?: boolean; hourLocal?: number }) {
+    const previous = { enabled, hour };
     const e = next.enabled ?? enabled;
     const h = next.hourLocal ?? hour;
     setEnabled(e);
     setHour(h);
-    await save({ clerkId: clerkId!, enabled: e, hourLocal: h });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+    setError(null);
+    try {
+      await save({ clerkId: clerkId!, enabled: e, hourLocal: h });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (err) {
+      // Put the control back where it was; the server is the truth.
+      setEnabled(previous.enabled);
+      setHour(previous.hour);
+      setError(err instanceof ConvexError && typeof err.data === "string" ? err.data : "Couldn't save — try again");
+    }
   }
 
   return (
@@ -151,6 +157,7 @@ function WeeklyPostRow() {
         {!config.channelReady && " — pick the scorecard channel above first"}
       </span>
       {saved && <span className="text-emerald-600">✓</span>}
+      {error && <span className="text-rose-600">{error}</span>}
     </div>
   );
 }

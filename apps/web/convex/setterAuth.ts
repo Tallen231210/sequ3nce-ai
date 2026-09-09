@@ -308,7 +308,6 @@ export type SetterIdentity = {
   pod?: string;
   /** "booking" (absent) or "confirmation" — decides the EOD form shape. */
   role?: "booking" | "confirmation";
-  tag?: string;
   crmUserId?: string;
 };
 
@@ -334,7 +333,6 @@ export async function resolveSetterSessionCtx(
     name: roster.name,
     pod: roster.pod,
     role: roster.role,
-    tag: roster.tag,
     crmUserId: roster.crmUserId,
   };
 }

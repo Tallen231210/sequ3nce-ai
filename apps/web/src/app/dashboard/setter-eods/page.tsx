@@ -140,8 +140,8 @@ export default function SetterEodsPage() {
                     email={r.email}
                     pod={r.pod}
                     tag={r.tag}
-                    role={(r as { role?: "booking" | "confirmation" }).role}
-                    crmUserId={(r as { crmUserId?: string | null }).crmUserId ?? null}
+                    role={r.role}
+                    crmUserId={r.crmUserId ?? null}
                   />
                 )}
                 <span
@@ -209,7 +209,7 @@ export default function SetterEodsPage() {
 
         <NotificationsCard />
         <DataHealthCard />
-      <ScorecardSection />
+        <ScorecardSection />
 
         {/* The board */}
         <section>

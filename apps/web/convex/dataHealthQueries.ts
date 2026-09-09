@@ -38,10 +38,13 @@ async function healthForWeek(
 
   // The confirmation setter's filings, Mon..Sat up to the week's end.
   const eodDays: Array<{ rosterId: string; dayKey: string; filed: boolean }> = [];
-  const todayKey = dayKeyInTz(nowMs, tz);
-  const until = weekEndKey < todayKey ? weekEndKey : todayKey;
+  // Only days that are over count as missed: today's EOD isn't due yet.
+  const yesterdayKey = addDaysKey(dayKeyInTz(nowMs, tz), -1);
+  const until = weekEndKey < yesterdayKey ? weekEndKey : yesterdayKey;
   for (const r of data.rosters) {
-    if (r.role !== "confirmation") continue;
+    // Only an active confirmation setter owes an EOD; a deactivated one
+    // stays in the roster refs so their old bookings keep their credit.
+    if (r.role !== "confirmation" || r.active === false) continue;
     for (const dayKey of workingDaysOfWeek(weekStartKey, until)) {
       const entry = await ctx.db
         .query("setterEodEntries")

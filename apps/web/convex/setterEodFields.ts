@@ -34,7 +34,7 @@ export const BOOKING_FIELDS: EodField[] = [
 ];
 
 export const CONFIRMATION_FIELDS: EodField[] = [
-  { key: "newSelfBooked", label: "New self-booked calls", hint: "people who booked themselves through the funnel that day — prefilled from the calendar", optional: true, measured: true },
+  { key: "newSelfBooked", label: "New self-booked calls", hint: "people who booked themselves through the funnel that day — prefilled from the calendar", optional: false, measured: true },
   { key: "contacted", label: "Contacted", hint: "of those, how many you called or texted — prefilled from Close", optional: true, measured: true },
   { key: "reached", label: "Reached", hint: "of those, how many you actually spoke to, or who replied", optional: true, measured: true },
   { key: "confirmed", label: "Confirmed", hint: "said yes, they'll be there", optional: true },
@@ -44,7 +44,6 @@ export const CONFIRMATION_FIELDS: EodField[] = [
   { key: "confirmedShowed", label: "…of those, showed", hint: "how many of them turned up — prefilled where we know", optional: true, measured: true },
 ];
 
-export const CONFIRMATION_KEYS = CONFIRMATION_FIELDS.map((f) => f.key);
 
 export function shapeForRole(role: string | undefined | null): EodShape {
   return role === "confirmation" ? "confirmation" : "booking";

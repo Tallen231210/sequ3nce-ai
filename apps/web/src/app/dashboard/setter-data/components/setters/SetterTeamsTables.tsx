@@ -122,7 +122,7 @@ export function ConfirmationTable({ rows, onRow }: { rows: ConfirmationLaneRow[]
             <th className="py-2 pr-3 text-right font-medium">Showed</th>
             <th className="py-2 pr-3 text-right font-medium">No-show</th>
             <th className="py-2 pr-3 text-right font-medium">Unknown</th>
-            <th className="py-2 text-right font-medium" title="Of the calls she contacted, showed over showed-plus-no-show">Show rate</th>
+            <th className="py-2 text-right font-medium" title="Of the calls they contacted, showed over showed-plus-no-show">Show rate</th>
           </tr>
         </thead>
         <tbody>

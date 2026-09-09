@@ -13,15 +13,18 @@ interface DrillRecord {
   key: string;
   startTime: number;
   dayKey: string;
+  bookedDayKey: string | null;
+  bookedAtInferred: boolean;
   closerName: string;
   title: string;
   eventName: string | null;
   lane: DrillSelection["lane"];
+  reason: string | null;
   attributedBy: string;
   credit: string[];
   dmPerson: string | null;
   token: string | null;
-  touches: Array<{ name: string; kind: "dial" | "sms"; at: number; reached: boolean }>;
+  touches: Array<{ name: string; kind: "dial" | "sms"; at: number; reached: boolean; afterBooking: boolean }>;
   verdict: { result: "showed" | "no_show" | "rescheduled" | "unknown"; source: "human" | "recording" | "calendar_color" | null; due: boolean };
   colour: string;
   leadInClose: boolean;
@@ -52,6 +55,7 @@ function matches(r: DrillRecord, s: DrillSelection): boolean {
   if (s.kind === "lane" || !s.id) return true;
   if (s.lane === "dm") return (r.dmPerson ?? "no name on the link") === s.id;
   if (s.lane === "self_booked_uncontacted") return r.closerName === s.name;
+  if (s.lane === "unattributed") return r.reason === s.id;
   return r.credit.includes(s.name);
 }
 
@@ -70,6 +74,12 @@ export function SetterTeamDrill({
   const rows = selection ? records.filter((r) => matches(r, selection)).sort((a, b) => b.startTime - a.startTime) : [];
   const when = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const short = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const bookedLabel = (r: DrillRecord) => {
+    if (!r.bookedDayKey) return "unknown";
+    const [y, m, d] = r.bookedDayKey.split("-").map(Number);
+    const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    return r.bookedAtInferred ? `~${day} (from when we first saw it)` : day;
+  };
 
   return (
     <Dialog open={selection !== null} onOpenChange={(open) => !open && onClose()}>
@@ -103,7 +113,7 @@ export function SetterTeamDrill({
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
-                Link: {r.eventName ?? "none (hand-made)"} · Tag: {r.token ? `(${r.token})` : "none"} · Lead in Close: {r.leadInClose ? "yes" : "no"} · Calendar colour: {r.colour}
+                Booked: {bookedLabel(r)} · Link: {r.eventName ?? "none (hand-made)"} · Tag: {r.token ? `(${r.token})` : "none"} · Lead in Close: {r.leadInClose ? "yes" : "no"} · Calendar colour: {r.colour}
               </div>
               <div className="text-xs">
                 <span className="text-muted-foreground">Credit: </span>
@@ -114,7 +124,10 @@ export function SetterTeamDrill({
                 <div className="text-xs text-muted-foreground">
                   Close touches before the call:{" "}
                   {r.touches
-                    .map((t) => `${t.name} ${t.kind === "dial" ? "called" : "texted"} ${short.format(t.at)}${t.reached ? " (reached)" : ""}`)
+                    .map(
+                      (t) =>
+                        `${t.name} ${t.kind === "dial" ? "called" : "texted"} ${short.format(t.at)}${t.reached ? ", reached" : ""}${t.afterBooking ? "" : ", before they booked"}`,
+                    )
                     .join("; ")}
                 </div>
               )}

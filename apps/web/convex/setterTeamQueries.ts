@@ -48,7 +48,7 @@ export const getSetterTeams = query({
     const rangeClampedToDays = startMs > args.rangeStart ? MAX_TEAM_RANGE_DAYS : undefined;
 
     const data = await collectTeamBookings(ctx, teamId, startMs, endMs, nowMs);
-    const view = buildSetterTeamsView(data.records, data.rosters);
+    const view = buildSetterTeamsView(data.records, data.rosters, data.crmUserNames);
     return {
       ...view,
       range: { startMs, endMs, timezone: data.timezone },

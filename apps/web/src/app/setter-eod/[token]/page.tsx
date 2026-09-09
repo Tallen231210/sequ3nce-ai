@@ -87,7 +87,7 @@ export default function SetterEodPage() {
       };
       const args: Record<string, unknown> = { token, note: note.trim() || undefined };
       for (const k of CORE) args[k] = isConfirmation ? 0 : (num(k) ?? 0);
-      for (const f of ctx!.eodFields) if (f.optional) args[f.key] = num(f.key);
+      for (const f of ctx!.eodFields) if (!(CORE as readonly string[]).includes(f.key)) args[f.key] = num(f.key);
       await submit(args as Parameters<typeof submit>[0]);
       setDone(true);
     } catch (err: any) {
@@ -127,7 +127,8 @@ export default function SetterEodPage() {
                 type="number"
                 inputMode="numeric"
                 min={0}
-                required={!f.optional}
+                // The legacy link always required every box for booking setters; keep that.
+                required={!f.optional || !isConfirmation}
                 value={values[f.key] ?? ""}
                 onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
                 className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-ring"

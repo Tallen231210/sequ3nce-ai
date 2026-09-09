@@ -4,12 +4,14 @@
 // Loads copies of a real team's calendar rows (with booking links, colours
 // and guests), its EOD roster, its CRM users, the guests' Close leads and
 // their Close activity — all pulled read-only from production beforehand —
-// under a throwaway team on dev, runs collectTeamBookings over them, and
-// tears everything down. Driven from a script (scratchpad/close/rehearsal.py).
-//
-// Never point this at production.
+// under a throwaway team on dev and runs collectTeamBookings over them.
+// Driven from a script (scratchpad/close/rehearsal.py); sessions, a manager
+// and show evidence live in setterTeamRealDataSeedExtras, the wipe in
+// setterTeamRealDataTeardown. Guarded by lib/fixtureGuard: fixture teams
+// only, never production.
 // ============================================================================
 
+import { assertFixtureTeam, assertNotProduction, FIXTURE_MARK } from "./lib/fixtureGuard";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -27,12 +29,13 @@ export const seedTeam = internalMutation({
     excludedTitles: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    assertNotProduction();
     const teamId = await ctx.db.insert("teams", {
       name: args.name,
       plan: "active",
       createdAt: Date.now(),
       timezone: args.timezone,
-      betaFeatures: ["setter_teams", "calendar_color_tracking"],
+      betaFeatures: ["setter_teams", "calendar_color_tracking", FIXTURE_MARK],
       setterDmEventNamePatterns: args.dmPatterns,
       setterFunnelEventNamePatterns: args.funnelPatterns,
       closerExcludedBookingTitles: args.excludedTitles,
@@ -55,6 +58,7 @@ export const seedRoster = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    await assertFixtureTeam(ctx, args.teamId as Id<"teams">);
     const now = Date.now();
     const ids: string[] = [];
     for (const [i, r] of args.rows.entries()) {
@@ -78,6 +82,7 @@ export const seedRoster = internalMutation({
 export const seedReps = internalMutation({
   args: { teamId: v.id("teams"), rows: v.array(v.object({ ghlUserId: v.string(), name: v.string() })) },
   handler: async (ctx, args) => {
+    await assertFixtureTeam(ctx, args.teamId as Id<"teams">);
     const now = Date.now();
     for (const r of args.rows) {
       await ctx.db.insert("setterReps", {
@@ -106,6 +111,7 @@ export const seedLeads = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    await assertFixtureTeam(ctx, args.teamId as Id<"teams">);
     const now = Date.now();
     for (const r of args.rows) {
       await ctx.db.insert("setterLeads", {
@@ -140,10 +146,13 @@ export const seedLeadEvents = internalMutation({
         eventType: v.string(),
         occurredAt: v.number(),
         ghlUserId: v.optional(v.string()),
+        /** Close's per-call facts (callDurationSec, disposition) — what "reached" reads. */
+        details: v.optional(v.any()),
       }),
     ),
   },
   handler: async (ctx, args) => {
+    await assertFixtureTeam(ctx, args.teamId as Id<"teams">);
     let inserted = 0;
     for (const [i, r] of args.rows.entries()) {
       const eventType = r.eventType as "dial_outbound" | "sms_outbound" | "sms_inbound" | "connected" | "call_inbound";
@@ -153,6 +162,7 @@ export const seedLeadEvents = internalMutation({
         ghlContactId: r.ghlContactId,
         eventType,
         occurredAt: r.occurredAt,
+        details: r.details,
         ghlUserId: r.ghlUserId,
         ghlEventKey: `${P}${r.ghlContactId}:${r.occurredAt}:${i}`,
       });
@@ -182,6 +192,7 @@ export const seedEvents = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    await assertFixtureTeam(ctx, args.teamId as Id<"teams">);
     const now = Date.now();
     for (const r of args.rows) {
       await ctx.db.insert("calendarEvents", {
@@ -211,8 +222,9 @@ export const seedEvents = internalMutation({
 export const probe = internalQuery({
   args: { teamId: v.id("teams"), startMs: v.number(), endMs: v.number(), nowMs: v.number() },
   handler: async (ctx, args) => {
+    await assertFixtureTeam(ctx, args.teamId as Id<"teams">);
     const data = await collectTeamBookings(ctx, args.teamId, args.startMs, args.endMs, args.nowMs);
-    const view = buildSetterTeamsView(data.records, data.rosters);
+    const view = buildSetterTeamsView(data.records, data.rosters, data.crmUserNames);
     const nameOf = new Map(data.rosters.map((r) => [r.rosterId, r.name]));
     return {
       bookings: data.records.length,
@@ -227,6 +239,17 @@ export const probe = internalQuery({
       unattributed: view.unattributed,
       funnel: view.funnel,
       followUpsExcluded: view.followUpsExcluded,
+      verdictBreakdown: data.records.reduce(
+        (acc, r) => {
+          const k = `${r.verdict.result}:${r.verdict.source ?? "-"}${r.isFollowUp ? ":followup" : ""}`;
+          acc[k] = (acc[k] ?? 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
+      evidenceSample: data.records
+        .filter((r) => r.verdict.source !== null || r.recolor === "done")
+        .map((r) => ({ title: r.displayTitle.slice(0, 24), lane: r.classification.lane, verdict: r.verdict.result, source: r.verdict.source, recolor: r.recolor, colour: r.colorId, followUp: r.isFollowUp })),
       noLinkSample: data.records
         .filter((r) => r.eventName === null && r.classification.lane === "unattributed")
         .slice(0, 12)
@@ -249,37 +272,8 @@ export const probe = internalQuery({
   },
 });
 
-export const teardown = internalMutation({
-  args: { teamId: v.id("teams") },
-  handler: async (ctx, args) => {
-    const teamId = args.teamId as Id<"teams">;
-    const counts: Record<string, number> = {};
-    const wipe = async (table: string, rows: Array<{ _id: Id<any> }>) => {
-      for (const r of rows) await ctx.db.delete(r._id);
-      counts[table] = (counts[table] ?? 0) + rows.length;
-    };
-    await wipe(
-      "calendarEvents",
-      await ctx.db.query("calendarEvents").withIndex("by_team_and_time", (q) => q.eq("teamId", teamId)).take(10_000),
-    );
-    for (const t of ["dial_outbound", "sms_outbound", "sms_inbound", "connected", "call_inbound"] as const) {
-      await wipe(
-        "setterLeadEvents",
-        await ctx.db
-          .query("setterLeadEvents")
-          .withIndex("by_team_and_type_and_time", (q) => q.eq("teamId", teamId).eq("eventType", t))
-          .take(10_000),
-      );
-    }
-    await wipe("setterLeads", await ctx.db.query("setterLeads").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(10_000));
-    await wipe("setterRoster", await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(1000));
-    await wipe("setterReps", await ctx.db.query("setterReps").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(1000));
-    await wipe(
-      "closerCalendarSubscriptions",
-      await ctx.db.query("closerCalendarSubscriptions").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(1000),
-    );
-    await wipe("closers", await ctx.db.query("closers").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(1000));
-    await ctx.db.delete(teamId);
-    return counts;
-  },
-});
+// ---------------------------------------------------------------------------
+// End-to-end fixtures: real sessions, a manager, recordings and recolours —
+// so the forms, the manager queries and the verdict path can be driven on
+// dev exactly as production drives them.
+// ---------------------------------------------------------------------------

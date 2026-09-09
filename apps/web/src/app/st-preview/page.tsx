@@ -14,18 +14,18 @@ const HEALTH = {
   accuracy: { bookings: 186, due: 186, sourceKnown: 168, contactKnown: 170, showKnown: 121, allKnown: 104, sourcePct: 90, contactPct: 91, showPct: 65, score: 56 },
   lanes: { dm: 29, outbound: 59, confirmation: 65, selfBookedUncontacted: 5, unattributed: 28 },
   drags: {
-    untaggedSelfBooks: { total: 25, byCloser: [{ name: "Ryleigh Harris", count: 6 }, { name: "Brittany Thatcher", count: 5 }, { name: "Joseph Adham", count: 5 }, { name: "Muzaffar Amoako", count: 5 }, { name: "Karl Dargan", count: 4 }] },
-    missingInitials: { total: 8, bySetter: [{ name: "Erten", count: 8 }] },
-    notRecolored: { total: 31, byCloser: [{ name: "Joseph Adham", count: 12 }, { name: "Karl Dargan", count: 10 }, { name: "Brittany Thatcher", count: 9 }] },
+    untaggedSelfBooks: { total: 25, byCloser: [{ name: "Rae Holt", count: 6 }, { name: "Bea Thornton", count: 5 }, { name: "Jonah Abel", count: 5 }, { name: "Musa Ade", count: 5 }, { name: "Kai Doran", count: 4 }] },
+    missingInitials: { total: 8, bySetter: [{ name: "Ezra", count: 8 }] },
+    notRecolored: { total: 31, byCloser: [{ name: "Jonah Abel", count: 12 }, { name: "Kai Doran", count: 10 }, { name: "Bea Thornton", count: 9 }] },
     leadMissing: 13, handMadeUntagged: 19,
-    eodMissed: [{ name: "Sophie", days: ["2026-09-08"] }],
+    eodMissed: [{ name: "Sasha", days: ["2026-09-08"] }],
   },
 } as never;
 import { SetterContext, type SetterHome } from "../setter/_components/SetterContext";
 import SetterEodPage from "../setter/eod/page";
 
 const CONFIRMATION_HOME: SetterHome = {
-  name: "Sophie",
+  name: "Sasha",
   pod: null,
   role: "confirmation",
   eodFields: [
@@ -38,7 +38,7 @@ const CONFIRMATION_HOME: SetterHome = {
     { key: "confirmedOnCalendar", label: "Your calls on that day's calendar", hint: "self-booked calls scheduled that day that you had contacted — prefilled", optional: true, measured: true },
     { key: "confirmedShowed", label: "…of those, showed", hint: "how many of them turned up — prefilled where we know", optional: true, measured: true },
   ],
-  teamName: "E2 Influencers",
+  teamName: "Northwind Coaching",
   today: "2026-09-09",
   filedToday: false,
   todayEntry: null,
@@ -108,8 +108,8 @@ const FIXTURE = {
    "bookings": 12,
    "crmOnly": 0,
    "due": 12,
-   "id": "Davud",
-   "name": "Davud",
+   "id": "Dario",
+   "name": "Dario",
    "noShow": 4,
    "rescheduled": 0,
    "showRatePct": 56,
@@ -121,8 +121,8 @@ const FIXTURE = {
    "bookings": 9,
    "crmOnly": 0,
    "due": 9,
-   "id": "Lazar",
-   "name": "Lazar",
+   "id": "Luka",
+   "name": "Luka",
    "noShow": 3,
    "rescheduled": 0,
    "showRatePct": 57,
@@ -149,8 +149,8 @@ const FIXTURE = {
    "bookings": 35,
    "crmOnly": 8,
    "due": 35,
-   "id": "g17tw33ewqgf8wvn5f11xhmbed8e362d",
-   "name": "Erten",
+   "id": "fixture-id-03",
+   "name": "Ezra",
    "noShow": 12,
    "rescheduled": 0,
    "showRatePct": 57,
@@ -162,8 +162,8 @@ const FIXTURE = {
    "bookings": 15,
    "crmOnly": 0,
    "due": 15,
-   "id": "g17ke3pv2nkwh6gv8gqp61h4z98e24y7",
-   "name": "Israel",
+   "id": "fixture-id-02",
+   "name": "Ivan",
    "noShow": 5,
    "rescheduled": 0,
    "showRatePct": 58,
@@ -175,8 +175,8 @@ const FIXTURE = {
    "bookings": 6,
    "crmOnly": 0,
    "due": 6,
-   "id": "g17xj9fw1s0ah5r6rh4cgdq9px8e2dzc",
-   "name": "Mo",
+   "id": "fixture-id-05",
+   "name": "Max",
    "noShow": 2,
    "rescheduled": 0,
    "showRatePct": 60,
@@ -188,8 +188,8 @@ const FIXTURE = {
    "bookings": 2,
    "crmOnly": 0,
    "due": 2,
-   "id": "g17twwcrwkaryfajctm8ebj4jd8e2a19",
-   "name": "Marcus",
+   "id": "fixture-id-04",
+   "name": "Miles",
    "noShow": 1,
    "rescheduled": 0,
    "showRatePct": 50,
@@ -205,8 +205,8 @@ const FIXTURE = {
    "coveragePct": 83,
    "crmOnly": 6,
    "due": 64,
-   "id": "g17hn9v4psdakw16xyss2a7f7d8e2y88",
-   "name": "Sophie",
+   "id": "fixture-id-01",
+   "name": "Sasha",
    "newSelfBooks": 77,
    "noShow": 22,
    "reached": 2,
@@ -222,8 +222,8 @@ const FIXTURE = {
    "bookings": 3,
    "crmOnly": 0,
    "due": 3,
-   "id": "v17dm5dadhzagkjzqwwz3n6ffh8e2dr6",
-   "name": "Brittany Thatcher",
+   "id": "fixture-id-08",
+   "name": "Bea Thornton",
    "noShow": 1,
    "rescheduled": 0,
    "showRatePct": 50,
@@ -235,8 +235,8 @@ const FIXTURE = {
    "bookings": 1,
    "crmOnly": 0,
    "due": 1,
-   "id": "v17908xrttns247k84zra82z7n8e367p",
-   "name": "Joseph Adham",
+   "id": "fixture-id-06",
+   "name": "Jonah Abel",
    "noShow": 0,
    "rescheduled": 0,
    "showRatePct": null,
@@ -248,8 +248,8 @@ const FIXTURE = {
    "bookings": 1,
    "crmOnly": 0,
    "due": 1,
-   "id": "v179wmqxj7zgvh6x0p4vs2s23x8e364v",
-   "name": "Ryleigh Harris",
+   "id": "fixture-id-07",
+   "name": "Rae Holt",
    "noShow": 0,
    "rescheduled": 0,
    "showRatePct": null,
@@ -324,22 +324,23 @@ const FIXTURE = {
    "key": "k0",
    "startTime": 1788271200000,
    "dayKey": "2026-09-01",
-   "closerName": "Karl Dargan",
-   "title": "Jordan and Karl",
+   "closerName": "Kai Doran",
+   "title": "Jordan and Kai",
    "eventName": "Facebook",
    "lane": "outbound",
    "attributedBy": "tag",
    "credit": [
-    "Erten"
+    "Ezra"
    ],
    "dmPerson": null,
    "token": "e",
    "touches": [
     {
-     "name": "Erten",
+     "name": "Ezra",
      "kind": "dial",
      "at": 1788228000000,
-     "reached": true
+     "reached": true,
+     "afterBooking": true
     }
    ],
    "verdict": {
@@ -349,34 +350,39 @@ const FIXTURE = {
    },
    "colour": "showed",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-01",
+   "bookedAtInferred": false
   },
   {
    "key": "k1",
    "startTime": 1788361200000,
    "dayKey": "2026-09-02",
-   "closerName": "Brittany Thatcher",
-   "title": "Priya and Brittany",
+   "closerName": "Bea Thornton",
+   "title": "Priya and Bea",
    "eventName": "Facebook",
    "lane": "outbound",
    "attributedBy": "crm_activity",
    "credit": [
-    "Erten"
+    "Ezra"
    ],
    "dmPerson": null,
    "token": null,
    "touches": [
     {
-     "name": "Erten",
+     "name": "Ezra",
      "kind": "sms",
      "at": 1788296400000,
-     "reached": false
+     "reached": false,
+     "afterBooking": true
     },
     {
-     "name": "Erten",
+     "name": "Ezra",
      "kind": "dial",
      "at": 1788339600000,
-     "reached": true
+     "reached": true,
+     "afterBooking": true
     }
    ],
    "verdict": {
@@ -384,30 +390,34 @@ const FIXTURE = {
     "source": "calendar_color",
     "due": true
    },
-   "colour": "red \u2014 set before the call",
+   "colour": "red — set before the call",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-02",
+   "bookedAtInferred": false
   },
   {
    "key": "k2",
    "startTime": 1788451200000,
    "dayKey": "2026-09-03",
-   "closerName": "Joseph Adham",
-   "title": "Marcus and Joseph",
+   "closerName": "Jonah Abel",
+   "title": "Miles and Jonah",
    "eventName": "Main Training",
    "lane": "confirmation",
    "attributedBy": "crm_activity",
    "credit": [
-    "Sophie"
+    "Sasha"
    ],
    "dmPerson": null,
    "token": null,
    "touches": [
     {
-     "name": "Sophie",
+     "name": "Sasha",
      "kind": "dial",
      "at": 1788429600000,
-     "reached": true
+     "reached": true,
+     "afterBooking": true
     }
    ],
    "verdict": {
@@ -417,19 +427,22 @@ const FIXTURE = {
    },
    "colour": "showed",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-03",
+   "bookedAtInferred": false
   },
   {
    "key": "k3",
    "startTime": 1788541200000,
    "dayKey": "2026-09-04",
-   "closerName": "Ryleigh Harris",
-   "title": "Elena and Ryleigh",
+   "closerName": "Rae Holt",
+   "title": "Elena and Rae",
    "eventName": "Facebook",
    "lane": "confirmation",
    "attributedBy": "tag",
    "credit": [
-    "Sophie"
+    "Sasha"
    ],
    "dmPerson": null,
    "token": "s",
@@ -441,19 +454,22 @@ const FIXTURE = {
    },
    "colour": "uncolored",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-04",
+   "bookedAtInferred": false
   },
   {
    "key": "k4",
    "startTime": 1788631200000,
    "dayKey": "2026-09-05",
-   "closerName": "Muzaffar Amoako",
-   "title": "Sam and Muzaffar",
-   "eventName": "Instagram (Lazar)",
+   "closerName": "Musa Ade",
+   "title": "Sam and Musa",
+   "eventName": "Instagram (Luka)",
    "lane": "dm",
    "attributedBy": "event_name",
    "credit": [],
-   "dmPerson": "Lazar",
+   "dmPerson": "Luka",
    "token": null,
    "touches": [],
    "verdict": {
@@ -461,16 +477,19 @@ const FIXTURE = {
     "source": "recording",
     "due": true
    },
-   "colour": "red \u2014 set before the call",
+   "colour": "red — set before the call",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-05",
+   "bookedAtInferred": false
   },
   {
    "key": "k5",
    "startTime": 1788721200000,
    "dayKey": "2026-09-06",
-   "closerName": "Karl Dargan",
-   "title": "Dev and Karl",
+   "closerName": "Kai Doran",
+   "title": "Dev and Kai",
    "eventName": "Facebook",
    "lane": "self_booked_uncontacted",
    "attributedBy": "event_name",
@@ -485,14 +504,17 @@ const FIXTURE = {
    },
    "colour": "uncolored",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-06",
+   "bookedAtInferred": false
   },
   {
    "key": "k6",
    "startTime": 1788789600000,
    "dayKey": "2026-09-07",
-   "closerName": "Brittany Thatcher",
-   "title": "Nia and Brittany",
+   "closerName": "Bea Thornton",
+   "title": "Nia and Bea",
    "eventName": null,
    "lane": "unattributed",
    "attributedBy": "none",
@@ -507,28 +529,32 @@ const FIXTURE = {
    },
    "colour": "uncolored",
    "leadInClose": false,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": "No booking link, no tag, no Close touch",
+   "bookedDayKey": "2026-09-07",
+   "bookedAtInferred": false
   },
   {
    "key": "k7",
    "startTime": 1788274800000,
    "dayKey": "2026-09-01",
-   "closerName": "Joseph Adham",
-   "title": "Theo and Joseph",
+   "closerName": "Jonah Abel",
+   "title": "Theo and Jonah",
    "eventName": "Facebook",
    "lane": "outbound",
    "attributedBy": "tag",
    "credit": [
-    "Erten"
+    "Ezra"
    ],
    "dmPerson": null,
    "token": "e",
    "touches": [
     {
-     "name": "Erten",
+     "name": "Ezra",
      "kind": "dial",
      "at": 1788231600000,
-     "reached": true
+     "reached": true,
+     "afterBooking": true
     }
    ],
    "verdict": {
@@ -538,34 +564,39 @@ const FIXTURE = {
    },
    "colour": "showed",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-01",
+   "bookedAtInferred": false
   },
   {
    "key": "k8",
    "startTime": 1788364800000,
    "dayKey": "2026-09-02",
-   "closerName": "Ryleigh Harris",
-   "title": "Ava and Ryleigh",
+   "closerName": "Rae Holt",
+   "title": "Ava and Rae",
    "eventName": "Facebook",
    "lane": "outbound",
    "attributedBy": "crm_activity",
    "credit": [
-    "Erten"
+    "Ezra"
    ],
    "dmPerson": null,
    "token": null,
    "touches": [
     {
-     "name": "Erten",
+     "name": "Ezra",
      "kind": "sms",
      "at": 1788300000000,
-     "reached": false
+     "reached": false,
+     "afterBooking": true
     },
     {
-     "name": "Erten",
+     "name": "Ezra",
      "kind": "dial",
      "at": 1788343200000,
-     "reached": true
+     "reached": true,
+     "afterBooking": true
     }
    ],
    "verdict": {
@@ -573,30 +604,34 @@ const FIXTURE = {
     "source": "calendar_color",
     "due": true
    },
-   "colour": "red \u2014 set before the call",
+   "colour": "red — set before the call",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-02",
+   "bookedAtInferred": false
   },
   {
    "key": "k9",
    "startTime": 1788454800000,
    "dayKey": "2026-09-03",
-   "closerName": "Muzaffar Amoako",
-   "title": "Kai and Muzaffar",
+   "closerName": "Musa Ade",
+   "title": "Kai and Musa",
    "eventName": "Main Training",
    "lane": "confirmation",
    "attributedBy": "crm_activity",
    "credit": [
-    "Sophie"
+    "Sasha"
    ],
    "dmPerson": null,
    "token": null,
    "touches": [
     {
-     "name": "Sophie",
+     "name": "Sasha",
      "kind": "dial",
      "at": 1788433200000,
-     "reached": true
+     "reached": true,
+     "afterBooking": true
     }
    ],
    "verdict": {
@@ -606,19 +641,22 @@ const FIXTURE = {
    },
    "colour": "showed",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-03",
+   "bookedAtInferred": false
   },
   {
    "key": "k10",
    "startTime": 1788544800000,
    "dayKey": "2026-09-04",
-   "closerName": "Karl Dargan",
-   "title": "Jordan and Karl",
+   "closerName": "Kai Doran",
+   "title": "Jordan and Kai",
    "eventName": "Facebook",
    "lane": "confirmation",
    "attributedBy": "tag",
    "credit": [
-    "Sophie"
+    "Sasha"
    ],
    "dmPerson": null,
    "token": "s",
@@ -630,19 +668,22 @@ const FIXTURE = {
    },
    "colour": "uncolored",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-04",
+   "bookedAtInferred": false
   },
   {
    "key": "k11",
    "startTime": 1788634800000,
    "dayKey": "2026-09-05",
-   "closerName": "Brittany Thatcher",
-   "title": "Priya and Brittany",
-   "eventName": "Instagram (Lazar)",
+   "closerName": "Bea Thornton",
+   "title": "Priya and Bea",
+   "eventName": "Instagram (Luka)",
    "lane": "dm",
    "attributedBy": "event_name",
    "credit": [],
-   "dmPerson": "Lazar",
+   "dmPerson": "Luka",
    "token": null,
    "touches": [],
    "verdict": {
@@ -650,16 +691,19 @@ const FIXTURE = {
     "source": "recording",
     "due": true
    },
-   "colour": "red \u2014 set before the call",
+   "colour": "red — set before the call",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-05",
+   "bookedAtInferred": false
   },
   {
    "key": "k12",
    "startTime": 1788703200000,
    "dayKey": "2026-09-06",
-   "closerName": "Joseph Adham",
-   "title": "Marcus and Joseph",
+   "closerName": "Jonah Abel",
+   "title": "Miles and Jonah",
    "eventName": "Facebook",
    "lane": "self_booked_uncontacted",
    "attributedBy": "event_name",
@@ -674,14 +718,17 @@ const FIXTURE = {
    },
    "colour": "uncolored",
    "leadInClose": true,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": null,
+   "bookedDayKey": "2026-09-06",
+   "bookedAtInferred": false
   },
   {
    "key": "k13",
    "startTime": 1788793200000,
    "dayKey": "2026-09-07",
-   "closerName": "Ryleigh Harris",
-   "title": "Elena and Ryleigh",
+   "closerName": "Rae Holt",
+   "title": "Elena and Rae",
    "eventName": null,
    "lane": "unattributed",
    "attributedBy": "none",
@@ -696,7 +743,10 @@ const FIXTURE = {
    },
    "colour": "uncolored",
    "leadInClose": false,
-   "isFollowUp": false
+   "isFollowUp": false,
+   "reason": "No booking link, no tag, no Close touch",
+   "bookedDayKey": "2026-09-07",
+   "bookedAtInferred": false
   }
  ],
  "range": {
@@ -737,7 +787,7 @@ export default function SetterTeamsPreview() {
       <div className="rounded-lg border border-border p-4">
         <p className="mb-2 text-sm font-medium">Roster row editor (Setter EODs tab)</p>
         <div className="flex items-center gap-3">
-          <span className="min-w-32 text-sm font-medium">Sophie</span>
+          <span className="min-w-32 text-sm font-medium">Sasha</span>
           <RosterIdentityInputs clerkId="preview" rosterId="preview" email="sophie@example.invalid" pod={null} tag="s" role="confirmation" crmUserId="user_preview" />
         </div>
       </div>

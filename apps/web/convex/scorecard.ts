@@ -158,6 +158,7 @@ export const getScorecardWeek = query({
       for (const e of entries) {
         const row = byRoster.get(String(e.rosterId));
         if (!row) continue; // deactivated setter — absence is information
+        if (e.formShape === "confirmation") continue; // a confirmation day, whatever the roster says now
         row.dials += e.dials;
         row.connects += e.pickUps;
         row.sets += e.sets;

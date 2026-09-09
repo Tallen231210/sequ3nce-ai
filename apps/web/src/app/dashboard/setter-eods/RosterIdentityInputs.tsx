@@ -8,6 +8,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import { api } from "../../../../convex/_generated/api";
 
 type Role = "booking" | "confirmation";
@@ -36,13 +37,15 @@ export function RosterIdentityInputs({
   const [podDraft, setPodDraft] = useState(pod ?? "");
   const [tagDraft, setTagDraft] = useState(tag ?? "");
   const [state, setState] = useState<"idle" | "saved" | "error">("idle");
+  const [why, setWhy] = useState<string | null>(null);
 
   useEffect(() => setEmailDraft(email ?? ""), [email]);
   useEffect(() => setPodDraft(pod ?? ""), [pod]);
   useEffect(() => setTagDraft(tag ?? ""), [tag]);
 
-  function flash(ok: boolean) {
+  function flash(ok: boolean, err?: unknown) {
     setState(ok ? "saved" : "error");
+    setWhy(!ok && err instanceof ConvexError && typeof err.data === "string" ? err.data : null);
     if (ok) setTimeout(() => setState("idle"), 1500);
   }
 
@@ -50,8 +53,8 @@ export function RosterIdentityInputs({
     try {
       await update({ clerkId, rosterId: rosterId as any, ...fields });
       flash(true);
-    } catch {
-      flash(false);
+    } catch (err) {
+      flash(false, err);
     }
   }
 
@@ -59,8 +62,8 @@ export function RosterIdentityInputs({
     try {
       await updateLink({ clerkId, rosterId: rosterId as any, ...fields });
       flash(true);
-    } catch {
-      flash(false);
+    } catch (err) {
+      flash(false, err);
     }
   }
 
@@ -123,7 +126,7 @@ export function RosterIdentityInputs({
         ))}
       </select>
       {state === "saved" && <span className="text-[11px] text-emerald-600">✓</span>}
-      {state === "error" && <span className="text-[11px] text-rose-600">couldn&apos;t save</span>}
+      {state === "error" && <span className="text-[11px] text-rose-600">{why ?? "couldn't save"}</span>}
     </span>
   );
 }

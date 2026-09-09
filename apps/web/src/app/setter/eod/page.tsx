@@ -75,7 +75,10 @@ export default function SetterEodPage() {
   // entry, and once per day — a later re-push must not overwrite typing.
   const [measuredSeededFor, setMeasuredSeededFor] = useState<string | null>(null);
   useEffect(() => {
-    if (!isConfirmation || entry || !measured?.measuredExists || measuredSeededFor === dayKey) return;
+    // Wait for the day's entry to settle first: the entry seed resets the
+    // boxes, and a measured seed that lands before it would be wiped and
+    // never retried.
+    if (dayLoading || !isConfirmation || entry || !measured?.measuredExists || measuredSeededFor === dayKey) return;
     setMeasuredSeededFor(dayKey);
     setValues((v) => {
       const next = { ...v };
@@ -86,7 +89,7 @@ export default function SetterEodPage() {
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfirmation, dayKey, entry?.submittedAt, measured?.measuredExists]);
+  }, [isConfirmation, dayKey, dayLoading, entry?.submittedAt, measured?.measuredExists]);
   useEffect(() => {
     setError(null);
     setSaved(null);
@@ -114,7 +117,7 @@ export default function SetterEodPage() {
     try {
       const args: Record<string, unknown> = { sessionToken, dayKey, note: note.trim() || undefined };
       for (const k of CORE) args[k] = isConfirmation ? 0 : (num(k) ?? 0);
-      for (const f of fields) if (f.optional) args[f.key] = num(f.key);
+      for (const f of fields) if (!(CORE as readonly string[]).includes(f.key)) args[f.key] = num(f.key);
       const res = await submit(args as Parameters<typeof submit>[0]);
       setSaved(res.dayKey);
     } catch (err) {
@@ -171,7 +174,7 @@ export default function SetterEodPage() {
         </div>
 
         <form onSubmit={onSubmit} className="space-y-3">
-          {isConfirmation && (
+          {isConfirmation && measured !== null && (
             <MeasuredPrefill
               loading={dayAllowed && measured === undefined}
               exists={!!measured?.measuredExists}
@@ -191,6 +194,7 @@ export default function SetterEodPage() {
                 {f.hint && <span className="-mt-0.5 mb-1 block text-[10px] leading-tight text-neutral-400">{f.hint}</span>}
                 <input
                   inputMode="numeric"
+                required={!f.optional}
                   pattern="[0-9]*"
                   value={values[f.key] ?? ""}
                   disabled={disabled}

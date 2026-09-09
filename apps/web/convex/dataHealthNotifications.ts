@@ -1,8 +1,10 @@
 // ============================================================================
 // The weekly data-health post: Mondays, at the team's local hour, to the
 // same channel as the daily setter scorecard. Same spine as that post —
-// enabled → hour → weekday → dedup → data → silence-when-empty → deliver →
-// record — so a transient outage never permanently swallows a week.
+// enabled → weekday → hour → dedup → data → silence-when-empty → deliver →
+// record. The hour gate is "at or after", so a delivery that fails at the
+// set hour is retried on every later tick that Monday; the dedup key stops
+// a second copy once one lands.
 // ============================================================================
 
 import { v, ConvexError } from "convex/values";
@@ -41,8 +43,8 @@ async function maybeSend(
   const local = formatInTimeZone(new Date(nowMs), tz);
   const targetHour = team.setterDataHealthHourLocal ?? DEFAULT_HOUR;
   if (!opts?.force) {
-    if (local.hour !== targetHour) return { sent: false, reason: `hour ${local.hour} != ${targetHour}` };
     if (local.weekday !== "Mon") return { sent: false, reason: `weekly cadence, today is ${local.weekday}` };
+    if (local.hour < targetHour) return { sent: false, reason: `hour ${local.hour} < ${targetHour}` };
   }
   // The finished week: the Monday before today's Monday.
   const todayKey = dayKeyInTz(nowMs, tz);
@@ -169,6 +171,8 @@ export const setConfig = mutation({
     if (!Number.isInteger(args.hourLocal) || args.hourLocal < 0 || args.hourLocal > 23) {
       throw new ConvexError("Pick an hour between 0 and 23");
     }
+    const team = await ctx.db.get(user.teamId as Id<"teams">);
+    if (!team || !teamHasSetterTeams(team)) throw new ConvexError("Setter teams isn't switched on for this team");
     await ctx.db.patch(user.teamId as Id<"teams">, {
       setterDataHealthEnabled: args.enabled,
       setterDataHealthHourLocal: args.hourLocal,

@@ -48,16 +48,23 @@ export interface DrillTouch {
   kind: "dial" | "sms";
   at: number;
   reached: boolean;
+  /** False when the touch came before the booking existed (outbound work, not confirmation). */
+  afterBooking: boolean;
 }
 
 export interface DrillRecord {
   key: string;
   startTime: number;
   dayKey: string;
+  /** Team-local day the booking was made; null-safe label when only the row's creation time is known. */
+  bookedDayKey: string | null;
+  bookedAtInferred: boolean;
   closerName: string;
   title: string;
   eventName: string | null;
   lane: SetterLane;
+  /** Why a "needs a look" booking landed there; null in every other lane. */
+  reason: string | null;
   attributedBy: string;
   credit: string[];
   dmPerson: string | null;
@@ -122,7 +129,11 @@ const sortRows = <T extends PersonRow>(rows: Map<string, T>): T[] =>
     .map(finish)
     .sort((a, b) => b.bookings - a.bookings || a.name.localeCompare(b.name));
 
-export function buildSetterTeamsView(all: BookingRecord[], rosters: RosterRef[]): SetterTeamsView {
+export function buildSetterTeamsView(
+  all: BookingRecord[],
+  rosters: RosterRef[],
+  crmUserNames: Record<string, string> = {},
+): SetterTeamsView {
   const nameOf = new Map(rosters.map((r) => [r.rosterId, r.name]));
   const records = all.filter((r) => !r.isFollowUp);
 
@@ -173,20 +184,26 @@ export function buildSetterTeamsView(all: BookingRecord[], rosters: RosterRef[])
       const reason = unattributedReason(r);
       credit(rowFor(unattributed, reason, reason));
     }
-    if (c.isFunnel && c.lane !== "outbound" && c.lane !== "dm") {
+    const funnelSelfBook = c.isFunnel && c.lane !== "outbound" && c.lane !== "dm";
+    if (funnelSelfBook) {
       funnelNew += 1;
       if (c.lane === "confirmation") funnelContacted += 1;
       else if (c.lane === "self_booked_uncontacted") funnelUncontacted += 1;
       else if (!r.leadContactId) funnelLeadMissing += 1;
-      for (const row of confirmation.values()) {
-        row.newSelfBooks += 1;
-        if (c.lane === "confirmation" && c.creditRosterIds.includes(row.id)) {
-          credit(row);
+    }
+    for (const row of confirmation.values()) {
+      // Her row counts every booking in her lane (a hand-made "(s)" event
+      // included), so the row and the lane strip describe the same set; the
+      // self-book workload columns stay funnel-only.
+      if (c.lane === "confirmation" && c.creditRosterIds.includes(row.id)) {
+        credit(row);
+        if (funnelSelfBook) {
           const hers = r.touches.filter((t) => t.rosterId === row.id && t.afterBooking);
           if (hers.length > 0 || c.attributedBy === "tag") row.contacted += 1;
           if (hers.some((t) => t.reached)) row.reached += 1;
         }
       }
+      if (funnelSelfBook) row.newSelfBooks += 1;
     }
   }
   for (const row of confirmation.values()) {
@@ -202,7 +219,7 @@ export function buildSetterTeamsView(all: BookingRecord[], rosters: RosterRef[])
     unattributed: sortRows(unattributed),
     funnel: { newSelfBooks: funnelNew, contacted: funnelContacted, uncontacted: funnelUncontacted, leadMissing: funnelLeadMissing },
     followUpsExcluded: all.length - records.length,
-    records: all.map((r) => toDrill(r, nameOf)),
+    records: all.map((r) => toDrill(r, nameOf, crmUserNames)),
   };
 }
 
@@ -213,28 +230,37 @@ function unattributedReason(r: BookingRecord): string {
   return "Booking link not in the team's word lists";
 }
 
-function toDrill(r: BookingRecord, nameOf: Map<string, string>): DrillRecord {
+function toDrill(r: BookingRecord, nameOf: Map<string, string>, crmUserNames: Record<string, string>): DrillRecord {
   return {
     key: r.key,
     startTime: r.startTime,
     dayKey: r.dayKey,
+    bookedDayKey: r.bookedDayKey,
+    bookedAtInferred: r.bookedAtInferred,
     closerName: r.closerName,
     title: r.displayTitle,
     eventName: r.eventName,
     lane: r.classification.lane,
+    reason: r.classification.lane === "unattributed" ? unattributedReason(r) : null,
     attributedBy: r.classification.attributedBy,
     credit: r.classification.creditRosterIds.map((id) => nameOf.get(id) ?? "setter"),
     dmPerson: r.classification.dmPerson,
     token: r.token,
     touches: r.touches.map((t) => ({
-      name: (t.rosterId && nameOf.get(t.rosterId)) || "CRM user",
+      name: (t.rosterId && nameOf.get(t.rosterId)) || friendlyCrmName(crmUserNames[t.crmUserId]),
       kind: t.kind,
       at: t.at,
       reached: t.reached,
+      afterBooking: t.afterBooking,
     })),
     verdict: r.verdict,
     colour: recolorStateLabel(r.recolor, r.colorId ?? undefined),
     leadInClose: r.leadContactId !== null,
     isFollowUp: r.isFollowUp,
   };
+}
+
+/** A synced CRM user whose name never arrived is stored under its id; say "CRM user" rather than print it. */
+function friendlyCrmName(name: string | undefined): string {
+  return name && !/^user_/i.test(name) ? name : "CRM user";
 }

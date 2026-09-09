@@ -77,10 +77,49 @@ export function validateConfirmationNumbers(n: EodNumbers): void {
   }
 }
 
-/** Throws ConvexError with a human message on any bad number. The shape
- *  picks the guards: a confirmation setter's day has different invariants. */
-export function validateEodNumbers(n: EodNumbers, shape: EodShape = "booking"): void {
+/**
+ * Zero or clear the fields that don't belong to the shape, so what is stored
+ * is exactly what that form could have sent — a stale bundle or a hand-made
+ * call can't smuggle booking numbers into a confirmation day or the reverse,
+ * and a later role change can't sum the wrong kind of day into a ledger.
+ */
+export function normalizeForShape(n: EodNumbers, shape: EodShape): EodNumbers {
   if (shape === "confirmation") {
+    return {
+      ...n,
+      formShape: "confirmation",
+      dials: 0,
+      pickUps: 0,
+      sets: 0,
+      newLeadsHit: 0,
+      followUps: 0,
+      callsOnCalendar: undefined,
+      callsShown: undefined,
+      callsClosed: undefined,
+      cashCollected: undefined,
+    };
+  }
+  return {
+    ...n,
+    formShape: "booking",
+    newSelfBooked: undefined,
+    contacted: undefined,
+    reached: undefined,
+    confirmed: undefined,
+    rescheduled: undefined,
+    cancelled: undefined,
+    confirmedOnCalendar: undefined,
+    confirmedShowed: undefined,
+  };
+}
+
+/** Throws ConvexError with a human message on any bad number. The shape
+ *  picks the guards: a confirmation setter's day has different invariants.
+ *  Validates the normalised numbers — the ones that will be stored. */
+export function validateEodNumbers(raw: EodNumbers, shape: EodShape = "booking"): void {
+  const n = normalizeForShape(raw, shape);
+  if (shape === "confirmation") {
+    if (n.newSelfBooked === undefined) throw new ConvexError("Enter the new self-booked calls — 0 is fine");
     validateConfirmationNumbers(n);
     return;
   }
@@ -137,9 +176,10 @@ export function buildEodDoc(
   teamId: Id<"teams">,
   rosterId: Id<"setterRoster">,
   dayKey: string,
-  n: EodNumbers,
+  raw: EodNumbers,
   note: string | undefined,
 ) {
+  const n = normalizeForShape(raw, raw.formShape ?? "booking");
   return {
     teamId,
     rosterId,
