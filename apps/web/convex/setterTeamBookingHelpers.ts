@@ -76,3 +76,30 @@ export function guestEmailOf(copies: Doc<"calendarEvents">[]): string | null {
   }
   return null;
 }
+
+/**
+ * Google gives a copy imported from another calendar a "_"-prefixed uid, so
+ * the same booking can sit in two groups. Fold such a group into the one that
+ * shares its start time and title, so one booking is counted once.
+ */
+export function mergeImportedCopies(groups: Map<string, Doc<"calendarEvents">[]>): Doc<"calendarEvents">[][] {
+  const byStartTitle = new Map<string, Doc<"calendarEvents">[]>();
+  const imported: Doc<"calendarEvents">[][] = [];
+  const out: Doc<"calendarEvents">[][] = [];
+  const keyOf = (c: Doc<"calendarEvents">) => `${c.startTime}|${(c.title ?? "").trim().toLowerCase()}`;
+  for (const copies of groups.values()) {
+    if (copies[0]?.uid?.startsWith("_")) {
+      imported.push(copies);
+      continue;
+    }
+    out.push(copies);
+    byStartTitle.set(keyOf(copies[0]), copies);
+  }
+  for (const copies of imported) {
+    const home = byStartTitle.get(keyOf(copies[0]));
+    if (home) home.push(...copies);
+    else out.push(copies);
+  }
+  return out;
+}
+

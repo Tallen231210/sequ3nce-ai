@@ -36,6 +36,7 @@ import {
   guestEmailOf,
   loadCallsForEvents,
   matchTokenExact,
+  mergeImportedCopies,
   rosterNamesOf,
   rosterRefsOf,
 } from "./setterTeamBookingHelpers";
@@ -179,7 +180,7 @@ export async function collectTeamBookings(
   const kept: Array<{ copies: Doc<"calendarEvents">[]; recorded: Doc<"calls"> | null }> = [];
   const guestEmails: string[] = [];
   let cancelled = 0;
-  for (const copies of groupBookingCopies(events).values()) {
+  for (const copies of mergeImportedCopies(groupBookingCopies(events))) {
     if (copies.some((c) => classifyExcludedTitle(c.title, teamWords) === "cancelled")) {
       cancelled += 1;
       continue;

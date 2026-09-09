@@ -263,8 +263,8 @@ const FIXTURE = {
    "bookings": 20,
    "crmOnly": 0,
    "due": 20,
-   "id": "No booking link, no tag, no Close touch",
-   "name": "No booking link, no tag, no Close touch",
+   "id": "No booking link, no tag, no outbound setter in Close",
+   "name": "No booking link, no tag, no outbound setter in Close",
    "noShow": 7,
    "rescheduled": 0,
    "showRatePct": 56,
@@ -530,7 +530,7 @@ const FIXTURE = {
    "colour": "uncolored",
    "leadInClose": false,
    "isFollowUp": false,
-   "reason": "No booking link, no tag, no Close touch",
+   "reason": "No booking link, no tag, no outbound setter in Close",
    "bookedDayKey": "2026-09-07",
    "bookedAtInferred": false
   },
@@ -744,7 +744,7 @@ const FIXTURE = {
    "colour": "uncolored",
    "leadInClose": false,
    "isFollowUp": false,
-   "reason": "No booking link, no tag, no Close touch",
+   "reason": "No booking link, no tag, no outbound setter in Close",
    "bookedDayKey": "2026-09-07",
    "bookedAtInferred": false
   }

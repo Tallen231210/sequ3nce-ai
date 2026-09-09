@@ -226,7 +226,7 @@ export function buildSetterTeamsView(
 function unattributedReason(r: BookingRecord): string {
   if (r.classification.isFunnel && !r.leadContactId) return "Funnel booking, lead not in Close";
   if (r.classification.isFunnel) return "Funnel booking touched by someone off the roster";
-  if (r.eventName === null) return "No booking link, no tag, no Close touch";
+  if (r.eventName === null) return "No booking link, no tag, no outbound setter in Close";
   return "Booking link not in the team's word lists";
 }
 
