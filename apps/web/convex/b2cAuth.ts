@@ -340,6 +340,9 @@ export const loginB2CUser = mutation({
         badges: user.badges || [],
         trialExpiresAt: user.trialExpiresAt,
         onboardingCompleted: user.onboardingCompleted || false,
+        // Remote-logout switch: the app keeps this and signs out when the
+        // server's value moves (see b2cSessionEpoch.ts). Unset = 0.
+        sessionEpoch: user.sessionEpoch ?? 0,
         pricingTier: await (async () => {
           const totalUsers = await ctx.db.query("b2cUsers").collect();
           return totalUsers.length <= 100 ? "early" : "standard";

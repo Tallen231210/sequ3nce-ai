@@ -86,6 +86,9 @@ export interface CloserInfo {
   pricingTier?: "early" | "standard";
   /** Bearer token minted by B2C login; private APIs derive identity from it. */
   sessionToken?: string;
+  /** Remote-logout switch: the account's session epoch at login. When the
+   * server's value moves, this device signs out (lib/session-epoch.ts). */
+  sessionEpoch?: number;
 }
 
 export interface LoginResult {
@@ -4157,7 +4160,13 @@ export async function completeWeeklyContest(
 /** Poll subscription status (used after checkout to detect activation) */
 export async function getSubscriptionStatus(
   userId: string
-): Promise<{ subscriptionStatus: string; stripeCustomerId?: string; error?: string }> {
+): Promise<{
+  subscriptionStatus: string;
+  stripeCustomerId?: string;
+  /** Present once the backend ships the remote-logout switch; absent before. */
+  sessionEpoch?: number;
+  error?: string;
+}> {
   try {
     const response = await convexFetch(
       `${CONVEX_SITE_URL}/b2c/subscription-status?userId=${encodeURIComponent(userId)}&_=${Date.now()}`

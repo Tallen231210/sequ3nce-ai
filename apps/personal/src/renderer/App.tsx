@@ -14,6 +14,7 @@ import {
   type CloserInfo,
   reportAppVersion,
 } from './convex';
+import { adoptSessionEpoch, shouldSignOut } from './lib/session-epoch';
 import { MeetingBotHub } from './views/MeetingBotHub';
 import { EmailVerificationScreen } from './views/EmailVerificationScreen';
 import { SubscriptionGate } from './views/SubscriptionGate';
@@ -109,11 +110,15 @@ function AppContent() {
   const isSubmittingRef = useRef(false);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [pendingCloserInfo, setPendingCloserInfo] = useState<CloserInfo | null>(null);
+  // Shown on the login screen after a remote sign-out (session epoch bumped
+  // by an admin); cleared by the next successful sign-in.
+  const [signedOutNotice, setSignedOutNotice] = useState<string | null>(null);
 
   // Shared post-auth initialization (DRY — used by login, signup, and session restore)
   const initializeSession = (info: CloserInfo) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(info));
     setCloserInfo(info);
+    setSignedOutNotice(null);
     setAuthState('authenticated');
     // Version telemetry: which build is this account running on? (login,
     // signup, and session restore all pass through here.)
@@ -149,11 +154,20 @@ function AppContent() {
       // inactive. Ignore network errors — a transient WiFi dropout or
       // sleep/wake should NOT kick the user to the paywall.
       if (result.error) return;
-      if (
-        result.subscriptionStatus !== 'active' &&
-        closerInfo.subscriptionStatus === 'active'
-      ) {
-        const updated = { ...closerInfo, subscriptionStatus: result.subscriptionStatus };
+      // Remote logout: an admin bumped this account's session epoch.
+      if (shouldSignOut(closerInfo.sessionEpoch, result.sessionEpoch)) {
+        signOutRemotely();
+        return;
+      }
+      const sessionEpoch = adoptSessionEpoch(closerInfo.sessionEpoch, result.sessionEpoch);
+      const revoked =
+        result.subscriptionStatus !== 'active' && closerInfo.subscriptionStatus === 'active';
+      if (revoked || sessionEpoch !== closerInfo.sessionEpoch) {
+        const updated = {
+          ...closerInfo,
+          subscriptionStatus: revoked ? result.subscriptionStatus : closerInfo.subscriptionStatus,
+          sessionEpoch,
+        };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         setCloserInfo(updated);
       }
@@ -201,8 +215,23 @@ function AppContent() {
 
           if (effectiveInfo.b2cUserId) {
             const result = await getSubscriptionStatus(effectiveInfo.b2cUserId);
-            if (!result.error && result.subscriptionStatus !== effectiveInfo.subscriptionStatus) {
-              const updated = { ...effectiveInfo, subscriptionStatus: result.subscriptionStatus };
+            if (result.error) return;
+            // Remote logout: an admin bumped this account's session epoch
+            // while this device was closed.
+            if (shouldSignOut(effectiveInfo.sessionEpoch, result.sessionEpoch)) {
+              signOutRemotely();
+              return;
+            }
+            const sessionEpoch = adoptSessionEpoch(effectiveInfo.sessionEpoch, result.sessionEpoch);
+            if (
+              result.subscriptionStatus !== effectiveInfo.subscriptionStatus ||
+              sessionEpoch !== effectiveInfo.sessionEpoch
+            ) {
+              const updated = {
+                ...effectiveInfo,
+                subscriptionStatus: result.subscriptionStatus,
+                sessionEpoch,
+              };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
               setCloserInfo(updated);
             }
@@ -222,6 +251,14 @@ function AppContent() {
   const clearSession = () => {
     localStorage.removeItem(STORAGE_KEY);
     setCloserInfo(null);
+  };
+
+  // An admin signed this account out everywhere (rep rotation, support).
+  // Back to the login screen with a one-line explanation, never silently.
+  const signOutRemotely = () => {
+    clearSession();
+    setSignedOutNotice('You were signed out of this account. Please sign in again.');
+    setAuthState('login');
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -404,6 +441,7 @@ function AppContent() {
         isLoading={authState === 'logging_in'}
         onSwitchToSignup={() => setAuthState('signup')}
         onForgotPassword={() => setAuthState('forgot_password')}
+        notice={signedOutNotice}
       />
     );
   }
@@ -507,6 +545,7 @@ function AppContent() {
       isLoading={false}
       onSwitchToSignup={() => setAuthState('signup')}
       onForgotPassword={() => setAuthState('forgot_password')}
+      notice={signedOutNotice}
     />
   );
 }
@@ -522,9 +561,11 @@ interface LoginScreenProps {
   isLoading: boolean;
   onSwitchToSignup: () => void;
   onForgotPassword: () => void;
+  /** One-line explanation shown above the form (e.g. after a remote sign-out). */
+  notice?: string | null;
 }
 
-function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoading, onSwitchToSignup, onForgotPassword }: LoginScreenProps) {
+function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoading, onSwitchToSignup, onForgotPassword, notice }: LoginScreenProps) {
   return (
     <div className="h-screen flex flex-col bg-white text-black">
       <div className="titlebar h-8 border-b border-gray-200" />
@@ -534,6 +575,15 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
           <img src={logoImage} alt="Sequ3nce Personal" className="h-14 mx-auto dark-invert" />
           <p className="text-gray-500 text-sm mt-4">Sign in to your account</p>
         </div>
+
+        {notice && (
+          <p
+            role="status"
+            className="w-full max-w-xs mb-4 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-600 text-center"
+          >
+            {notice}
+          </p>
+        )}
 
         <form onSubmit={onSubmit} className="w-full max-w-xs space-y-4">
           <div>

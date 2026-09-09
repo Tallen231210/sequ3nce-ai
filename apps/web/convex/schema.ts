@@ -2120,6 +2120,11 @@ export default defineSchema({
     // auto-join recording switch, 2026-09-01). Single active token; each
     // login rotates it.
     sessionTokenHash: v.optional(v.string()),
+    // Remote-logout switch (2026-09-09): the app holds the epoch it got at
+    // login and signs itself out when the server's has moved. Bumped only by
+    // internal.b2cSessionEpoch.bumpSessionEpoch (rep rotation / support).
+    // Unset = 0. Never rotated by login.
+    sessionEpoch: v.optional(v.number()),
     trialExpiresAt: v.optional(v.number()),                 // Beta trial end date (undefined = no trial)
     onboardingCompleted: v.optional(v.boolean()),           // Whether onboarding questionnaire was filled
     onboardingSource: v.optional(v.string()),               // "instagram" | "youtube" | "google" | "referral"

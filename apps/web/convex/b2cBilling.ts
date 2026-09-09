@@ -15,6 +15,9 @@ export const getB2CSubscription = query({
       stripeCustomerId: user.stripeCustomerId,
       subscriptionId: user.subscriptionId,
       cancelledAt: user.cancelledAt,
+      // Rides along on the app's launch + 60s poll so a bumped epoch signs
+      // the device out (see b2cSessionEpoch.ts). Unset = 0.
+      sessionEpoch: user.sessionEpoch ?? 0,
     };
   },
 });

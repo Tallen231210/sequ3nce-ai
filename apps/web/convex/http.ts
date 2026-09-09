@@ -9664,6 +9664,7 @@ http.route({
       return b2cJsonResponse({
         subscriptionStatus: result.subscriptionStatus,
         stripeCustomerId: result.stripeCustomerId,
+        sessionEpoch: result.sessionEpoch,
       });
     } catch (error) {
       console.error("Error checking B2C subscription status:", error);
