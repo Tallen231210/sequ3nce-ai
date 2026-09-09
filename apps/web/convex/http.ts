@@ -13411,6 +13411,13 @@ http.route({
         // back here. More reliable than Polar's customer id, which we'd have to
         // have stored first.
         customer?: { external_id?: string | null } | null;
+        // Cancellation signals (B2C only reads these). A same-day cancel keeps
+        // status "active" until period end — without these it was invisible.
+        cancel_at_period_end?: boolean | null;
+        canceled_at?: string | null;
+        customer_cancellation_reason?: string | null;
+        customer_cancellation_comment?: string | null;
+        modified_at?: string | null;
       };
 
       if (!sub.customer_id || !sub.id) {
@@ -13438,6 +13445,30 @@ http.route({
         const periodEndB2C = sub.current_period_end
           ? Date.parse(sub.current_period_end)
           : null;
+        const isoMs = (s: string | null | undefined): number | undefined => {
+          if (!s) return undefined;
+          const t = Date.parse(s);
+          return Number.isFinite(t) ? t : undefined;
+        };
+        const cancelSignal =
+          sub.cancel_at_period_end === true ||
+          !!sub.canceled_at ||
+          /cancel|revoked/.test(type);
+        if (cancelSignal) {
+          // Raw record of what Polar actually sends on a cancel, until the
+          // reason vocabulary is known for sure.
+          console.log(
+            `[polar] b2c cancel signal ${type}: ` +
+              JSON.stringify({
+                id: sub.id,
+                status: sub.status,
+                cancel_at_period_end: sub.cancel_at_period_end,
+                canceled_at: sub.canceled_at,
+                reason: sub.customer_cancellation_reason,
+                comment: sub.customer_cancellation_comment,
+              }),
+          );
+        }
         const b2cResult = await ctx.runMutation(
           internal.b2cPolar.applyB2CSubscription,
           {
@@ -13451,6 +13482,14 @@ http.route({
               periodEndB2C !== null && Number.isFinite(periodEndB2C)
                 ? periodEndB2C
                 : undefined,
+            cancelAtPeriodEnd:
+              typeof sub.cancel_at_period_end === "boolean"
+                ? sub.cancel_at_period_end
+                : undefined,
+            canceledAt: isoMs(sub.canceled_at),
+            cancellationReason: sub.customer_cancellation_reason ?? undefined,
+            cancellationComment: sub.customer_cancellation_comment ?? undefined,
+            modifiedAt: isoMs(sub.modified_at),
           },
         );
         if (!b2cResult.applied) {
@@ -14515,6 +14554,121 @@ http.route({
   path: "/b2c/auto-join",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ==================== Adoption batch (2026-09-09) ====================
+
+// GET /b2c/this-week?userId= — the dashboard's "This week" card in one call.
+http.route({
+  path: "/b2c/this-week",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const userId = new URL(request.url).searchParams.get("userId");
+    if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+    try {
+      const result = await ctx.runQuery(api.b2cThisWeek.getThisWeek, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      if (!result) return b2cJsonResponse({ error: "User not found" }, 404);
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("[HTTP] /b2c/this-week:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+http.route({
+  path: "/b2c/this-week",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/email-preferences — read/set "Email me updates". Bearer-token
+// authenticated like /b2c/auto-join. { sessionToken, enabled? }
+http.route({
+  path: "/b2c/email-preferences",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (typeof body.sessionToken !== "string" || body.sessionToken.length === 0) {
+        return b2cJsonResponse({ needsRelogin: true }, 200);
+      }
+      const result =
+        typeof body.enabled === "boolean"
+          ? await ctx.runMutation(internal.b2cEmailPrefs.setForToken, {
+              sessionToken: body.sessionToken,
+              enabled: body.enabled,
+            })
+          : await ctx.runQuery(internal.b2cEmailPrefs.getForToken, {
+              sessionToken: body.sessionToken,
+            });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("[HTTP] /b2c/email-preferences:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+http.route({
+  path: "/b2c/email-preferences",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// Unsubscribe link from digest emails: ?u=<userId>&t=<hmac>. GET only shows
+// a confirm button (mail scanners prefetch links and would otherwise
+// unsubscribe people silently); POST — the button, or Gmail's one-click
+// List-Unsubscribe — flips the flag.
+const unsubscribePage = (title: string, body: string, form?: string) =>
+  new Response(
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>` +
+      `<body style="font-family:-apple-system,Segoe UI,sans-serif;max-width:480px;margin:64px auto;padding:0 24px;color:#111;">` +
+      `<h2 style="margin:0 0 12px;">${title}</h2><p style="color:#444;line-height:1.6;">${body}</p>${form ?? ""}</body></html>`,
+    { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
+  );
+const unsubscribeParams = async (request: Request): Promise<{ u: string; t: string }> => {
+  const url = new URL(request.url);
+  let u = url.searchParams.get("u") ?? "";
+  let t = url.searchParams.get("t") ?? "";
+  if ((!u || !t) && request.method === "POST") {
+    const form = await request.formData().catch(() => null);
+    u = u || String(form?.get("u") ?? "");
+    t = t || String(form?.get("t") ?? "");
+  }
+  return { u, t };
+};
+http.route({
+  path: "/b2c/email-unsubscribe",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const { u, t } = await unsubscribeParams(request);
+    const check = u && t
+      ? await ctx.runQuery(internal.b2cEmailPrefs.checkUnsubscribeToken, { userId: u, token: t })
+      : { valid: false };
+    if (!check.valid) return new Response("Invalid unsubscribe link", { status: 400 });
+    return unsubscribePage(
+      "Unsubscribe from Sequ3nce updates?",
+      "You'll stop getting Monday roles and coaching reminders by email. Account emails (password links, receipts) still send. You can turn updates back on any time in the app under Settings → Notifications.",
+      `<form method="post" action="/b2c/email-unsubscribe"><input type="hidden" name="u" value="${u}"><input type="hidden" name="t" value="${t}">` +
+        `<button type="submit" style="background:#111;color:#fff;padding:12px 22px;border-radius:8px;border:0;font-weight:600;font-size:15px;cursor:pointer;">Unsubscribe</button></form>`,
+    );
+  }),
+});
+http.route({
+  path: "/b2c/email-unsubscribe",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const { u, t } = await unsubscribeParams(request);
+    const result = u && t
+      ? await ctx.runMutation(internal.b2cEmailPrefs.unsubscribeWithToken, { userId: u, token: t })
+      : { ok: false };
+    if (!result.ok) return new Response("Invalid unsubscribe link", { status: 400 });
+    return unsubscribePage(
+      "You're unsubscribed from Sequ3nce updates",
+      "No more Monday roles or coaching reminders by email. Account emails still send. Changed your mind? Settings → Notifications in the app.",
+    );
+  }),
 });
 
 // ==================== Coach Classrooms (2026-09-01) ====================

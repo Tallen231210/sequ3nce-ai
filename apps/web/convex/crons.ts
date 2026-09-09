@@ -439,4 +439,16 @@ crons.cron(
   {},
 );
 
+// Sequ3nce Personal: daily founder digest of members in their first 14 days
+// (profile %, calls, roles tracked, last seen, cancelled?). 13:33 UTC ≈
+// 09:33 ET in DST; :33 is unused by the jobs above (:30 belongs to the */5
+// and */15 polls). Silent when nobody is in the window. crons.cron, never
+// crons.interval.
+crons.cron(
+  "new-member-digest",
+  "33 13 * * *",
+  internal.b2cNewMemberDigest.runNewMemberDigest,
+  {},
+);
+
 export default crons;

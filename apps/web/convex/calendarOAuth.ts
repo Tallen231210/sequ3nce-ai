@@ -252,7 +252,7 @@ export const readAutoJoinForCloser = internalQuery({
  * client-supplied id. Sessions from app versions predating the token simply
  * get { needsRelogin: true } — one fresh login upgrades them.
  */
-async function b2cUserByToken(ctx: any, sessionToken: string) {
+export async function b2cUserByToken(ctx: any, sessionToken: string) {
   if (!sessionToken || sessionToken.length < 32) return null;
   const data = new TextEncoder().encode(sessionToken);
   const digest = await crypto.subtle.digest("SHA-256", data);

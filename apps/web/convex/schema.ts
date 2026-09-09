@@ -2169,6 +2169,22 @@ export default defineSchema({
     // internal.b2cSessionEpoch.bumpSessionEpoch (rep rotation / support).
     // Unset = 0. Never rotated by login.
     sessionEpoch: v.optional(v.number()),
+    // Adoption batch (2026-09-09). Polar's cancel-at-period-end never reached
+    // us before, so a same-day cancel looked identical to a happy member.
+    // subscriptionStatus stays "active" until the period ends — these are
+    // signals, not gates. `polarSubscriptionModifiedAt` orders webhook events
+    // (Polar sends canceled AND updated for one cancel; retries reorder).
+    cancelAtPeriodEnd: v.optional(v.boolean()),
+    canceledAt: v.optional(v.number()),
+    cancellationReason: v.optional(v.string()),   // Polar's customer_cancellation_reason, verbatim
+    cancellationComment: v.optional(v.string()),  // free text the member typed
+    polarSubscriptionModifiedAt: v.optional(v.number()),
+    // Settings → "Email me updates". Unset = on. Transactional mail
+    // (password link) ignores it. See b2cEmail.ts.
+    emailNotificationsOptOut: v.optional(v.boolean()),
+    // Last "set your password" nudge sent (1h/24h after a checkout that
+    // never activated). Idempotency stamp for the scheduled jobs.
+    activationNudgedAt: v.optional(v.number()),
     trialExpiresAt: v.optional(v.number()),                 // Beta trial end date (undefined = no trial)
     onboardingCompleted: v.optional(v.boolean()),           // Whether onboarding questionnaire was filled
     onboardingSource: v.optional(v.string()),               // "instagram" | "youtube" | "google" | "referral"
@@ -2370,6 +2386,9 @@ export default defineSchema({
     createdAt: v.number(),
     teamSentBy: v.optional(v.id("b2cUsers")),
     broadcastId: v.optional(v.id("b2cTeamBroadcasts")),
+    // Set on messages posted by the system (b2cSystemNotifications.ts):
+    // "weekly_roles" | "coaching_24h" | "coaching_1h" | "coaching_cancelled".
+    systemKind: v.optional(v.string()),
   })
     .index("by_thread", ["threadId", "createdAt"])
     .index("by_recipient_unread", ["threadId", "isRead"])
@@ -2549,6 +2568,10 @@ export default defineSchema({
       v.literal("ended"),
       v.literal("cancelled"),
     ),
+    // Reminder jobs (24h / 1h before) scheduled by b2cCoachingReminders.ts;
+    // cancelled on cancel/reschedule. Each job re-checks the call, so a
+    // stale id is harmless.
+    reminderJobIds: v.optional(v.array(v.id("_scheduled_functions"))),
     // Stable identifier we pass to Daily.co. Deterministic (e.g. "coaching-<id>")
     // so the same call always maps to the same Daily room.
     dailyRoomName: v.string(),

@@ -13,8 +13,10 @@ import { internal } from "./_generated/api";
 // because eighty-three copies of the same email is how an alarm gets muted.
 // ============================================================================
 
-const ALERT_EMAIL = "tadigitalsmm@gmail.com";
-const FROM_ADDRESS = "Sequ3nce <noreply@noreply.sequ3nce.ai>";
+/** The founder's inbox. Exported so B2C founder alerts (b2cEmail.ts) reach
+ *  the same place without a second copy of the address. */
+export const ALERT_EMAIL = "tadigitalsmm@gmail.com";
+export const FROM_ADDRESS = "Sequ3nce <noreply@noreply.sequ3nce.ai>";
 const COOLDOWN_MS = 60 * 60 * 1000;
 
 /** Atomically decide whether this alert kind is off cooldown, recording the

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { emailButton, sendB2cEmail } from "./b2cEmail";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -74,6 +75,13 @@ export const applyB2CSubscription = internalMutation({
     email: v.optional(v.string()),
     name: v.optional(v.string()),
     currentPeriodEnd: v.optional(v.number()),
+    // Cancellation signals. `undefined` = not in this payload (leave as is);
+    // only an explicit `false` — Polar's `uncanceled` — clears them.
+    cancelAtPeriodEnd: v.optional(v.boolean()),
+    canceledAt: v.optional(v.number()),
+    cancellationReason: v.optional(v.string()),
+    cancellationComment: v.optional(v.string()),
+    modifiedAt: v.optional(v.number()),
   },
   handler: async (
     ctx,
@@ -101,16 +109,61 @@ export const applyB2CSubscription = internalMutation({
     }
 
     if (user) {
+      // Polar sends `canceled` AND `updated` for one cancel, and retries can
+      // arrive out of order. An event older than the last one applied for
+      // this same subscription must not undo a newer one.
+      if (
+        args.modifiedAt !== undefined &&
+        user.polarSubscriptionModifiedAt !== undefined &&
+        user.polarSubscriptionId === args.polarSubscriptionId &&
+        args.modifiedAt < user.polarSubscriptionModifiedAt
+      ) {
+        return { applied: false, provisioned: false, reason: "stale event — older than last applied" };
+      }
+
       const badgePatch = withVipSynced(user.badges, args.planTerm, status);
+
+      // Cancellation fields. Access is NOT changed here — subscriptionStatus
+      // keeps meaning what it meant, and a cancel-at-period-end member stays
+      // "active" until Polar flips the status at period end.
+      const cancelPatch: Record<string, unknown> = {};
+      if (args.cancelAtPeriodEnd === true) {
+        cancelPatch.cancelAtPeriodEnd = true;
+      } else if (args.cancelAtPeriodEnd === false) {
+        cancelPatch.cancelAtPeriodEnd = false;
+        cancelPatch.canceledAt = undefined;
+        cancelPatch.cancellationReason = undefined;
+        cancelPatch.cancellationComment = undefined;
+      }
+      if (args.canceledAt !== undefined) cancelPatch.canceledAt = args.canceledAt;
+      if (args.cancellationReason !== undefined) cancelPatch.cancellationReason = args.cancellationReason;
+      if (args.cancellationComment !== undefined) cancelPatch.cancellationComment = args.cancellationComment;
+
+      // The two transitions worth a human's attention, detected against the
+      // row BEFORE the patch so a retried webhook can't alert twice.
+      const becameCancelling =
+        user.cancelAtPeriodEnd !== true && args.cancelAtPeriodEnd === true;
+      const becameCancelled =
+        user.subscriptionStatus !== "cancelled" && status === "cancelled";
+
       await ctx.db.patch(user._id, {
         polarCustomerId: args.polarCustomerId,
         polarSubscriptionId: args.polarSubscriptionId,
         subscriptionStatus: status,
         planTerm: args.planTerm,
         currentPeriodEnd: args.currentPeriodEnd,
+        ...(args.modifiedAt !== undefined ? { polarSubscriptionModifiedAt: args.modifiedAt } : {}),
         ...(badgePatch !== undefined ? { badges: badgePatch } : {}),
         ...(status === "cancelled" ? { cancelledAt: Date.now() } : {}),
+        ...cancelPatch,
       });
+
+      if (becameCancelling || becameCancelled) {
+        await ctx.scheduler.runAfter(0, internal.b2cChurnAlerts.sendCancellationAlert, {
+          userId: user._id,
+          trigger: becameCancelled ? "cancelled" : "cancel_at_period_end",
+        });
+      }
       return { applied: true, provisioned: false };
     }
 
@@ -184,19 +237,13 @@ export const applyB2CSubscription = internalMutation({
     // Welcome email with the set-password link. The code reuses the password
     // reset machinery (hashed 6-digit code) with a longer expiry — setting
     // your first password IS a password reset, from the machine's viewpoint.
+    // The welcome action also schedules the 1h / 24h "still not in?" nudges,
+    // because they must carry the SAME code (see sendWelcomeEmail).
     await ctx.scheduler.runAfter(0, internal.b2cPolar.sendWelcomeEmail, {
       b2cUserId,
       email,
       name,
     });
-
-    // If they still haven't set a password in 24h, nudge once. They PAID —
-    // a customer who never gets into the app is a refund request brewing.
-    await ctx.scheduler.runAfter(
-      24 * 60 * 60 * 1000,
-      internal.b2cPolar.sendActivationReminder,
-      { b2cUserId, email, name },
-    );
 
     return { applied: true, provisioned: true };
   },
@@ -221,70 +268,68 @@ export const sendWelcomeEmail = internalAction({
       { email: args.email, expiryMs: WELCOME_CODE_TTL_MS },
     );
 
-    const resendApiKey = process.env.RESEND_API_KEY;
-    if (!resendApiKey) {
-      console.error(
-        `[b2cPolar] RESEND_API_KEY not set — welcome email NOT sent to ${args.email}. ` +
-          `Their account exists but they have no way in without support.`,
-      );
+    if (!code) {
+      console.error(`[b2cPolar] could not mint a welcome code for ${args.email} — no such user?`);
       return;
     }
-
-    const activateUrl = `https://sequ3nce.ai/personal/activate?email=${encodeURIComponent(args.email)}&code=${code}`;
+    const activateUrl = activationUrl(args.email, code);
     const firstName = args.name.split(/\s+/)[0] || "there";
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "Sequ3nce <noreply@noreply.sequ3nce.ai>",
-        to: args.email,
-        subject: "Your Sequ3nce Personal access is ready",
-        html: `
-          <div style="font-family: -apple-system, Segoe UI, sans-serif; max-width: 520px; margin: 0 auto; color: #111;">
-            <h2 style="margin: 24px 0 8px;">Welcome to Sequ3nce Personal, ${firstName}.</h2>
-            <p style="color: #444; line-height: 1.6;">
-              Your payment went through and your account is live. Two steps and
-              you're recording calls:
-            </p>
-            <p style="margin: 24px 0;">
-              <a href="${activateUrl}"
-                 style="background: #111; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                1&nbsp;·&nbsp;Set your password
-              </a>
-            </p>
-            <p style="color: #444; line-height: 1.6;">
-              2 · Download the app and sign in with
-              <strong>${args.email}</strong>.
-            </p>
-            <p style="color: #444; line-height: 1.6;">
-              On your phone right now? No problem — the app runs on Mac and
-              Windows. When you're at your computer, open
-              <a href="https://sequ3nce.ai/personal/download" style="color: #111; font-weight: 600;">sequ3nce.ai/personal/download</a>
-              — this email will still be here.
-            </p>
-            <p style="color: #999; font-size: 13px; line-height: 1.5; margin-top: 32px;">
-              This link works for 7 days. If it expires, use "Forgot password"
-              at sign-in — same thing. Questions? Just reply to this email.
-            </p>
-          </div>
-        `,
-      }),
+    const result = await sendB2cEmail(ctx, {
+      kind: "transactional",
+      to: args.email,
+      subject: "Your Sequ3nce Personal access is ready",
+      html: `
+        <h2 style="margin: 24px 0 8px;">Welcome to Sequ3nce Personal, ${firstName}.</h2>
+        <p style="color: #444; line-height: 1.6;">
+          Your payment went through and your account is live. Two steps and
+          you're recording calls:
+        </p>
+        ${emailButton(activateUrl, "1&nbsp;·&nbsp;Set your password")}
+        <p style="color: #444; line-height: 1.6;">
+          2 · Download the app and sign in with
+          <strong>${args.email}</strong>.
+        </p>
+        <p style="color: #444; line-height: 1.6;">
+          On your phone right now? No problem — the app runs on Mac and
+          Windows. When you're at your computer, open
+          <a href="https://sequ3nce.ai/personal/download" style="color: #111; font-weight: 600;">sequ3nce.ai/personal/download</a>
+          — this email will still be here.
+        </p>
+        <p style="color: #999; font-size: 13px; line-height: 1.5; margin-top: 32px;">
+          This link works for 7 days. If it expires, use "Forgot password"
+          at sign-in — same thing. Questions? Just reply to this email.
+        </p>
+      `,
     });
-
-    if (!response.ok) {
+    if (!result.sent) {
       console.error(
-        `[b2cPolar] Resend refused the welcome email for ${args.email}: ` +
-          `${response.status} ${await response.text()}`,
+        `[b2cPolar] welcome email NOT sent to ${args.email} (${result.skipped}). ` +
+          `Their account exists but they have no way in without support.`,
       );
-    } else {
-      console.log(`[b2cPolar] welcome email sent to ${args.email}`);
+    }
+
+    // "Still not in?" nudges. They carry THIS code: minting a new one would
+    // overwrite it and kill the welcome link for exactly the buyer who opens
+    // the email later. A customer who activated is silently skipped.
+    for (const [delayMs, stage] of [
+      [60 * 60 * 1000, "1h"],
+      [24 * 60 * 60 * 1000, "24h"],
+    ] as const) {
+      await ctx.scheduler.runAfter(delayMs, internal.b2cPolar.sendActivationReminder, {
+        b2cUserId: args.b2cUserId,
+        email: args.email,
+        name: args.name,
+        code,
+        stage,
+      });
     }
   },
 });
+
+function activationUrl(email: string, code: string): string {
+  return `https://sequ3nce.ai/personal/activate?email=${encodeURIComponent(email)}&code=${code}`;
+}
 
 /**
  * Polar customer portal session for a B2C user — where they update cards,
@@ -347,14 +392,19 @@ export const getUserForPortal = internalQuery({
 
 
 /**
- * One reminder, 24h after purchase, only if they never set a password.
- * Scheduled at provisioning; a customer who activated is silently skipped.
+ * "Still not in?" nudges at 1h and 24h after purchase, only while they have
+ * never set a password. Scheduled by sendWelcomeEmail with the welcome
+ * email's own code, so all three links are the same, still-valid link.
+ * `code`/`stage` are optional only for jobs scheduled by the previous
+ * version (24h, no code) still sitting in the queue at deploy time.
  */
 export const sendActivationReminder = internalAction({
   args: {
     b2cUserId: v.id("b2cUsers"),
     email: v.string(),
     name: v.string(),
+    code: v.optional(v.string()),
+    stage: v.optional(v.union(v.literal("1h"), v.literal("24h"))),
   },
   handler: async (ctx, args) => {
     const user = await ctx.runQuery(internal.b2cPolar.getActivationState, {
@@ -363,62 +413,71 @@ export const sendActivationReminder = internalAction({
     if (!user) return;
     if (user.hasPassword) return; // they're in — nothing to say
     if (user.subscriptionStatus !== "active") return; // refunded/cancelled — don't nudge
+    if (user.cancelAtPeriodEnd) return; // already leaving — don't chase
 
-    const WELCOME_CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-    const { code } = await ctx.runMutation(
-      internal.b2cAuth.generatePasswordResetCode,
-      { email: args.email, expiryMs: WELCOME_CODE_TTL_MS },
-    );
-
-    const resendApiKey = process.env.RESEND_API_KEY;
-    if (!resendApiKey) {
-      console.error(`[b2cPolar] RESEND_API_KEY not set — reminder NOT sent to ${args.email}`);
+    const stage = args.stage ?? "24h";
+    let code = args.code;
+    if (!code) {
+      // Legacy job from before the nudges carried the welcome code.
+      const minted = await ctx.runMutation(internal.b2cAuth.generatePasswordResetCode, {
+        email: args.email,
+        expiryMs: 7 * 24 * 60 * 60 * 1000,
+      });
+      code = minted.code ?? undefined;
+    }
+    if (!code) {
+      console.error(`[b2cPolar] no activation code for ${args.email} — reminder not sent`);
       return;
     }
-    const activateUrl = `https://sequ3nce.ai/personal/activate?email=${encodeURIComponent(args.email)}&code=${code}`;
+    const activateUrl = activationUrl(args.email, code);
     const firstName = args.name.split(/\s+/)[0] || "there";
+    const when = stage === "1h" ? "about an hour ago" : "yesterday";
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "Sequ3nce <noreply@noreply.sequ3nce.ai>",
-        to: args.email,
-        subject: "Your Sequ3nce Personal access is waiting",
-        html: `
-          <div style="font-family: -apple-system, Segoe UI, sans-serif; max-width: 520px; margin: 0 auto; color: #111;">
-            <h2 style="margin: 24px 0 8px;">${firstName}, your access is ready — you just haven't stepped in yet.</h2>
-            <p style="color: #444; line-height: 1.6;">
-              You joined Sequ3nce Personal yesterday but haven't set your
-              password. It takes thirty seconds:
-            </p>
-            <p style="margin: 24px 0;">
-              <a href="${activateUrl}"
-                 style="background: #111; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                Set your password &amp; download the app
-              </a>
-            </p>
-            <p style="color: #444; line-height: 1.6;">
-              On your phone? The app runs on Mac and Windows — when you're at
-              your computer, open
-              <a href="https://sequ3nce.ai/personal/download" style="color: #111; font-weight: 600;">sequ3nce.ai/personal/download</a>.
-            </p>
-            <p style="color: #999; font-size: 13px; line-height: 1.5; margin-top: 32px;">
-              Sign in afterwards with <strong>${args.email}</strong>. Stuck on
-              anything? Reply to this email and a human reads it.
-            </p>
-          </div>
-        `,
-      }),
+    const result = await sendB2cEmail(ctx, {
+      kind: "transactional",
+      to: args.email,
+      subject:
+        stage === "1h"
+          ? "Your Sequ3nce Personal login — one step left"
+          : "Your Sequ3nce Personal access is waiting",
+      html: `
+        <h2 style="margin: 24px 0 8px;">${firstName}, your access is ready — you just haven't stepped in yet.</h2>
+        <p style="color: #444; line-height: 1.6;">
+          You joined Sequ3nce Personal ${when} but haven't set your
+          password. It takes thirty seconds:
+        </p>
+        ${emailButton(activateUrl, "Set your password &amp; download the app")}
+        <p style="color: #444; line-height: 1.6;">
+          On your phone? The app runs on Mac and Windows — when you're at
+          your computer, open
+          <a href="https://sequ3nce.ai/personal/download" style="color: #111; font-weight: 600;">sequ3nce.ai/personal/download</a>.
+        </p>
+        <p style="color: #999; font-size: 13px; line-height: 1.5; margin-top: 32px;">
+          Sign in afterwards with <strong>${args.email}</strong>. Stuck on
+          anything? Reply to this email and a human reads it.
+        </p>
+      `,
     });
-    if (!response.ok) {
-      console.error(`[b2cPolar] Resend refused the reminder for ${args.email}: ${response.status} ${await response.text()}`);
-    } else {
-      console.log(`[b2cPolar] activation reminder sent to ${args.email}`);
+    if (result.sent) {
+      await ctx.runMutation(internal.b2cPolar.stampActivationNudge, {
+        b2cUserId: args.b2cUserId,
+      });
     }
+
+    // A day in, still never opened the app: that's a refund brewing, and a
+    // human can still catch it. One heads-up per member.
+    if (stage === "24h") {
+      await ctx.scheduler.runAfter(0, internal.b2cChurnAlerts.sendActivationAlert, {
+        userId: args.b2cUserId,
+      });
+    }
+  },
+});
+
+export const stampActivationNudge = internalMutation({
+  args: { b2cUserId: v.id("b2cUsers") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.b2cUserId, { activationNudgedAt: Date.now() });
   },
 });
 
@@ -427,7 +486,11 @@ export const getActivationState = internalQuery({
   handler: async (ctx, args) => {
     const u = await ctx.db.get(args.b2cUserId);
     return u
-      ? { hasPassword: !!u.passwordHash, subscriptionStatus: u.subscriptionStatus }
+      ? {
+          hasPassword: !!u.passwordHash,
+          subscriptionStatus: u.subscriptionStatus,
+          cancelAtPeriodEnd: u.cancelAtPeriodEnd === true,
+        }
       : null;
   },
 });

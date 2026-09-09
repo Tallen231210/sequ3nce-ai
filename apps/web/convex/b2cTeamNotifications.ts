@@ -40,8 +40,10 @@ async function requireFounder(
   }
 }
 
-// Find or create a team thread for a recipient. Used during fan-out.
-async function findOrCreateTeamThread(
+// Find or create a team thread for a recipient. Used during fan-out here and
+// by the system sender (b2cSystemNotifications.ts) so crons post into the
+// same "Sequ3nce Team" thread a founder broadcast would.
+export async function findOrCreateTeamThread(
   ctx: MutationCtx,
   recipientId: Id<"b2cUsers">,
   repliesAllowed: boolean,

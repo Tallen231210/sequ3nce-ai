@@ -282,6 +282,8 @@ export const createCoachingCall = mutation({
       callId,
       cursor: null,
     });
+    // 24h / 1h reminders (b2cCoachingReminders.ts).
+    await ctx.scheduler.runAfter(0, internal.b2cCoachingReminders.scheduleForCall, { callId });
 
     return { callId };
   },
@@ -317,6 +319,9 @@ export const cancelCoachingCall = mutation({
     await ctx.scheduler.runAfter(0, api.b2cCoachingCalls.cleanupCancelledCall, {
       callId: args.callId,
     });
+    // Drop pending reminders; tell classroom members it's off.
+    await ctx.scheduler.runAfter(0, internal.b2cCoachingReminders.cancelForCall, { callId: args.callId });
+    await ctx.scheduler.runAfter(0, internal.b2cCoachingReminders.notifyCancelled, { callId: args.callId });
 
     return { success: true };
   },
@@ -382,6 +387,8 @@ export const rescheduleCoachingCall = mutation({
       callId: args.callId,
       cursor: null,
     });
+    // Reminders move with it (old jobs cancelled, new ones scheduled).
+    await ctx.scheduler.runAfter(0, internal.b2cCoachingReminders.scheduleForCall, { callId: args.callId });
 
     return { success: true };
   },
