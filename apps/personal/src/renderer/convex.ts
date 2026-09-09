@@ -2215,7 +2215,15 @@ export interface ThisWeekData {
     status: "scheduled" | "live" | "ended" | "cancelled";
     coachName: string;
   } | null;
-  rolesThisWeek: { count: number; topIndustries: string[] };
+  rolesThisWeek: {
+    /** Curated roles added in the last 7 days. */
+    count: number;
+    topIndustries: string[];
+    /** Live-feed roles this week, from the latest Monday-note snapshot (absent before the first run). */
+    feedTotal?: number;
+    /** count + feedTotal — the same headline number the Monday note uses. */
+    total?: number;
+  };
   onlineCount: number;
   latestPosts: Array<{
     postId: string;

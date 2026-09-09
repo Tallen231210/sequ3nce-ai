@@ -451,4 +451,17 @@ crons.cron(
   {},
 );
 
+// Sequ3nce Personal: Monday roles note — one message to every member with
+// the week's new sales roles (curated import + live feed by lane). 17:00 UTC
+// = 1:00 PM ET in DST (2:00 PM in winter). Runs whether or not the Monday
+// import has landed; a later import shows in the app at once and counts next
+// week. The 5-day slot in adminAlerts prevents a double send if the import
+// step also announces. crons.cron, never crons.interval.
+crons.cron(
+  "weekly-roles-digest",
+  "0 17 * * 1",
+  internal.b2cWeeklyRoles.announceWeeklyRoles,
+  { dryRun: false },
+);
+
 export default crons;

@@ -50,6 +50,12 @@ export const hzReadCall = internalQuery({
   handler: async (ctx, args) => await ctx.db.get(args.callId),
 });
 
+export const hzLatestSnapshot = internalQuery({
+  args: {},
+  handler: async (ctx) =>
+    await ctx.db.query("b2cWeeklyRolesSnapshots").withIndex("by_computed").order("desc").first(),
+});
+
 export const hzSetup = internalMutation({
   args: { coachEmail: v.string(), memberEmail: v.string() },
   handler: async (ctx, args) => {
@@ -101,7 +107,7 @@ export const hzSetup = internalMutation({
 });
 
 export const hzCleanup = internalMutation({
-  args: { emails: v.array(v.string()), callId: v.optional(v.id("b2cCoachingCalls")), jobId: v.optional(v.id("b2cPublicJobs")) },
+  args: { emails: v.array(v.string()), callId: v.optional(v.id("b2cCoachingCalls")), jobId: v.optional(v.id("b2cPublicJobs")), snapshotsSince: v.optional(v.number()) },
   handler: async (ctx, args) => {
     let deleted = 0;
     for (const email of args.emails) {
@@ -146,6 +152,11 @@ export const hzCleanup = internalMutation({
     if (args.jobId && (await ctx.db.get(args.jobId))) { await ctx.db.delete(args.jobId); deleted++; }
     for (const a of await ctx.db.query("adminAlerts").withIndex("by_kind", (q) => q.eq("kind", "weekly_roles")).collect()) {
       await ctx.db.delete(a._id); deleted++;
+    }
+    if (args.snapshotsSince !== undefined) {
+      for (const s of await ctx.db.query("b2cWeeklyRolesSnapshots").withIndex("by_computed", (q) => q.gte("computedAt", args.snapshotsSince!)).collect()) {
+        await ctx.db.delete(s._id); deleted++;
+      }
     }
     return { deleted };
   },
@@ -246,9 +257,14 @@ export const runAll = internalAction({
 
       // --- A. weekly roles ---------------------------------------------------
       const dry = await ctx.runAction(internal.b2cWeeklyRoles.announceWeeklyRoles, { dryRun: true });
-      ok("weekly roles: dry run counts the fixture role + audience", dry.roles.count >= 1 && dry.audience >= 1 && !dry.skipped, JSON.stringify({ count: dry.roles.count, audience: dry.audience, skipped: dry.skipped }));
+      ok("weekly roles: dry run counts the fixture role + audience", dry.curated.count >= 1 && dry.audience >= 1 && !dry.skipped, JSON.stringify({ count: dry.curated.count, audience: dry.audience, skipped: dry.skipped }));
+      ok("weekly roles: live feed totals fetched and folded into the headline",
+        !!dry.feed && dry.feed.total > 0 && dry.headline === dry.curated.count + dry.feed.total && dry.preview.includes(`${dry.headline} new sales roles`),
+        JSON.stringify({ feed: dry.feed, feedError: dry.feedError, headline: dry.headline }));
       const real = await ctx.runAction(internal.b2cWeeklyRoles.announceWeeklyRoles, { dryRun: false });
       ok("weekly roles: real run posts in-app + emails (dry-run logged)", real.inApp >= 1 && real.emailed >= 1, JSON.stringify({ inApp: real.inApp, emailed: real.emailed, skipped: real.skipped }));
+      const snap = await ctx.runQuery(internal.b2cAdoptionHarness.hzLatestSnapshot, {});
+      ok("weekly roles: snapshot recorded for the dashboard tile", !!snap && snap.sent === true && snap.feedTotal === real.feed?.total, JSON.stringify({ snap }));
       const again = await ctx.runAction(internal.b2cWeeklyRoles.announceWeeklyRoles, { dryRun: false });
       ok("weekly roles: re-run blocked by the 5-day slot", again.skipped?.includes("already") === true, JSON.stringify({ skipped: again.skipped }));
 
@@ -269,7 +285,7 @@ export const runAll = internalAction({
       ok("harness threw", false, error instanceof Error ? error.message : String(error));
     } finally {
       const emails = [memberEmail, coachEmail];
-      const cleaned = await ctx.runMutation(internal.b2cAdoptionHarness.hzCleanup, { emails, callId, jobId });
+      const cleaned = await ctx.runMutation(internal.b2cAdoptionHarness.hzCleanup, { emails, callId, jobId, snapshotsSince: now });
       ok("cleanup", true, `${cleaned.deleted} rows deleted`);
     }
     return { allPass: checks.every((c) => c.pass), checks };

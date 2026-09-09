@@ -52,12 +52,25 @@ export const getThisWeek = query({
       .collect();
     const byIndustry = new Map<string, number>();
     for (const j of jobs) byIndustry.set(j.industry, (byIndustry.get(j.industry) ?? 0) + 1);
+    // The live feed's weekly total comes from the latest Monday-note snapshot
+    // (b2cWeeklyRoles), so the tile shows the same headline as the note.
+    const snapshot = await ctx.db
+      .query("b2cWeeklyRolesSnapshots")
+      .withIndex("by_computed")
+      .order("desc")
+      .first();
+    const feedTotal =
+      snapshot && snapshot.feedTotal !== undefined && now - snapshot.computedAt < 8 * DAY
+        ? snapshot.feedTotal
+        : undefined;
     const rolesThisWeek = {
       count: jobs.length,
       topIndustries: [...byIndustry.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
         .map(([name]) => name),
+      feedTotal,
+      total: jobs.length + (feedTotal ?? 0),
     };
 
     // Members online now (presence rule), excluding self and test accounts.

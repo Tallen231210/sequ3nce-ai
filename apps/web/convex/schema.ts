@@ -2835,6 +2835,25 @@ export default defineSchema({
   // B2C PUBLIC JOB BOARD — curated external jobs
   // ============================================
 
+  // Weekly roles note (2026-09-09): one row per run of
+  // b2cWeeklyRoles.announceWeeklyRoles — the curated count plus the live
+  // feed's 7-day totals by lane. The dashboard's "New roles this week" tile
+  // reads the latest row so it shows the same headline number as the note.
+  b2cWeeklyRolesSnapshots: defineTable({
+    computedAt: v.number(),
+    curatedCount: v.number(),
+    curatedTopIndustries: v.array(v.string()),
+    feedTotal: v.optional(v.number()),        // undefined = feed unreachable that run
+    feedLanes: v.optional(v.object({
+      closer: v.number(),
+      accountExecutive: v.number(),
+      leadership: v.number(),
+      remote: v.number(),
+    })),
+    feedError: v.optional(v.string()),
+    sent: v.boolean(),                        // false for dry runs
+  }).index("by_computed", ["computedAt"]),
+
   // Jobs curated by founders from LinkedIn/Indeed/etc.
   b2cPublicJobs: defineTable({
     companyName: v.string(),

@@ -53,13 +53,15 @@ export function ThisWeekCard({ data, loading, onNavigate, onOpenCoachingCall }: 
         <Tile
           testId="this-week-roles"
           label="New roles this week"
-          value={pending ? '…' : roles ? String(roles.count) : '—'}
+          value={pending ? '…' : roles ? String(roles.total ?? roles.count) : '—'}
           sub={
             pending
               ? ''
-              : roles && roles.count > 0
-                ? roles.topIndustries.join(', ')
-                : 'Fresh roles land every Monday'
+              : roles && roles.feedTotal !== undefined && (roles.total ?? 0) > 0
+                ? `${roles.count} hand-picked + ${roles.feedTotal} live feed`
+                : roles && roles.count > 0
+                  ? roles.topIndustries.join(', ')
+                  : 'Fresh roles land every Monday'
           }
           cta="Job Board"
           onClick={() => onNavigate('jobboard')}

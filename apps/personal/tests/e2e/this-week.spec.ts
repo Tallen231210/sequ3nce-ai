@@ -46,6 +46,22 @@ test.describe('Dashboard "This week" card', () => {
     await expect(page.getByTestId('this-week-post')).toContainText('General');
   });
 
+  test('once the Monday note has run, the roles tile shows the combined headline number', async ({ page }) => {
+    await stub({
+      nextCoachingCall: null,
+      rolesThisWeek: { count: 78, topIndustries: ['Coaching', 'SaaS', 'Agency'], feedTotal: 321, total: 399 },
+      onlineCount: 0,
+      latestPosts: [],
+    })(page);
+    await resetToAuthenticated(page);
+    await dismissModals(page);
+
+    const roles = page.getByTestId('this-week-roles');
+    await expect(roles).toBeVisible({ timeout: 30_000 });
+    await expect(roles).toContainText('399');
+    await expect(roles).toContainText('78 hand-picked + 321 live feed');
+  });
+
   test('a live call reads "Happening now" with a Join call-to-action', async ({ page }) => {
     await stub({
       nextCoachingCall: { ...NEXT_CALL, status: 'live', scheduledStartTime: Date.now() - 5 * 60_000 },
