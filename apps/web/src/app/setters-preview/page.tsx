@@ -3,14 +3,21 @@
 // Dev-only preview of the Setters page on fictional data — the localhost
 // review surface. 404 in production, like st-preview.
 
+import { useState } from "react";
 import { notFound } from "next/navigation";
 import { SettersView } from "../dashboard/setters/components/SettersView";
+import { SettingsDrawer } from "../dashboard/setters/components/SettingsDrawer";
 import { ACTIVITY, BOOKINGS, SETS } from "./fixture";
 
 export default function SettersPreviewPage() {
+  const [settings, setSettings] = useState(false);
   if (process.env.NODE_ENV === "production") notFound();
   return (
     <div className="mx-auto max-w-6xl space-y-5 px-6 py-8">
+      <button type="button" onClick={() => setSettings(true)} className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm">
+        Settings (drawer shell only — its lists need a live login)
+      </button>
+      <SettingsDrawer clerkId="preview" open={settings} onClose={() => setSettings(false)} />
       <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
         Preview · fictional team, fictional people · the drawer's Speed and EOD tabs need a live backend and stay empty here.
       </div>

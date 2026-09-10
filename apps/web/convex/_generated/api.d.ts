@@ -233,6 +233,7 @@ import type * as setterApp from "../setterApp.js";
 import type * as setterAttendance from "../setterAttendance.js";
 import type * as setterAuth from "../setterAuth.js";
 import type * as setterAvailability from "../setterAvailability.js";
+import type * as setterBookingEod from "../setterBookingEod.js";
 import type * as setterCallMatching from "../setterCallMatching.js";
 import type * as setterCallTranscriptsMutations from "../setterCallTranscriptsMutations.js";
 import type * as setterCloseClient from "../setterCloseClient.js";
@@ -541,6 +542,7 @@ declare const fullApi: ApiFromModules<{
   setterAttendance: typeof setterAttendance;
   setterAuth: typeof setterAuth;
   setterAvailability: typeof setterAvailability;
+  setterBookingEod: typeof setterBookingEod;
   setterCallMatching: typeof setterCallMatching;
   setterCallTranscriptsMutations: typeof setterCallTranscriptsMutations;
   setterCloseClient: typeof setterCloseClient;

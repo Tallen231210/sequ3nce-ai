@@ -11,6 +11,7 @@ import { RosterIdentityInputs } from "./RosterIdentityInputs";
 import { DataHealthCard } from "./DataHealthCard";
 import { ScorecardSection } from "./ScorecardSection";
 import { Header } from "@/components/dashboard/header";
+import { RequiresNoFlag } from "@/components/dashboard/requires-no-flag";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -22,7 +23,7 @@ import { Header } from "@/components/dashboard/header";
 // follow ups), team-agnostic on purpose.
 // ============================================================================
 
-export default function SetterEodsPage() {
+function SetterEodsPageInner() {
   const { user } = useUser();
   const clerkId = user?.id;
 
@@ -344,5 +345,14 @@ function CopyLink({ token }: { token: string }) {
         </>
       )}
     </button>
+  );
+}
+
+/** Teams on the Setters page are sent there; everyone else gets this page unchanged. */
+export default function SetterEodsPage() {
+  return (
+    <RequiresNoFlag flag="setter_teams" to="/dashboard/setters">
+      <SetterEodsPageInner />
+    </RequiresNoFlag>
   );
 }

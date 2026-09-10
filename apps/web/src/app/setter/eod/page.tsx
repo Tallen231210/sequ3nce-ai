@@ -40,6 +40,9 @@ export default function SetterEodPage() {
   const submit = useMutation(api.setterApp.submitEod);
   const fields = home.eodFields;
   const isConfirmation = home.role === "confirmation";
+  // Any role whose field list carries prefilled boxes gets the measured
+  // day; which query answers depends on the role.
+  const hasPrefill = fields.some((f) => f.measured);
 
   const [dayKey, setDayKey] = useState(home.today);
   const isToday = dayKey === home.today;
@@ -49,7 +52,9 @@ export default function SetterEodPage() {
   const dayLoading = !isToday && past === undefined;
   const dayAllowed = isToday || past?.allowed !== false;
   // The confirmation setter's measured day — the prefill and the drift check.
-  const measured = useQuery(api.setterConfirmationEod.getMeasuredForDay, isConfirmation && dayAllowed ? { sessionToken, dayKey } : "skip");
+  const measuredConfirmation = useQuery(api.setterConfirmationEod.getMeasuredForDay, hasPrefill && isConfirmation && dayAllowed ? { sessionToken, dayKey } : "skip");
+  const measuredBooking = useQuery(api.setterBookingEod.getMeasuredForDay, hasPrefill && !isConfirmation && dayAllowed ? { sessionToken, dayKey } : "skip");
+  const measured = isConfirmation ? measuredConfirmation : measuredBooking;
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
@@ -78,7 +83,7 @@ export default function SetterEodPage() {
     // Wait for the day's entry to settle first: the entry seed resets the
     // boxes, and a measured seed that lands before it would be wiped and
     // never retried.
-    if (dayLoading || !isConfirmation || entry || !measured?.measuredExists || measuredSeededFor === dayKey) return;
+    if (dayLoading || !hasPrefill || entry || !measured?.measuredExists || measuredSeededFor === dayKey) return;
     setMeasuredSeededFor(dayKey);
     setValues((v) => {
       const next = { ...v };
@@ -89,13 +94,13 @@ export default function SetterEodPage() {
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfirmation, dayKey, dayLoading, entry?.submittedAt, measured?.measuredExists]);
+  }, [hasPrefill, dayKey, dayLoading, entry?.submittedAt, measured?.measuredExists]);
   useEffect(() => {
     setError(null);
     setSaved(null);
   }, [dayKey]);
 
-  const drift: Drift[] = !isConfirmation || !measured?.measuredExists
+  const drift: Drift[] = !hasPrefill || !measured?.measuredExists
     ? []
     : fields.flatMap((f) => {
         const raw = (values[f.key] ?? "").trim();
@@ -174,9 +179,10 @@ export default function SetterEodPage() {
         </div>
 
         <form onSubmit={onSubmit} className="space-y-3">
-          {isConfirmation && measured !== null && (
+          {hasPrefill && measured !== null && (
             <MeasuredPrefill
               loading={dayAllowed && measured === undefined}
+              confirmation={isConfirmation}
               exists={!!measured?.measuredExists}
               linked={measured?.linked ?? true}
               partial={(measured?.truncated.length ?? 0) > 0}
@@ -189,7 +195,7 @@ export default function SetterEodPage() {
               <label key={f.key} className="block">
                 <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                   {f.label}
-                  {f.measured && <span className="ml-1 text-[10px] font-normal text-neutral-400">· prefilled</span>}
+                  {f.measured && measured?.measuredExists && <span className="ml-1 text-[10px] font-normal text-neutral-400">· prefilled</span>}
                 </span>
                 {f.hint && <span className="-mt-0.5 mb-1 block text-[10px] leading-tight text-neutral-400">{f.hint}</span>}
                 <input

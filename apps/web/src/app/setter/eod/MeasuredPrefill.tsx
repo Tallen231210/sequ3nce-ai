@@ -21,8 +21,11 @@ export function MeasuredPrefill({
   partial,
   drift,
   onUse,
+  confirmation = true,
 }: {
   loading: boolean;
+  /** Which form this is: the unlinked wording differs. */
+  confirmation?: boolean;
   exists: boolean;
   linked: boolean;
   partial: boolean;
@@ -32,11 +35,19 @@ export function MeasuredPrefill({
   if (loading) {
     return <p className="text-[12px] text-neutral-400">Reading the calendar and Close for that day…</p>;
   }
-  if (!linked) {
+  if (!linked && confirmation) {
     return (
       <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
         Your CRM user isn&apos;t linked to your roster row yet, so nothing can be prefilled. Ask your manager to link
         it on the Setter EODs tab.
+      </p>
+    );
+  }
+  if (!linked && !exists) {
+    return (
+      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+        Your Close user isn&apos;t linked to your roster row yet, so dials and pick ups can&apos;t be prefilled. Ask your
+        manager to link it.
       </p>
     );
   }

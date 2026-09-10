@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
+import { RequiresNoFlag } from "@/components/dashboard/requires-no-flag";
 import { useTeam } from "@/hooks/useTeam";
 import { ConnectionGate } from "./components/ConnectionGate";
 import { BackfillBanner } from "./components/BackfillBanner";
@@ -32,7 +33,7 @@ function isTabId(value: string | null): value is TabId {
   return TABS.includes(value as TabId);
 }
 
-function SetterDataPageInner() {
+function SetterDataPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { clerkId, team } = useTeam();
@@ -269,7 +270,7 @@ function ConnectionRedirectFlash() {
   return null;
 }
 
-export default function SetterDataPage() {
+function SetterDataPageInner() {
   return (
     <Suspense
       fallback={
@@ -281,7 +282,16 @@ export default function SetterDataPage() {
         </>
       }
     >
-      <SetterDataPageInner />
+      <SetterDataPageContent />
     </Suspense>
+  );
+}
+
+/** Teams on the Setters page are sent there; everyone else gets this page unchanged. */
+export default function SetterDataPage() {
+  return (
+    <RequiresNoFlag flag="setter_teams" to="/dashboard/setters">
+      <SetterDataPageInner />
+    </RequiresNoFlag>
   );
 }

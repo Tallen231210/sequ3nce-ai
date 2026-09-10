@@ -4,6 +4,7 @@
 // session returns null/throws; the client redirects to login.
 // ============================================================================
 
+import { teamHasSetterTeams } from "./setterTeamQueries";
 import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
@@ -95,12 +96,16 @@ export const getSetterHome = query({
     }
 
     const shape = shapeForRole(me.role);
+    // Prefills exist only on teams with the setter_teams flag; everyone else
+    // gets the plain field list so the form never claims "prefilled".
+    const prefills = teamHasSetterTeams(team);
+    const eodFields = fieldsForShape(shape).map((f) => (prefills ? f : { ...f, measured: undefined }));
     return {
       name: me.name,
       pod: me.pod ?? null,
       role: shape,
       /** The fields this person's form shows — the server decides. */
-      eodFields: fieldsForShape(shape),
+      eodFields,
       teamName: (team as any)?.name ?? "your team",
       today,
       filedToday: !!entry,
