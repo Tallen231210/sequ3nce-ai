@@ -162,3 +162,43 @@ export const colourVsLobby = internalQuery({
     return { finished: finished.length, rows, samples };
   },
 });
+
+/**
+ * The closers' own log in Close: each synced meeting carries a status
+ * (upcoming / completed / canceled / no-show…). Cross it with the page's
+ * verdict for the same booking, matched by lead and start time.
+ *   … npx convex run botOutcomeProbe:closeMeetingVsVerdict '{"teamId":"…","startMs":…,"endMs":…}' --prod
+ */
+export const closeMeetingVsVerdict = internalQuery({
+  args: { teamId: v.id("teams"), startMs: v.number(), endMs: v.number() },
+  handler: async (ctx, args) => {
+    const nowMs = Date.now();
+    const data = await collectTeamBookings(ctx, args.teamId, args.startMs, args.endMs, nowMs);
+    const finished = data.records.filter((r) => !r.isFollowUp && r.verdict.due);
+    const meetings = await ctx.db
+      .query("setterLeadEvents")
+      .withIndex("by_team_and_type_and_time", (q) => q.eq("teamId", args.teamId).eq("eventType", "appointment_booked").gte("occurredAt", args.startMs - 7 * DAY_MS).lt("occurredAt", args.endMs + 7 * DAY_MS))
+      .take(5_000);
+    const byLead = new Map<string, Array<{ startTime: number; status: string }>>();
+    let statusAll: Record<string, number> = {};
+    for (const m of meetings) {
+      const d = m.details as { startTime?: number; status?: string } | undefined;
+      const st = d?.status ?? "(none)";
+      statusAll[st] = (statusAll[st] ?? 0) + 1;
+      if (typeof d?.startTime !== "number") continue;
+      byLead.set(m.ghlContactId, [...(byLead.get(m.ghlContactId) ?? []), { startTime: d.startTime, status: st }]);
+    }
+    const matrix: Record<string, Record<string, number>> = {};
+    let matched = 0;
+    for (const r of finished) {
+      if (!r.leadContactId) continue;
+      const m = (byLead.get(r.leadContactId) ?? []).find((x) => Math.abs(x.startTime - r.startTime) < 2 * 60 * 60 * 1000);
+      if (!m) continue;
+      matched += 1;
+      const v = r.verdict.result + (r.verdict.source ? ` (${r.verdict.source})` : "");
+      (matrix[m.status] ??= {})[v] = (matrix[m.status][v] ?? 0) + 1;
+    }
+    const rows = Object.entries(matrix).map(([closeStatus, verdicts]) => ({ closeStatus, total: Object.values(verdicts).reduce((a, b) => a + b, 0), verdicts: Object.entries(verdicts).map(([verdict, count]) => ({ verdict, count })).sort((a, b) => b.count - a.count) })).sort((a, b) => b.total - a.total);
+    return { finished: finished.length, withLead: finished.filter((r) => r.leadContactId).length, matchedToACloseMeeting: matched, closeStatusesInWindow: Object.entries(statusAll).map(([key, count]) => ({ key, count })), rows };
+  },
+});
