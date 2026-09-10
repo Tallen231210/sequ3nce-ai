@@ -14,65 +14,18 @@
 
 import { v } from "convex/values";
 import { query } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { addDaysKey } from "./dataHealthCore";
 import { resolveSetterSessionCtx } from "./setterAuth";
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
-import { collectTeamBookings, type BookingRecord } from "./setterTeamBookings";
+import { DAY_COHORT_TAKE, isHers, loadCohortRecords, measureConfirmationDay, type ConfirmationMeasured } from "./setterEodMeasured";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 
 /** Days back a day can still be measured — the filing window with room to spare. */
 const MEASURE_LOOKBACK_DAYS = 30;
-/** Calendar rows read per cohort; a team booking more than this in one day is beyond one form. */
-const COHORT_TAKE = 1_500;
 
-export interface ConfirmationMeasured {
-  newSelfBooked: number;
-  /** Null until her Close user is linked to the roster row — there is nothing to measure from. */
-  contacted: number | null;
-  reached: number | null;
-  confirmedOnCalendar: number | null;
-  confirmedShowed: number | null;
-}
-
-function herTouches(r: BookingRecord, rosterId: string) {
-  return r.touches.filter((t) => t.rosterId === rosterId && t.afterBooking);
-}
-
-/** Her cohort: funnel self-books that no outbound or DM setter owns. */
-export function isHers(r: BookingRecord): boolean {
-  const lane = r.classification.lane;
-  return r.classification.isFunnel && lane !== "outbound" && lane !== "dm" && !r.isFollowUp;
-}
-
-function contactedBy(r: BookingRecord, rosterId: string): boolean {
-  return (
-    herTouches(r, rosterId).length > 0 ||
-    (r.classification.attributedBy === "tag" && r.classification.creditRosterIds.includes(rosterId))
-  );
-}
-
-export function measureConfirmationDay(
-  records: BookingRecord[],
-  rosterId: string,
-  dayKey: string,
-  linked: boolean,
-): ConfirmationMeasured {
-  const mine = records.filter(isHers);
-  const bookedToday = mine.filter((r) => r.bookedDayKey === dayKey);
-  if (!linked) {
-    return { newSelfBooked: bookedToday.length, contacted: null, reached: null, confirmedOnCalendar: null, confirmedShowed: null };
-  }
-  const scheduledToday = mine.filter((r) => r.dayKey === dayKey && contactedBy(r, rosterId));
-  return {
-    newSelfBooked: bookedToday.length,
-    contacted: bookedToday.filter((r) => contactedBy(r, rosterId)).length,
-    reached: bookedToday.filter((r) => herTouches(r, rosterId).some((t) => t.reached)).length,
-    confirmedOnCalendar: scheduledToday.length,
-    confirmedShowed: scheduledToday.filter((r) => r.verdict.result === "showed").length,
-  };
-}
+export type { ConfirmationMeasured };
 
 /**
  * The measured numbers for one of the confirmation setter's days. Null for
@@ -94,30 +47,13 @@ export const getMeasuredForDay = query({
     if (args.dayKey > todayKey || args.dayKey < addDaysKey(todayKey, -MEASURE_LOOKBACK_DAYS)) return null;
 
     const { startMs: dayStart, endMs: dayEnd } = getLocalDateRangeUtc(args.dayKey, tz);
-    const [booked, starting] = await Promise.all([
-      ctx.db
-        .query("calendarEvents")
-        .withIndex("by_team_and_booked_at", (q) => q.eq("teamId", teamId).gte("bookedAt", dayStart).lt("bookedAt", dayEnd))
-        .take(COHORT_TAKE),
-      ctx.db
-        .query("calendarEvents")
-        .withIndex("by_team_and_time", (q) => q.eq("teamId", teamId).gte("startTime", dayStart).lt("startTime", dayEnd))
-        .take(COHORT_TAKE),
-    ]);
-    const truncated: string[] = [];
-    if (booked.length >= COHORT_TAKE || starting.length >= COHORT_TAKE) truncated.push("cohort");
-    const byId = new Map<string, Doc<"calendarEvents">>();
-    for (const e of [...booked, ...starting]) byId.set(String(e._id), e);
-    const eventRows = Array.from(byId.values());
-    const rangeStart = Math.min(dayStart, ...eventRows.map((e) => e.startTime));
-    const rangeEnd = Math.max(dayEnd, ...eventRows.map((e) => e.startTime + 1));
-    const data = await collectTeamBookings(ctx, teamId, rangeStart, rangeEnd, nowMs, { eventRows });
+    const data = await loadCohortRecords(ctx, teamId, dayStart, dayEnd, nowMs, DAY_COHORT_TAKE);
     const linked = !!me.crmUserId;
     return {
       dayKey: args.dayKey,
       measured: measureConfirmationDay(data.records, String(me.rosterId), args.dayKey, linked),
       measuredExists: data.records.some(isHers),
-      truncated: [...truncated, ...data.truncated],
+      truncated: data.truncated,
       linked,
     };
   },

@@ -266,29 +266,6 @@ async function rosterForAccess(ctx: Parameters<typeof collectTeamBookings>[0], a
   return row && row.teamId === access.teamId ? row : null;
 }
 
-/** One setter's days: filed EOD numbers beside what Close measured, per team-local day. */
-export const getSetterDrawer = query({
-  args: { ...RANGE_ARGS, rosterId: v.string() },
-  handler: async (ctx, args) => {
-    const access = await resolveSettersPageAccess(ctx, args.clerkId, args.rangeStart, args.rangeEnd);
-    if (!access) return null;
-    const roster = await rosterForAccess(ctx, access, args.rosterId);
-    if (!roster) return null;
-    const { teamId, startMs, endMs, timezone } = access;
-    const measured = roster.crmUserId ? await loadUserDays(ctx, teamId, roster.crmUserId, startMs, endMs, timezone, access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC) : null;
-    const rows: Array<{ dayKey: string; filed: Doc<"setterEodEntries"> | null; measured: { dials: number; answered: number; texts: number } | null }> = [];
-    const lastKey = dayKeyInTz(endMs - 1, timezone);
-    for (let key = dayKeyInTz(startMs, timezone); key <= lastKey; key = addDaysKey(key, 1)) {
-      const filed = await ctx.db
-        .query("setterEodEntries")
-        .withIndex("by_roster_and_day", (q) => q.eq("rosterId", roster._id).eq("dayKey", key))
-        .first();
-      rows.push({ dayKey: key, filed, measured: measured ? measured.byDay.get(key) ?? { dials: 0, answered: 0, texts: 0 } : null });
-    }
-    return { rosterId: args.rosterId, name: roster.name, role: roster.role ?? "booking", linked: !!roster.crmUserId, rows, truncated: measured?.truncated ? ["events"] : [] };
-  },
-});
-
 /** One setter's speed to lead, per lead, grouped by arrival day. */
 export const getSpeedByDay = query({
   args: { ...RANGE_ARGS, rosterId: v.string(), slowestFirst: v.optional(v.boolean()) },

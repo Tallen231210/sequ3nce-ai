@@ -14,6 +14,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { addDaysKey, weekStartKeyFor } from "./dataHealthCore";
 import { buildDataHealthDiscordEmbed, buildDataHealthSlackBlocks, dataHealthFallbackText } from "./dataHealthPost";
+import type { CrossCheckRange } from "./setterEodCrossCheck";
 import type { DataHealthWeek } from "./dataHealthQueries";
 import { withDiscordTestLabel, withSlackTestLabel } from "./lib/testLabel";
 import { formatInTimeZone } from "./setterDataNotifications";
@@ -59,14 +60,15 @@ async function maybeSend(
   });
   if (!data) return { sent: false, reason: "team not found" };
   if (data.bookings === 0 && !opts?.force) return { sent: false, reason: "no sales bookings that week" };
+  const checks: CrossCheckRange | null = await ctx.runQuery(internal.setterEodCrossCheck.getEodCrossCheckForWeek, { teamId: team._id, weekStartKey });
 
   const isTest = opts?.dedupSuffix?.includes("_test") === true;
-  const blocks = buildDataHealthSlackBlocks(data);
-  const embed = buildDataHealthDiscordEmbed(data);
+  const blocks = buildDataHealthSlackBlocks(data, checks);
+  const embed = buildDataHealthDiscordEmbed(data, checks);
   const delivered = await deliver(
     team,
     team.setterEodScorecardSlackChannelId,
-    dataHealthFallbackText(data),
+    dataHealthFallbackText(data, checks),
     isTest ? withSlackTestLabel(blocks) : blocks,
     isTest ? withDiscordTestLabel(embed) : embed,
   );
@@ -137,7 +139,8 @@ export const preview = internalAction({
     const weekStartKey = args.weekStartKey ?? addDaysKey(weekStartKeyFor(dayKeyInTz(Date.now(), tz)), -7);
     const data = await ctx.runQuery(internal.dataHealthQueries.getDataHealthForPost, { teamId: team._id, weekStartKey });
     if (!data) return { error: "no data" };
-    return { weekStartKey, text: dataHealthFallbackText(data), blocks: buildDataHealthSlackBlocks(data), data };
+    const checks: CrossCheckRange | null = await ctx.runQuery(internal.setterEodCrossCheck.getEodCrossCheckForWeek, { teamId: team._id, weekStartKey });
+    return { weekStartKey, text: dataHealthFallbackText(data, checks), blocks: buildDataHealthSlackBlocks(data, checks), data, checks };
   },
 });
 

@@ -1,7 +1,8 @@
 // Fictional team, fictional people. Typed against the real query returns so
 // the preview breaks the moment a shape drifts.
 
-import type { ActivityData, BookingsData, CadenceData, SetsData, SpeedData } from "../dashboard/setters/lib/cards";
+import type { ActivityData, BookingsData, CadenceData, CrossCheckData, SetsData, SpeedData } from "../dashboard/setters/lib/cards";
+import { crossCheckDay, DEFAULT_TOLERANCES, type FiledDay, type MeasuredDay } from "../../../convex/lib/eodCrossCheck";
 
 const H = 60 * 60 * 1000;
 const D = 24 * H;
@@ -160,5 +161,69 @@ export const ACTIVITY: ActivityData = {
   coverage: [
     "1,410 dials in the range carry no Close user and aren't credited to anyone.",
     "81 dials in the range were made by Close users who aren't on the setter roster (closers, admins, people who left).",
+  ],
+};
+
+// ----------------------------------------------------------------------------
+// The EOD cross-check: a week of days per setter, flags computed by the real
+// rule so the preview shows exactly what production would.
+// ----------------------------------------------------------------------------
+
+const dayKey = (daysAgo: number) => new Date(NOW - daysAgo * D).toISOString().slice(0, 10);
+const noMeasure: MeasuredDay = {
+  dials: null, pickUps: null, sets: null, callsOnCalendar: null, callsShown: null, callsUnknown: null,
+  newSelfBooked: null, contacted: null, reached: null, confirmedOnCalendar: null, confirmedShowed: null, confirmedUnknown: null,
+};
+const day = (daysAgo: number, filed: FiledDay | null, measured: Partial<MeasuredDay>, due = true): CrossCheckData["byRoster"][number]["days"][number] => {
+  const m = { ...noMeasure, ...measured };
+  return { dayKey: dayKey(daysAgo), due, filed, measured: m, flags: filed ? crossCheckDay(filed, m, DEFAULT_TOLERANCES) : [] };
+};
+const roster = (rosterId: string, name: string, role: "booking" | "confirmation", linked: boolean, days: CrossCheckData["byRoster"][number]["days"]): CrossCheckData["byRoster"][number] => {
+  const filedDays = days.filter((d) => d.filed !== null);
+  return {
+    rosterId, name, role, linked, active: true,
+    daysDue: days.filter((d) => d.due).length,
+    daysFiled: filedDays.length,
+    daysFlagged: filedDays.filter((d) => d.flags.length > 0).length,
+    flagCount: filedDays.reduce((n, d) => n + d.flags.length, 0),
+    days,
+  };
+};
+
+export const CHECKS: CrossCheckData = {
+  startKey: dayKey(7),
+  endKey: dayKey(0),
+  timezone: "America/New_York",
+  tolerances: DEFAULT_TOLERANCES,
+  connectSec: 60,
+  truncated: [],
+  byRoster: [
+    roster("r-ezra", "Ezra", "booking", true, [
+      day(6, { dials: 180, pickUps: 14, sets: 6, callsOnCalendar: 5, callsShown: 4 }, { dials: 176, pickUps: 13, sets: 6, callsOnCalendar: 5, callsShown: 3, callsUnknown: 1 }),
+      day(5, { dials: 210, pickUps: 30, sets: 7, callsOnCalendar: 6, callsShown: 5 }, { dials: 168, pickUps: 12, sets: 4, callsOnCalendar: 6, callsShown: 5, callsUnknown: 0 }),
+      day(4, { dials: 165, pickUps: 15, sets: 4, callsOnCalendar: 7, callsShown: 4 }, { dials: 171, pickUps: 16, sets: 5, callsOnCalendar: 7, callsShown: 4, callsUnknown: 2 }),
+      day(3, null, { dials: 190, pickUps: 18, sets: 6, callsOnCalendar: 4, callsShown: 2, callsUnknown: 1 }),
+      day(2, { dials: 200, pickUps: 20, sets: 5, callsOnCalendar: 6, callsShown: 6 }, { dials: 198, pickUps: 19, sets: 5, callsOnCalendar: 6, callsShown: 2, callsUnknown: 1 }),
+      day(1, { dials: 195, pickUps: 19, sets: 7, callsOnCalendar: 10, callsShown: 7 }, { dials: 193, pickUps: 20, sets: 7, callsOnCalendar: 10, callsShown: 6, callsUnknown: 3 }),
+      day(0, null, { dials: 61, pickUps: 4, sets: 1, callsOnCalendar: 0, callsShown: 0, callsUnknown: 0 }, false),
+    ]),
+    roster("r-ivan", "Ivan", "booking", true, [
+      day(6, { dials: 320, pickUps: 18, sets: 3, callsOnCalendar: 3, callsShown: 1 }, { dials: 327, pickUps: 14, sets: 3, callsOnCalendar: 3, callsShown: 1, callsUnknown: 0 }),
+      day(5, { dials: 330, pickUps: 19, sets: 2, callsOnCalendar: 2, callsShown: 1 }, { dials: 329, pickUps: 15, sets: 2, callsOnCalendar: 2, callsShown: 1, callsUnknown: 0 }),
+      day(4, { dials: 310, pickUps: 17, sets: 3, callsOnCalendar: 4, callsShown: 2 }, { dials: 315, pickUps: 14, sets: 3, callsOnCalendar: 4, callsShown: 2, callsUnknown: 0 }),
+      day(3, { dials: 340, pickUps: 20, sets: 2, callsOnCalendar: 2, callsShown: 0 }, { dials: 336, pickUps: 16, sets: 2, callsOnCalendar: 2, callsShown: 0, callsUnknown: 1 }),
+      day(2, { dials: 304, pickUps: 18, sets: 3, callsOnCalendar: 2, callsShown: 1 }, { dials: 328, pickUps: 12, sets: 3, callsOnCalendar: 2, callsShown: 1, callsUnknown: 0 }),
+      day(1, null, { dials: 0, pickUps: 0, sets: 0, callsOnCalendar: 0, callsShown: 0, callsUnknown: 0 }, false),
+      day(0, null, { dials: 120, pickUps: 6, sets: 1, callsOnCalendar: 1, callsShown: 0, callsUnknown: 1 }, false),
+    ]),
+    roster("r-sasha", "Sasha", "confirmation", true, [
+      day(6, { newSelfBooked: 20, contacted: 17, reached: 5, confirmedOnCalendar: 13, confirmedShowed: 6 }, { newSelfBooked: 19, contacted: 16, reached: 5, confirmedOnCalendar: 13, confirmedShowed: 5, confirmedUnknown: 3 }),
+      day(5, { newSelfBooked: 18, contacted: 18, reached: 4, confirmedOnCalendar: 12, confirmedShowed: 6 }, { newSelfBooked: 18, contacted: 13, reached: 4, confirmedOnCalendar: 12, confirmedShowed: 6, confirmedUnknown: 1 }),
+      day(4, { newSelfBooked: 21, contacted: 16, reached: 5, confirmedOnCalendar: 14, confirmedShowed: 7 }, { newSelfBooked: 21, contacted: 16, reached: 5, confirmedOnCalendar: 14, confirmedShowed: 7, confirmedUnknown: 2 }),
+      day(3, { newSelfBooked: 17, contacted: 15, reached: 4, confirmedOnCalendar: 11, confirmedShowed: 5 }, { newSelfBooked: 17, contacted: 15, reached: 4, confirmedOnCalendar: 11, confirmedShowed: 5, confirmedUnknown: 0 }),
+      day(2, { newSelfBooked: 19, contacted: 14, reached: 4, confirmedOnCalendar: 14, confirmedShowed: 6 }, { newSelfBooked: 20, contacted: 15, reached: 4, confirmedOnCalendar: 14, confirmedShowed: 6, confirmedUnknown: 4 }),
+      day(1, null, { newSelfBooked: 0, contacted: 0, reached: 0, confirmedOnCalendar: 0, confirmedShowed: 0, confirmedUnknown: 0 }, false),
+      day(0, null, { newSelfBooked: 9, contacted: 6, reached: 2, confirmedOnCalendar: 5, confirmedShowed: 1, confirmedUnknown: 4 }, false),
+    ]),
   ],
 };

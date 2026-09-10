@@ -9,41 +9,19 @@
 
 import { v } from "convex/values";
 import { query } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { addDaysKey } from "./dataHealthCore";
 import { resolveSetterSessionCtx } from "./setterAuth";
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
-import { collectTeamBookings, type BookingRecord } from "./setterTeamBookings";
+import { DAY_COHORT_TAKE, isTheirBooking, loadCohortRecords, measureBookingDay, type BookingMeasured } from "./setterEodMeasured";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 import { DEFAULT_CONNECT_SEC, dialConnected } from "./lib/dialAnswered";
 
 const MEASURE_LOOKBACK_DAYS = 30;
-const COHORT_TAKE = 1_500;
 const EVENTS_TAKE = 3_000;
 
-export interface BookingMeasured {
-  sets: number;
-  callsOnCalendar: number;
-  callsShown: number;
-  /** Null until their Close user is linked to the roster row. */
-  dials: number | null;
-  pickUps: number | null;
-}
-
-function mine(r: BookingRecord, rosterId: string): boolean {
-  return !r.isFollowUp && r.classification.lane === "outbound" && r.classification.creditRosterIds.includes(rosterId);
-}
-
-export function measureBookingDay(records: BookingRecord[], rosterId: string, dayKey: string): Omit<BookingMeasured, "dials" | "pickUps"> {
-  const setsToday = records.filter((r) => mine(r, rosterId) && r.bookedDayKey === dayKey);
-  const callsToday = records.filter((r) => mine(r, rosterId) && r.dayKey === dayKey);
-  return {
-    sets: setsToday.length,
-    callsOnCalendar: callsToday.length,
-    callsShown: callsToday.filter((r) => r.verdict.result === "showed").length,
-  };
-}
+export type { BookingMeasured };
 
 export const getMeasuredForDay = query({
   args: { sessionToken: v.string(), dayKey: v.string() },
@@ -60,24 +38,8 @@ export const getMeasuredForDay = query({
     if (args.dayKey > todayKey || args.dayKey < addDaysKey(todayKey, -MEASURE_LOOKBACK_DAYS)) return null;
 
     const { startMs: dayStart, endMs: dayEnd } = getLocalDateRangeUtc(args.dayKey, tz);
-    const [booked, starting] = await Promise.all([
-      ctx.db
-        .query("calendarEvents")
-        .withIndex("by_team_and_booked_at", (q) => q.eq("teamId", teamId).gte("bookedAt", dayStart).lt("bookedAt", dayEnd))
-        .take(COHORT_TAKE),
-      ctx.db
-        .query("calendarEvents")
-        .withIndex("by_team_and_time", (q) => q.eq("teamId", teamId).gte("startTime", dayStart).lt("startTime", dayEnd))
-        .take(COHORT_TAKE),
-    ]);
+    const data = await loadCohortRecords(ctx, teamId, dayStart, dayEnd, nowMs, DAY_COHORT_TAKE);
     const truncated: string[] = [];
-    if (booked.length >= COHORT_TAKE || starting.length >= COHORT_TAKE) truncated.push("cohort");
-    const byId = new Map<string, Doc<"calendarEvents">>();
-    for (const e of [...booked, ...starting]) byId.set(String(e._id), e);
-    const eventRows = Array.from(byId.values());
-    const rangeStart = Math.min(dayStart, ...eventRows.map((e) => e.startTime));
-    const rangeEnd = Math.max(dayEnd, ...eventRows.map((e) => e.startTime + 1));
-    const data = await collectTeamBookings(ctx, teamId, rangeStart, rangeEnd, nowMs, { eventRows });
     const bookings = measureBookingDay(data.records, String(me.rosterId), args.dayKey);
 
     // Their own Close activity for the local day: every dial, and the ones a
@@ -107,7 +69,7 @@ export const getMeasuredForDay = query({
       dayKey: args.dayKey,
       measured,
       /** Something to prefill: any credited booking in the cohorts, or any own activity that day. */
-      measuredExists: data.records.some((r) => mine(r, String(me.rosterId))) || (dials ?? 0) > 0,
+      measuredExists: data.records.some((r) => isTheirBooking(r, String(me.rosterId))) || (dials ?? 0) > 0,
       truncated: [...truncated, ...data.truncated],
       linked: !!me.crmUserId,
       connectSec,

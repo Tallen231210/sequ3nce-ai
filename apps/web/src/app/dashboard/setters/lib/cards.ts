@@ -12,6 +12,8 @@ export type SetsData = NonNullable<FunctionReturnType<typeof api.settersPageQuer
 export type ActivityData = NonNullable<FunctionReturnType<typeof api.settersPageQueries.getSettersActivity>>;
 export type SpeedData = NonNullable<FunctionReturnType<typeof api.settersPageQueries.getSettersSpeed>>;
 export type CadenceData = NonNullable<FunctionReturnType<typeof api.settersPageQueries.getSettersCadence>>;
+export type CrossCheckData = NonNullable<FunctionReturnType<typeof api.setterEodCrossCheck.getSettersCrossCheck>>;
+export type RosterCheck = CrossCheckData["byRoster"][number];
 
 export type Format = "int" | "pct" | "money" | "hours" | "ratio" | "days";
 
@@ -38,6 +40,8 @@ export interface CardVM {
   configured: boolean;
   note: string | null;
   metrics: MetricVM[];
+  /** EOD filing over the range: days owed, days filed, days whose numbers sat outside tolerance of Close / the calendar. Null for DM setters and while loading. */
+  consistency: { daysDue: number; daysFiled: number; daysFlagged: number; flagCount: number } | null;
 }
 
 const G = {
@@ -80,8 +84,14 @@ export function buildCards(
   activity: ActivityData | null | undefined,
   speed?: SpeedData | null,
   cadence?: CadenceData | null,
+  checks?: CrossCheckData | null,
 ): Record<"dm" | "outbound" | "confirmation", CardVM[]> {
   const speedById = new Map((speed?.bySetter ?? []).map((s) => [s.rosterId, s]));
+  const checkById = new Map((checks?.byRoster ?? []).map((c) => [c.rosterId, c]));
+  const consistencyOf = (rosterId: string): CardVM["consistency"] => {
+    const c = checkById.get(rosterId);
+    return c ? { daysDue: c.daysDue, daysFiled: c.daysFiled, daysFlagged: c.daysFlagged, flagCount: c.flagCount } : null;
+  };
   const cadenceById = new Map((cadence?.bySetter ?? []).map((c) => [c.rosterId, c]));
   const setsById = new Map((sets?.outbound ?? []).map((s) => [s.rosterId, s]));
   const setsDm = new Map((sets?.dm ?? []).map((s) => [s.linkName, s.sets]));
@@ -104,6 +114,7 @@ export function buildCards(
       linked: row.linked,
       configured: true,
       note: s ? `${s.tagged} by initials · ${s.crmOnly} from Close only` : null,
+      consistency: consistencyOf(row.rosterId),
       metrics: [
         metric("dials", a?.dials ?? null, "int", filedOr(f, (x) => x.dials)),
         metric("connects", a?.answered ?? null, "int", filedOr(f, (x) => x.pickUps)),
@@ -135,6 +146,7 @@ export function buildCards(
     linked: true,
     configured: row.configured,
     note: row.configured ? null : "Seen on a booking link but not in the roster settings",
+    consistency: null,
     metrics: [
       metric("sets", setsDm.get(row.linkName) ?? (sets ? 0 : null), "int"),
       metric("bookings", row.bookings, "int"),
@@ -161,6 +173,7 @@ export function buildCards(
       linked: row.linked,
       configured: true,
       note: null,
+      consistency: consistencyOf(row.rosterId),
       metrics: [
         metric("newSelfBooks", s ? s.newSelfBooks : null, "int", filedOr(f, (x) => x.newSelfBooked)),
         metric("contacted", s ? s.contacted : null, "int", filedOr(f, (x) => x.contacted)),

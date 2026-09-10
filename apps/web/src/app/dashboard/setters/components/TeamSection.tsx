@@ -27,6 +27,25 @@ function Metric({ m }: { m: MetricVM }) {
   );
 }
 
+/** How their EODs held up against Close and the calendar over the range — the numbers are in the drawer's EOD tab. */
+function Consistency({ c }: { c: NonNullable<CardVM["consistency"]> }) {
+  const filed = c.daysDue > 0 ? `filed ${c.daysFiled} of ${c.daysDue} due days` : c.daysFiled > 0 ? `filed ${c.daysFiled} ${c.daysFiled === 1 ? "day" : "days"}` : "nothing filed yet";
+  const off = c.daysFiled === 0 ? null : c.daysFlagged === 0 ? "all within tolerance of Close and the calendar" : `${c.daysFlagged} ${c.daysFlagged === 1 ? "day" : "days"} off vs measured`;
+  const late = c.daysDue > c.daysFiled;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 border-t border-border pt-2 text-[11px]" title="EOD entries beside what Close and the calendar measured for the same days. Open the card for the numbers.">
+      <span className="uppercase tracking-wide text-muted-foreground">EODs</span>
+      <span className={late ? "font-medium text-amber-700" : "text-muted-foreground"}>{filed}</span>
+      {off && (
+        <>
+          <span className="text-muted-foreground">·</span>
+          <span className={c.daysFlagged > 0 ? "font-medium text-amber-700" : "text-muted-foreground"}>{off}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SetterCard({ card, onOpen }: { card: CardVM; onOpen: (card: CardVM) => void }) {
   return (
     <button
@@ -52,6 +71,7 @@ function SetterCard({ card, onOpen }: { card: CardVM; onOpen: (card: CardVM) => 
           <Metric key={m.key} m={m} />
         ))}
       </div>
+      {card.consistency && <Consistency c={card.consistency} />}
     </button>
   );
 }

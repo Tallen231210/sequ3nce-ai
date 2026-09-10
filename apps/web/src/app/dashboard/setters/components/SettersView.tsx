@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { buildCards, type ActivityData, type BookingsData, type CadenceData, type CardVM, type SetsData, type SpeedData } from "../lib/cards";
+import { buildCards, type ActivityData, type BookingsData, type CadenceData, type CardVM, type CrossCheckData, type SetsData, type SpeedData } from "../lib/cards";
 import { CoveragePanel } from "./CoveragePanel";
 import { SetterDrawer } from "./SetterDrawer";
 import { TeamSection } from "./TeamSection";
@@ -14,6 +14,7 @@ export function SettersView({
   activity,
   speed,
   cadence,
+  checks,
   clerkId,
   rangeStart,
   rangeEnd,
@@ -24,15 +25,16 @@ export function SettersView({
   activity: ActivityData | null;
   speed?: SpeedData | null;
   cadence?: CadenceData | null;
+  checks?: CrossCheckData | null;
   clerkId: string;
   rangeStart: number;
   rangeEnd: number;
   health?: ReactNode;
 }) {
   const [open, setOpen] = useState<CardVM | null>(null);
-  const cards = useMemo(() => buildCards(bookings, sets, activity, speed, cadence), [bookings, sets, activity, speed, cadence]);
+  const cards = useMemo(() => buildCards(bookings, sets, activity, speed, cadence, checks), [bookings, sets, activity, speed, cadence, checks]);
   const coverage = [...bookings.coverage, ...(activity?.coverage ?? [])];
-  const loadingNote = !sets || !activity || speed === undefined || cadence === undefined ? "Still reading sets, Close activity, speed and cadence…" : null;
+  const loadingNote = !sets || !activity || speed === undefined || cadence === undefined || checks === undefined ? "Still reading sets, Close activity, speed, cadence and the EOD cross-check…" : null;
   const sections: Array<{ team: "dm" | "outbound" | "confirmation"; description: string }> = [
     { team: "dm", description: "Book from the DM link. No dials to count — bookings and shows only." },
     { team: "outbound", description: "Work leads in Close. Dials, connects and texts are theirs; sets are credited by initials or a Close touch." },

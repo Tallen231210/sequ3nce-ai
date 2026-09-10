@@ -592,6 +592,19 @@ export default defineSchema({
     setterDmPeople: v.optional(
       v.array(v.object({ name: v.string(), linkName: v.string(), active: v.boolean() })),
     ),
+    /**
+     * EOD cross-check tolerances (lib/eodCrossCheck): how far a filed number
+     * may sit from what Close / the calendar measured before it is flagged.
+     * Percent of the measured number; minGap is the floor for small days.
+     */
+    setterEodTolerances: v.optional(
+      v.object({
+        dialsPct: v.optional(v.number()),
+        pickUpsPct: v.optional(v.number()),
+        confirmationPct: v.optional(v.number()),
+        minGap: v.optional(v.number()),
+      }),
+    ),
 
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.

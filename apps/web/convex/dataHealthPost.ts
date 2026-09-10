@@ -5,6 +5,8 @@
 // ============================================================================
 
 import type { DataHealthWeek } from "./dataHealthQueries";
+import type { CrossCheckRange } from "./setterEodCrossCheck";
+import { flagText } from "./lib/eodCrossCheck";
 
 /** "Mon 1 Sep" from a day key. */
 export function humanDay(dayKey: string): string {
@@ -15,6 +17,24 @@ export function humanDay(dayKey: string): string {
 const pct = (v: number | null) => (v === null ? "—" : `${v}%`);
 const named = (rows: Array<{ name: string; count: number }>, max = 6) =>
   rows.slice(0, max).map((r) => `${r.name} ${r.count}`).join(", ") + (rows.length > max ? ", …" : "");
+
+/**
+ * The EOD cross-check as lines: per setter, the days whose filed numbers sat
+ * outside tolerance of what Close / the calendar measured — both numbers on
+ * every one. Statistics only; the manager decides what a gap means.
+ */
+export function eodCheckLines(c: CrossCheckRange | null | undefined): string[] {
+  if (!c) return [];
+  const lines: string[] = [];
+  for (const r of c.byRoster) {
+    if (r.daysFiled === 0) continue;
+    const flagged = r.days.filter((d) => d.flags.length > 0);
+    const head = `${r.name}: filed ${r.daysFiled} of ${r.daysDue} due days` + (flagged.length === 0 ? ", all within tolerance of Close and the calendar." : `, ${flagged.length} off vs measured:`);
+    lines.push(head);
+    for (const d of flagged) lines.push(`  ${humanDay(d.dayKey)} — ${d.flags.map(flagText).join(" · ")}`);
+  }
+  return lines;
+}
 
 export function dataHealthLines(d: DataHealthWeek): string[] {
   const a = d.accuracy;
@@ -43,18 +63,21 @@ export function dataHealthLines(d: DataHealthWeek): string[] {
   return lines;
 }
 
-export function dataHealthFallbackText(d: DataHealthWeek): string {
-  return `Data health · week of ${humanDay(d.weekStartKey)}\n${dataHealthLines(d).join("\n")}`;
+export function dataHealthFallbackText(d: DataHealthWeek, checks?: CrossCheckRange | null): string {
+  const eod = eodCheckLines(checks);
+  return `Data health · week of ${humanDay(d.weekStartKey)}\n${dataHealthLines(d).join("\n")}` + (eod.length ? `\nEODs vs Close and the calendar\n${eod.join("\n")}` : "");
 }
 
-export function buildDataHealthSlackBlocks(d: DataHealthWeek): any[] {
+export function buildDataHealthSlackBlocks(d: DataHealthWeek, checks?: CrossCheckRange | null): any[] {
   const lines = dataHealthLines(d);
   const [score, parts, lanes, ...rest] = lines;
+  const eod = eodCheckLines(checks);
   return [
     { type: "header", text: { type: "plain_text", text: `Data health · week of ${humanDay(d.weekStartKey)}`, emoji: false } },
     { type: "section", text: { type: "mrkdwn", text: `*${score}*\n${parts}` } },
     { type: "context", elements: [{ type: "mrkdwn", text: lanes }] },
     { type: "section", text: { type: "mrkdwn", text: `*What moves it*\n${rest.join("\n")}` } },
+    ...(eod.length ? [{ type: "section", text: { type: "mrkdwn", text: `*EODs vs Close and the calendar*\n${eod.join("\n")}` } }] : []),
     {
       type: "context",
       elements: [
@@ -67,10 +90,11 @@ export function buildDataHealthSlackBlocks(d: DataHealthWeek): any[] {
   ];
 }
 
-export function buildDataHealthDiscordEmbed(d: DataHealthWeek): any {
+export function buildDataHealthDiscordEmbed(d: DataHealthWeek, checks?: CrossCheckRange | null): any {
+  const eod = eodCheckLines(checks);
   return {
     title: `Data health · week of ${humanDay(d.weekStartKey)}`,
-    description: dataHealthLines(d).join("\n"),
+    description: dataHealthLines(d).join("\n") + (eod.length ? `\n\n**EODs vs Close and the calendar**\n${eod.join("\n")}` : ""),
     color: 0x0d9488,
   };
 }

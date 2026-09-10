@@ -7,7 +7,7 @@ import { useState } from "react";
 import { notFound } from "next/navigation";
 import { SettersView } from "../dashboard/setters/components/SettersView";
 import { SettingsDrawer } from "../dashboard/setters/components/SettingsDrawer";
-import { ACTIVITY, BOOKINGS, CADENCE, SETS, SPEED } from "./fixture";
+import { ACTIVITY, BOOKINGS, CADENCE, CHECKS, SETS, SPEED } from "./fixture";
 
 export default function SettersPreviewPage() {
   const [settings, setSettings] = useState(false);
@@ -19,9 +19,9 @@ export default function SettersPreviewPage() {
       </button>
       <SettingsDrawer clerkId="preview" open={settings} onClose={() => setSettings(false)} />
       <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-        Preview · fictional team, fictional people · the drawer's Speed and EOD tabs need a live backend and stay empty here.
+        Preview · fictional team, fictional people · the drawer's Speed and EOD tabs need a live backend and stay empty here; the EOD cross-check on the cards is fixture data run through the real rule.
       </div>
-      <SettersView bookings={BOOKINGS} sets={SETS} activity={ACTIVITY} speed={SPEED} cadence={CADENCE} clerkId="preview" rangeStart={BOOKINGS.range.startMs} rangeEnd={BOOKINGS.range.endMs} />
+      <SettersView bookings={BOOKINGS} sets={SETS} activity={ACTIVITY} speed={SPEED} cadence={CADENCE} checks={CHECKS} clerkId="preview" rangeStart={BOOKINGS.range.startMs} rangeEnd={BOOKINGS.range.endMs} />
     </div>
   );
 }

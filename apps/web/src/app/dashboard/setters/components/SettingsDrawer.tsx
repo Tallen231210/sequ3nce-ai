@@ -14,6 +14,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { NotificationsCard } from "../../setter-eods/NotificationsCard";
 import { RosterEditor } from "./RosterEditor";
 import { TeamConfigForm } from "./TeamConfigForm";
+import { ToleranceForm } from "./ToleranceForm";
 
 type Tab = "roster" | "team" | "posts" | "crm";
 
@@ -65,6 +66,7 @@ export function SettingsDrawer({ clerkId, open, onClose }: { clerkId: string; op
               </p>
               <ConnectionThresholdConfig thresholdSec={(team as { setterConnectionThresholdSec?: number } | null | undefined)?.setterConnectionThresholdSec ?? 60} />
             </section>
+            <ToleranceForm clerkId={clerkId} />
           </div>
         )}
         {tab === "posts" && <NotificationsCard />}

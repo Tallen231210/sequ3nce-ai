@@ -11,6 +11,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { flagText, type CrossCheckFlag } from "./lib/eodCrossCheck";
+
 export interface SetterDayRow {
   rosterId: string;
   name: string;
@@ -26,6 +28,12 @@ export interface SetterDayRow {
   cashReported: boolean;
   /** Week-to-date for the same setter, same week as the reported day. */
   week: { sets: number; cash: number; cashReported: boolean };
+  /**
+   * Where the filed numbers sit outside the team's tolerance of what Close
+   * and the calendar measured for the day — with both numbers, never a bare
+   * flag. Absent for teams without the Setters page.
+   */
+  flags?: CrossCheckFlag[];
 }
 
 export interface SetterScorecardData {
@@ -144,6 +152,12 @@ export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[
           },
         ],
       });
+      if (r.flags && r.flags.length > 0) {
+        blocks.push({
+          type: "context",
+          elements: [{ type: "mrkdwn", text: `⚠ Off vs measured — ${r.flags.map(flagText).join(" · ")}` }],
+        });
+      }
     }
     if (filed.length > MAX_SETTERS_SHOWN) {
       blocks.push({
@@ -188,7 +202,8 @@ export function buildSetterScorecardDiscordEmbed(data: SetterScorecardData): any
     (r, i) =>
       `**${i + 1}. ${r.name}** — ${r.cashReported ? money(r.cash) + " · " : ""}${plural(r.sets, "set", "sets")} · ` +
       `dials ${r.dials} · pick-ups ${r.pickUps} · on cal ${r.onCal} · shown ${r.shown} · closed ${r.closed} · ` +
-      `$/set ${perSet(r.cash, r.sets, r.cashReported)} · week ${perSet(r.week.cash, r.week.sets, r.week.cashReported)}/set`,
+      `$/set ${perSet(r.cash, r.sets, r.cashReported)} · week ${perSet(r.week.cash, r.week.sets, r.week.cashReported)}/set` +
+      (r.flags && r.flags.length > 0 ? `\n⚠ Off vs measured — ${r.flags.map(flagText).join(" · ")}` : ""),
   );
   return {
     title: `📋 Setter scorecard — ${humanDay(data.reportDayKey)}`,

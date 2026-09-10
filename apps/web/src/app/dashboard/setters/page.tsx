@@ -1,9 +1,9 @@
 "use client";
 
 // ============================================================================
-// Setters — one page per team on the attribution engine. Three subscriptions
-// (bookings by call date, sets by booked date, Close activity) merged per
-// person on the client; a drawer per setter. Only teams with the
+// Setters — one page per team on the attribution engine. Six subscriptions
+// (bookings by call date, sets by booked date, Close activity, speed, cadence,
+// the EOD cross-check) merged per person on the client; a drawer per setter. Only teams with the
 // setter_teams flag see it; the sidebar hides it for everyone else.
 // ============================================================================
 
@@ -32,6 +32,7 @@ export default function SettersPage() {
   const activity = useQuery(api.settersPageQueries.getSettersActivity, args);
   const speed = useQuery(api.settersPageQueries.getSettersSpeed, args);
   const cadence = useQuery(api.settersPageQueries.getSettersCadence, args);
+  const checks = useQuery(api.setterEodCrossCheck.getSettersCrossCheck, args);
 
   if (isLoading) {
     return (
@@ -84,6 +85,7 @@ export default function SettersPage() {
             activity={activity ?? null}
             speed={speed}
             cadence={cadence}
+            checks={checks}
             clerkId={clerkId}
             rangeStart={range.start}
             rangeEnd={range.end}

@@ -7,6 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import { Activity } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
+import { flagText } from "../../../../convex/lib/eodCrossCheck";
 
 // ============================================================================
 // Data health, this week so far: the accuracy score, what it is made of, and
@@ -23,23 +24,58 @@ function humanDay(dayKey: string): string {
 }
 
 export type DataHealthWeekView = NonNullable<FunctionReturnType<typeof api.dataHealthQueries.getDataHealthWeek>>;
+export type EodChecksView = NonNullable<FunctionReturnType<typeof api.setterEodCrossCheck.getEodCrossCheckThisWeek>>;
 
 export function DataHealthCard() {
   const { user } = useUser();
   const clerkId = user?.id;
   const data = useQuery(api.dataHealthQueries.getDataHealthWeek, clerkId ? { clerkId } : "skip");
+  const checks = useQuery(api.setterEodCrossCheck.getEodCrossCheckThisWeek, clerkId ? { clerkId } : "skip");
   // Hidden while loading too — most teams don't have the flag, and a
   // placeholder card that vanishes would jump the page.
   if (data === null || data === undefined) return null;
   return (
-    <DataHealthView data={data}>
+    <DataHealthView data={data} checks={checks ?? null}>
       <WeeklyPostRow />
     </DataHealthView>
   );
 }
 
 /** The card itself, given the week's data — also what the dev preview renders. */
-export function DataHealthView({ data, children }: { data: DataHealthWeekView; children?: React.ReactNode }) {
+/** Per setter: days filed of days due, and each flagged day with both numbers. */
+function EodChecks({ checks }: { checks: EodChecksView }) {
+  const rows = checks.byRoster.filter((r) => r.daysFiled > 0 || r.daysDue > 0);
+  if (rows.length === 0) return null;
+  return (
+    <div className="border-t border-border px-5 py-4 text-[12px]">
+      <div className="mb-1 font-medium">EODs vs Close and the calendar</div>
+      <ul className="space-y-1">
+        {rows.map((r) => {
+          const flagged = r.days.filter((d) => d.flags.length > 0);
+          return (
+            <li key={r.rosterId}>
+              <span className="font-medium">{r.name}</span>{" "}
+              <span className={r.daysFiled < r.daysDue ? "text-amber-700" : "text-muted-foreground"}>filed {r.daysFiled} of {r.daysDue} due</span>
+              {r.daysFiled > 0 && flagged.length === 0 && <span className="text-muted-foreground"> · all within tolerance</span>}
+              {flagged.length > 0 && (
+                <ul className="ml-3 mt-0.5 space-y-0.5 text-amber-800">
+                  {flagged.map((d) => (
+                    <li key={d.dayKey}>
+                      {humanDay(d.dayKey)} — {d.flags.map(flagText).join(" · ")}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {checks.truncated.length > 0 && <p className="mt-1 text-amber-700">Partial: some reads hit their cap ({checks.truncated.join(", ")}).</p>}
+    </div>
+  );
+}
+
+export function DataHealthView({ data, checks, children }: { data: DataHealthWeekView; checks?: EodChecksView | null; children?: React.ReactNode }) {
   const a = data.accuracy;
   const drags: string[] = [];
   if (data.drags.untaggedSelfBooks.total > 0) drags.push(`Self-booked calls with no tag: ${data.drags.untaggedSelfBooks.total} (${named(data.drags.untaggedSelfBooks.byCloser)})`);
@@ -91,6 +127,7 @@ export function DataHealthView({ data, children }: { data: DataHealthWeekView; c
           {data.truncated.length > 0 && <p className="mt-1 text-amber-700">Partial: some reads hit their cap ({data.truncated.join(", ")}).</p>}
         </div>
       </div>
+      {checks && <EodChecks checks={checks} />}
       {children}
     </section>
   );

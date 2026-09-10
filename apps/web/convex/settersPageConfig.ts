@@ -10,6 +10,7 @@ import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 import { DEFAULT_TEAM_LABELS, teamLabelsFor } from "./settersPageLabels";
+import { DEFAULT_TOLERANCES, TOLERANCE_LIMITS, tolerancesFor } from "./lib/eodCrossCheck";
 
 const LABEL_MAX = 40;
 const NAME_MAX = 80;
@@ -74,6 +75,8 @@ export const getConfig = query({
       people: team.setterDmPeople ?? [],
       dmPatterns: team.setterDmEventNamePatterns ?? [],
       funnelPatterns: team.setterFunnelEventNamePatterns ?? [],
+      tolerances: tolerancesFor(team.setterEodTolerances),
+      toleranceDefaults: DEFAULT_TOLERANCES,
     };
   },
 });
@@ -101,6 +104,29 @@ export const updateLanePatterns = mutation({
   handler: async (ctx, args) => {
     const teamId = await manager(ctx, args.clerkId);
     await ctx.db.patch(teamId, { setterDmEventNamePatterns: cleanPatterns(args.dm), setterFunnelEventNamePatterns: cleanPatterns(args.funnel) });
+    return { ok: true };
+  },
+});
+
+const TOLERANCES = v.object({ dialsPct: v.number(), pickUpsPct: v.number(), confirmationPct: v.number(), minGap: v.number() });
+
+function cleanTolerances(t: { dialsPct: number; pickUpsPct: number; confirmationPct: number; minGap: number }) {
+  const pct = (n: number, what: string) => {
+    if (!Number.isFinite(n) || n < TOLERANCE_LIMITS.pctMin || n > TOLERANCE_LIMITS.pctMax) throw new ConvexError(`${what} must be ${TOLERANCE_LIMITS.pctMin}–${TOLERANCE_LIMITS.pctMax}%`);
+    return Math.round(n);
+  };
+  if (!Number.isFinite(t.minGap) || t.minGap < TOLERANCE_LIMITS.minGapMin || t.minGap > TOLERANCE_LIMITS.minGapMax) {
+    throw new ConvexError(`The smallest flagged gap must be ${TOLERANCE_LIMITS.minGapMin}–${TOLERANCE_LIMITS.minGapMax}`);
+  }
+  return { dialsPct: pct(t.dialsPct, "Dials"), pickUpsPct: pct(t.pickUpsPct, "Pick-ups"), confirmationPct: pct(t.confirmationPct, "Confirmation"), minGap: Math.round(t.minGap) };
+}
+
+/** How far a filed EOD number may sit from what Close / the calendar measured before it is flagged. */
+export const setTolerances = mutation({
+  args: { clerkId: v.string(), tolerances: TOLERANCES },
+  handler: async (ctx, args) => {
+    const teamId = await manager(ctx, args.clerkId);
+    await ctx.db.patch(teamId, { setterEodTolerances: cleanTolerances(args.tolerances) });
     return { ok: true };
   },
 });

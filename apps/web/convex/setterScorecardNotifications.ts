@@ -6,6 +6,8 @@ import type { Doc } from "./_generated/dataModel";
 import { formatInTimeZone } from "./setterDataNotifications";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { deliver } from "./setterEodNotifications";
+import { crossCheckDayFor } from "./setterEodCrossCheck";
+import { teamHasSetterTeams } from "./setterTeamQueries";
 import {
   buildSetterScorecardDiscordEmbed,
   buildSetterScorecardSlackBlocks,
@@ -120,6 +122,18 @@ export const getSetterScorecardData = internalQuery({
         }
       }
       dayKey = addDaysKey(dayKey, 1);
+    }
+
+    // Teams on the Setters page get the cross-check: where a filed number
+    // sits outside tolerance of what Close / the calendar measured, with
+    // both numbers. Silent for everyone else.
+    const teamDoc = await ctx.db.get(args.teamId);
+    if (teamDoc && teamHasSetterTeams(teamDoc)) {
+      const checks = await crossCheckDayFor(ctx, teamDoc, args.reportDayKey, Date.now());
+      for (const row of byRoster.values()) {
+        const day = checks.get(row.rosterId);
+        if (row.filed && day) row.flags = day.flags;
+      }
     }
 
     // Cash first, then sets, then name — a statistic ordering, nothing more.
