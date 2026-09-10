@@ -4,6 +4,7 @@
 //   npx convex run settersPageBench:moneyBench '{}'
 // ============================================================================
 
+import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { moneyOf } from "./setterTeamBookingHelpers";
