@@ -83,6 +83,7 @@ export const getConfig = query({
       toleranceDefaults: DEFAULT_TOLERANCES,
       connectSec: team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC,
       recountRequestedAt: team.setterRollupsRecountRequestedAt ?? null,
+      creditTouchAfterBooking: team.setterCreditTouchAfterBooking === true,
     };
   },
 });
@@ -171,6 +172,25 @@ export const setConnectThreshold = mutation({
     await ctx.db.patch(teamId, { setterRollupsRecountRequestedAt: runAt });
     await ctx.scheduler.runAfter(Math.max(0, runAt - nowMs), internal.setterRollups.recountRange, { teamId, startDayKey: addDaysKey(endDayKey, -(RECOUNT_DAYS + 1)), endDayKey });
     return { ok: true, recount: runAt > nowMs ? ("queued" as const) : ("started" as const) };
+  },
+});
+
+/** Who counts as the setter when a booking setter contacts a lead after it booked itself. */
+export const setCreditRule = mutation({
+  args: { clerkId: v.string(), creditTouchAfterBooking: v.boolean() },
+  handler: async (ctx, args) => {
+    const teamId = await manager(ctx, args.clerkId);
+    await ctx.db.patch(teamId, { setterCreditTouchAfterBooking: args.creditTouchAfterBooking });
+    return { ok: true };
+  },
+});
+
+/** CLI twin: npx convex run settersPageConfig:setCreditRuleForTeam '{"teamId":"…","creditTouchAfterBooking":true}' --prod */
+export const setCreditRuleForTeam = internalMutation({
+  args: { teamId: v.id("teams"), creditTouchAfterBooking: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.teamId, { setterCreditTouchAfterBooking: args.creditTouchAfterBooking });
+    return { ok: true };
   },
 });
 

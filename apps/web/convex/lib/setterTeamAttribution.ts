@@ -65,6 +65,19 @@ export interface ClassifyInput {
   rosters: readonly RosterRef[];
   dmPatterns?: readonly string[];
   funnelPatterns?: readonly string[];
+  /**
+   * Whether the booking moment is real (the link's bookedAt) rather than
+   * inferred from when the calendar row appeared. Only a real moment can
+   * make a touch "after the booking"; a hand-made row has no such moment.
+   * Defaults to true.
+   */
+  bookingMomentKnown?: boolean;
+  /**
+   * Team rule: a booking setter who contacts a lead AFTER it booked itself
+   * counts as the setter (true) or is doing confirmation work (false, the
+   * default). Initials on the booking always credit, whatever this says.
+   */
+  creditTouchAfterBooking?: boolean;
 }
 
 export interface Classification {
@@ -95,9 +108,11 @@ export function classifyBooking(i: ClassifyInput): Classification {
     );
   const outboundTag = tagged("booking");
   const confirmationTag = tagged("confirmation");
-  // Only a touch BEFORE the booking can make a booking setter the setter; a
-  // call or text after the lead booked is confirmation work, not the set.
-  const outboundTouch = touched("booking", true);
+  // A touch AFTER a real booking moment is confirmation work, not the set —
+  // unless the team's rule credits it. A hand-made row has no real booking
+  // moment, so any touch on it counts.
+  const beforeBookingOnly = (i.bookingMomentKnown ?? true) && i.creditTouchAfterBooking !== true;
+  const outboundTouch = touched("booking", beforeBookingOnly);
   const confirmationTouch = touched("confirmation");
   const anyTag = i.taggedRosterIds.length > 0;
   const anyTouch = i.touches.length > 0;

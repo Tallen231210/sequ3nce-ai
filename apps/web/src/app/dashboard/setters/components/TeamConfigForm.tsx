@@ -20,6 +20,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
   const setLabels = useMutation(api.settersPageConfig.setTeamLabels);
   const setPeople = useMutation(api.settersPageConfig.setDmPeople);
   const setPatterns = useMutation(api.settersPageConfig.updateLanePatterns);
+  const setCreditRule = useMutation(api.settersPageConfig.setCreditRule);
   const [labels, setLabelsDraft] = useState({ dm: "", outbound: "", confirmation: "" });
   const [people, setPeopleDraft] = useState<Array<{ name: string; linkName: string; active: boolean }>>([]);
   const [dm, setDm] = useState("");
@@ -108,6 +109,24 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
         <button type="button" className="mt-3 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background" onClick={() => void run(() => setPatterns({ clerkId, dm: split(dm), funnel: split(funnel) }), "Couldn't save the word lists")}>
           Save word lists
         </button>
+      </section>
+      <section className="rounded-lg border border-border p-4">
+        <h3 className="text-sm font-semibold">Who counts as the setter on a self-booked lead</h3>
+        <p className="text-xs text-muted-foreground">
+          A lead books itself through the funnel link, and an outbound setter calls or texts them afterwards, with no initials on the booking. Initials always credit the setter; this decides what a Close touch alone does.
+        </p>
+        <label className="mt-3 flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={config.creditTouchAfterBooking}
+            onChange={(e) => void run(() => setCreditRule({ clerkId, creditTouchAfterBooking: e.target.checked }), "Couldn't save the rule")}
+          />
+          <span>
+            Credit the outbound setter who contacted them after the booking.
+            <span className="block text-xs text-muted-foreground">Off: it stays a self-book in the confirmation column, and the setter&apos;s contact counts as confirmation work.</span>
+          </span>
+        </label>
       </section>
       {status && <p className={`text-xs ${status === "Saved" ? "text-emerald-600" : "text-rose-600"}`}>{status}</p>}
     </div>

@@ -607,6 +607,12 @@ export default defineSchema({
     ),
     /** When the Setters settings last kicked a rollup recount (after a connect-threshold change) — one chain at a time. */
     setterRollupsRecountRequestedAt: v.optional(v.number()),
+    /**
+     * Attribution rule: a booking setter who contacts a lead after it booked
+     * itself counts as the setter (true) or is doing confirmation work
+     * (false / unset). Initials on the booking credit either way.
+     */
+    setterCreditTouchAfterBooking: v.optional(v.boolean()),
 
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.

@@ -280,6 +280,8 @@ export async function collectTeamBookings(
       : null;
 
     const classification = classifyBooking({
+      bookingMomentKnown: !bookedAtInferred,
+      creditTouchAfterBooking: (team as { setterCreditTouchAfterBooking?: boolean } | null)?.setterCreditTouchAfterBooking === true,
       eventName,
       descriptionTrusted,
       taggedRosterIds,
