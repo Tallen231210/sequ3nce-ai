@@ -16,7 +16,8 @@ import { emailButton, sendB2cEmail } from "./b2cEmail";
 // the note always show the same headline number.
 //
 // The feed is read with the same public search the app uses (read-only, no
-// key). Lanes named here stay off the co-founder's no-list.
+// key), worldwide, by the source board's posting date. Lanes named here stay
+// off the co-founder's no-list.
 // ============================================================================
 
 const DAY = 86_400_000;
@@ -52,10 +53,10 @@ async function feedTotal(params: Record<string, string>): Promise<number> {
     limit: "1",
     offset: "0",
     posted_within_days: String(FEED_WINDOW_DAYS),
-    // Feed quirk (verified 2026-09-09): posted_within_days is only honored
-    // when salary_currency is present. Without it "7 days" returned 21,912
-    // (not a date window); with it, 321 — and 1d/7d/30d scale sanely.
-    salary_currency: "USD",
+    // Worldwide on purpose (Tyler, 2026-09-09: the first buyers were in
+    // Europe and Canada). Do NOT add salary_currency here — it narrows the
+    // catalogue to roles with a structured salary in that currency (~5% of
+    // postings), which briefly made this note under-count by 20×.
     ...params,
   });
   const controller = new AbortController();
@@ -141,8 +142,11 @@ export const saveSnapshot = internalMutation({
   },
 });
 
+/** 21131 → "21,131" — worldwide weekly counts run to five digits. */
+const fmt = (n: number): string => n.toLocaleString("en-US");
+
 function laneLine(feed: FeedTotals): string {
-  return `Closer ${feed.closer} · Account executive ${feed.accountExecutive} · Sales leadership ${feed.leadership} · Remote ${feed.remote}`;
+  return `Closer ${fmt(feed.closer)} · Account executive ${fmt(feed.accountExecutive)} · Sales leadership ${fmt(feed.leadership)} · Remote ${fmt(feed.remote)}`;
 }
 
 export const announceWeeklyRoles = internalAction({
@@ -178,11 +182,11 @@ export const announceWeeklyRoles = internalAction({
     // Name only the sources that actually have roles this week — no
     // "0 hand-picked" when the import hasn't landed yet.
     const parts: string[] = [];
-    if (curated.count > 0) parts.push(`${curated.count} hand-picked by Sequ3nce${industries}`);
-    if (feed && feed.total > 0) parts.push(`${feed.total} on the live feed`);
+    if (curated.count > 0) parts.push(`${fmt(curated.count)} hand-picked by Sequ3nce${industries}`);
+    if (feed && feed.total > 0) parts.push(`${fmt(feed.total)} on the live feed`);
     const sources = `${parts.join(" + ")}.${feed && feed.total > 0 ? ` ${laneLine(feed)}.` : ""}`;
-    const preview = `This week on the Job Board: ${headline} new sales roles — ${sources} Open the Job Board → track the ones worth a shot.`;
-    const subject = `${headline} new sales roles this week on the Sequ3nce board`;
+    const preview = `This week on the Job Board: ${fmt(headline)} new sales roles — ${sources} Open the Job Board → track the ones worth a shot.`;
+    const subject = `${fmt(headline)} new sales roles this week on the Sequ3nce board`;
 
     const members = await ctx.runQuery(internal.b2cSystemNotifications.listNotifiableMembers, {});
     const base = { headline, curated, feed, feedError, audience: members.length, emailed: 0, inApp: 0, subject, preview };
@@ -220,7 +224,7 @@ export const announceWeeklyRoles = internalAction({
         ]
           .map(
             ([label, n]) =>
-              `<tr><td style="padding: 4px 16px 4px 0; color: #666;">${label}</td><td style="padding: 4px 0; font-weight: 600;">${n}</td></tr>`,
+              `<tr><td style="padding: 4px 16px 4px 0; color: #666;">${label}</td><td style="padding: 4px 0; font-weight: 600;">${fmt(Number(n))}</td></tr>`,
           )
           .join("")
       : "";
@@ -233,7 +237,7 @@ export const announceWeeklyRoles = internalAction({
         to: m.email,
         subject,
         html: `
-          <h2 style="margin: 24px 0 8px;">${headline} new sales roles this week.</h2>
+          <h2 style="margin: 24px 0 8px;">${fmt(headline)} new sales roles this week.</h2>
           <p style="color: #444; line-height: 1.6;">${parts.join(" and ")}.</p>
           ${feed ? `<table style="border-collapse: collapse; font-size: 14px;">${laneRows}</table>` : ""}
           ${newest ? `<p style="color: #444; line-height: 1.6; margin-top: 16px;">Newest hand-picked:</p><ul style="color: #444; line-height: 1.6; padding-left: 20px;">${newest}</ul>` : ""}

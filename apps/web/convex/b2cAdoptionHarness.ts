@@ -259,7 +259,7 @@ export const runAll = internalAction({
       const dry = await ctx.runAction(internal.b2cWeeklyRoles.announceWeeklyRoles, { dryRun: true });
       ok("weekly roles: dry run counts the fixture role + audience", dry.curated.count >= 1 && dry.audience >= 1 && !dry.skipped, JSON.stringify({ count: dry.curated.count, audience: dry.audience, skipped: dry.skipped }));
       ok("weekly roles: live feed totals fetched and folded into the headline",
-        !!dry.feed && dry.feed.total > 0 && dry.headline === dry.curated.count + dry.feed.total && dry.preview.includes(`${dry.headline} new sales roles`),
+        !!dry.feed && dry.feed.total > 0 && dry.headline === dry.curated.count + dry.feed.total && dry.preview.includes(`${dry.headline.toLocaleString("en-US")} new sales roles`),
         JSON.stringify({ feed: dry.feed, feedError: dry.feedError, headline: dry.headline }));
       const real = await ctx.runAction(internal.b2cWeeklyRoles.announceWeeklyRoles, { dryRun: false });
       ok("weekly roles: real run posts in-app + emails (dry-run logged)", real.inApp >= 1 && real.emailed >= 1, JSON.stringify({ inApp: real.inApp, emailed: real.emailed, skipped: real.skipped }));
