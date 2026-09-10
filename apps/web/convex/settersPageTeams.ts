@@ -32,12 +32,11 @@ export interface TeamStripColumn extends Money {
   noShow: number;
   unknown: number;
   showRatePct: number | null;
-  /** Confirmation only: self-booked funnel calls contacted over all of them. */
-  coverage: { contacted: number; newSelfBooks: number; pct: number | null
   /** Finished calls, and how many of them have an outcome — the show rate's footing. */
   due: number;
   outcomeKnown: number;
-} | null;
+  /** Confirmation only: self-booked funnel calls contacted over all of them. */
+  coverage: { contacted: number; newSelfBooks: number; pct: number | null } | null;
 }
 
 export interface OutboundBookingRow extends PersonRow, Money {
@@ -52,6 +51,8 @@ export interface DmRow extends Money {
   configured: boolean;
   active: boolean;
   bookings: number;
+  /** Finished calls — the show rate's footing. */
+  due: number;
   showed: number;
   noShow: number;
   unknown: number;
@@ -175,6 +176,7 @@ export function dmRows(rows: PersonRow[], records: BookingRecord[], people: DmPe
       configured: true,
       active: p.active,
       bookings: r?.bookings ?? 0,
+      due: r?.due ?? 0,
       showed: r?.showed ?? 0,
       noShow: r?.noShow ?? 0,
       unknown: r?.unknown ?? 0,
@@ -185,7 +187,7 @@ export function dmRows(rows: PersonRow[], records: BookingRecord[], people: DmPe
   for (const r of rows) {
     const link = r.id.toLowerCase();
     if (seen.has(link)) continue;
-    out.push({ linkName: link, name: r.name, configured: false, active: true, bookings: r.bookings, showed: r.showed, noShow: r.noShow, unknown: r.unknown, showRatePct: r.showRatePct, ...money(link) });
+    out.push({ linkName: link, name: r.name, configured: false, active: true, bookings: r.bookings, due: r.due, showed: r.showed, noShow: r.noShow, unknown: r.unknown, showRatePct: r.showRatePct, ...money(link) });
   }
   return out;
 }
