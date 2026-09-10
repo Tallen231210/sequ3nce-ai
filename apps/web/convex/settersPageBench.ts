@@ -7,6 +7,9 @@
 import { internalQuery } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { moneyOf } from "./setterTeamBookingHelpers";
+import { isStubLead } from "./settersPageSpeed";
+import { dmRows, percentiles } from "./settersPageTeams";
+import { teamLabelsFor } from "./settersPageLabels";
 
 type CallLike = Partial<Doc<"calls">>;
 const call = (c: CallLike) => c as Doc<"calls">;
@@ -49,5 +52,38 @@ export const moneyBench = internalQuery({
     ];
     const results = cases.map((c) => ({ ...c, pass: JSON.stringify(c.got) === JSON.stringify(c.expect) }));
     return { allPass: results.every((r) => r.pass), results };
+  },
+});
+
+export const rulesBench = internalQuery({
+  args: {},
+  handler: async () => {
+    const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const cases: Array<{ name: string; pass: boolean }> = [
+      { name: "percentiles: empty → nulls", pass: eq(percentiles([]), { median: null, p90: null }) },
+      { name: "percentiles: nearest rank, odd", pass: eq(percentiles([5, 1, 3]), { median: 3, p90: 5 }) },
+      { name: "percentiles: nearest rank, ten values", pass: eq(percentiles([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), { median: 5, p90: 9 }) },
+      { name: "stub: inferred date", pass: isStubLead({ dateAdded: 1_000_000, dateAddedInferred: true }) === true },
+      { name: "stub: dial created the lead (seconds apart)", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 1_004_000 }) === true },
+      { name: "stub: first text 4 minutes before creation", pass: isStubLead({ dateAdded: 1_000_000, firstSmsOutboundAt: 760_000 }) === true },
+      { name: "not a stub: first dial an hour later", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 4_600_000 }) === false },
+      { name: "not a stub: never touched", pass: isStubLead({ dateAdded: 1_000_000 }) === false },
+      {
+        name: "dm rows: configured person first, link matched case-insensitively, unconfigured link flagged",
+        pass: eq(
+          dmRows(
+            [
+              { id: "Davud", name: "Davud", bookings: 3, due: 3, showed: 1, noShow: 0, rescheduled: 0, unknown: 2, showRatePct: 100, tagged: 0, crmOnly: 0 },
+              { id: "Lazar", name: "Lazar", bookings: 2, due: 2, showed: 0, noShow: 0, rescheduled: 0, unknown: 2, showRatePct: null, tagged: 0, crmOnly: 0 },
+            ],
+            [],
+            [{ name: "David K.", linkName: "davud", active: true }],
+          ).map((r) => [r.name, r.linkName, r.configured, r.bookings]),
+          [["David K.", "davud", true, 3], ["Lazar", "lazar", false, 2]],
+        ),
+      },
+      { name: "labels: defaults fill blanks", pass: eq(teamLabelsFor({ dm: "  ", outbound: "Dialers" }), { dm: "DM setters", outbound: "Dialers", confirmation: "Confirmation setters" }) },
+    ];
+    return { allPass: cases.every((c) => c.pass), results: cases };
   },
 });

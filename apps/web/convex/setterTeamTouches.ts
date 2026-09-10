@@ -34,6 +34,10 @@ export interface LeadTouches {
 export interface SetterTouches {
   byContact: Map<string, LeadTouches>;
   truncated: string[];
+  /** Leads whose newest-first read hit the per-lead cap — their EARLIEST touches may be missing. */
+  clipped: Set<string>;
+  /** Leads not read at all because the total budget was spent. */
+  unread: Set<string>;
 }
 
 export async function loadLeadTouches(
@@ -45,12 +49,15 @@ export async function loadLeadTouches(
 ): Promise<SetterTouches> {
   const byContact = new Map<string, LeadTouches>();
   const truncated: string[] = [];
+  const clippedIds = new Set<string>();
+  const unreadIds = new Set<string>();
   let budget = TOUCH_BUDGET;
   let unread = 0;
   let clipped = 0;
   for (const contactId of new Set(contactIds)) {
     if (budget <= 0) {
       unread += 1;
+      unreadIds.add(contactId);
       continue;
     }
     const rows = await ctx.db
@@ -59,7 +66,10 @@ export async function loadLeadTouches(
       .order("desc")
       .take(Math.min(PER_LEAD_TAKE, budget));
     budget -= rows.length;
-    if (rows.length >= PER_LEAD_TAKE) clipped += 1;
+    if (rows.length >= PER_LEAD_TAKE) {
+      clipped += 1;
+      clippedIds.add(contactId);
+    }
     const lead: LeadTouches = { touches: [], inboundAt: [] };
     for (const e of rows) {
       if (e.occurredAt < fromMs || e.occurredAt > toMs) continue;
@@ -82,5 +92,5 @@ export async function loadLeadTouches(
   }
   if (clipped > 0) truncated.push(`touches: ${clipped} lead${clipped === 1 ? "" : "s"} clipped`);
   if (unread > 0) truncated.push(`touches: ${unread} lead${unread === 1 ? "" : "s"} unread`);
-  return { byContact, truncated };
+  return { byContact, truncated, clipped: clippedIds, unread: unreadIds };
 }
