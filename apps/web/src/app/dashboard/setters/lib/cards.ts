@@ -22,6 +22,8 @@ export interface MetricVM {
   label: string;
   hint: string;
   measured: number | null;
+  /** A small line under the value — the count behind a percentage, for instance "41 of 62". */
+  detail?: string | null;
   /** What the setter typed on their EOD for the same range; undefined when the form has no such box. */
   filed?: number | null;
   format: Format;
@@ -47,6 +49,7 @@ export interface CardVM {
 const G = {
   dials: { label: "Dials", hint: "Outbound calls in Close, every attempt. Filed: dials." },
   connects: { label: "Connects", hint: "Answered calls at or over the team's connect threshold (settings). Filed: pick ups." },
+  held90: { label: "Held 90s+", hint: "Of their connects, the share that ran past 90 seconds — a sign they can keep someone talking once they have them. Counts every day in the range, filed or not." },
   texts: { label: "Texts", hint: "Outbound texts sent in Close." },
   sets: { label: "Sets", hint: "Bookings made in the range credited to the setter. Filed: sets." },
   onCal: { label: "On calendar", hint: "Credited bookings whose call falls in the range. Filed: calls on the calendar." },
@@ -70,9 +73,30 @@ const G = {
   confirmed: { label: "Confirmed", hint: "Filed only: said yes, they'll be there." },
 } as const;
 
-function metric(key: keyof typeof G, measured: number | null, format: Format, filed?: number | null): MetricVM {
+function metric(key: keyof typeof G, measured: number | null, format: Format, filed?: number | null, detail?: string | null): MetricVM {
   const drift = measured !== null && filed !== undefined && filed !== null && measured !== filed;
-  return { key, label: G[key].label, hint: G[key].hint, measured, filed, format, drift };
+  return { key, label: G[key].label, hint: G[key].hint, measured, filed, format, drift, detail };
+}
+
+/** The call length a "held" connect has to reach. */
+const HELD_SEC = 90;
+
+/** Of a setter's connects over the whole range, how many ran past HELD_SEC — from the ladder the cross-check carries per day. */
+function heldOf(checks: CrossCheckData | null | undefined, rosterId: string): { pct: number | null; detail: string | null } {
+  const r = checks?.byRoster.find((c) => c.rosterId === rosterId);
+  if (!checks || !r) return { pct: null, detail: null };
+  const iHeld = checks.ladderThresholds.indexOf(HELD_SEC);
+  const iConnect = checks.ladderThresholds.indexOf(checks.connectSec);
+  if (iHeld < 0 || iConnect < 0) return { pct: null, detail: null };
+  let held = 0;
+  let connects = 0;
+  for (const d of r.days) {
+    if (!d.ladder) continue;
+    held += d.ladder.counts[iHeld] ?? 0;
+    connects += d.ladder.counts[iConnect] ?? 0;
+  }
+  if (connects === 0) return { pct: null, detail: "no connects" };
+  return { pct: Math.round((held / connects) * 100), detail: `${held} of ${connects}` };
 }
 
 const filedOr = (f: ActivityData["byRoster"][number]["filed"], pick: (f: NonNullable<ActivityData["byRoster"][number]["filed"]>) => number, reported = true): number | null =>
@@ -104,6 +128,7 @@ export function buildCards(
     const sp = speedById.get(row.rosterId);
     const cd = cadenceById.get(row.rosterId);
     const f = a?.filed ?? null;
+    const held = heldOf(checks, row.rosterId);
     return {
       key: row.rosterId,
       rosterId: row.rosterId,
@@ -118,6 +143,7 @@ export function buildCards(
       metrics: [
         metric("dials", a?.dials ?? null, "int", filedOr(f, (x) => x.dials)),
         metric("connects", a?.answered ?? null, "int", filedOr(f, (x) => x.pickUps)),
+        metric("held90", held.pct, "pct", undefined, held.detail),
         metric("texts", a?.texts ?? null, "int"),
         metric("sets", s ? s.sets : null, "int", filedOr(f, (x) => x.sets)),
         metric("onCal", row.bookings, "int", filedOr(f, (x) => x.callsOnCalendar)),

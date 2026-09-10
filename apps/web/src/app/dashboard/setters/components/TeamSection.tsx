@@ -18,6 +18,7 @@ function Metric({ m }: { m: MetricVM }) {
     <div className="min-w-0" title={m.hint}>
       <div className="text-[11px] uppercase leading-tight tracking-wide text-muted-foreground">{m.label}</div>
       <div className="text-base font-semibold tabular-nums">{show(m, m.measured)}</div>
+      {m.detail && <div className="text-[11px] tabular-nums text-muted-foreground">{m.detail}</div>}
       {hasFiled && (
         <div className={`text-[11px] tabular-nums ${m.drift ? "font-medium text-amber-700" : "text-muted-foreground"}`} title="What they typed on their EOD for the same days">
           filed {show(m, m.filed)}
