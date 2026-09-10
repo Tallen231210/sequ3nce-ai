@@ -25,7 +25,7 @@ const ROSTER_TAKE = 200;
 
 export interface DayCheck {
   dayKey: string;
-  /** An EOD was owed: an active setter, a working day (Mon–Sat), and the day is over. */
+  /** An EOD was owed: an active setter and either a filed day, or a working day (Mon–Sat) that is over. */
   due: boolean;
   filed: FiledDay | null;
   measured: MeasuredDay;
@@ -120,7 +120,9 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
       const measured = measuredDayFor(cohorts.records, { rosterId, role: dayRole, linked }, key, activity?.get(key) ?? (activity ? { dials: 0, answered: 0 } : null));
       const filed = entry ? filedOf(entry, dayRole) : null;
       const flags = filed ? crossCheckDay(filed, measured, tolerances) : [];
-      const due = active && !isSunday(key) && (key <= yesterdayKey || entry !== null);
+      // A filed day always counts as due (a Sunday they worked is still a
+      // day they reported); an unfiled one only once it is over, Mon–Sat.
+      const due = active && (entry !== null || (!isSunday(key) && key <= yesterdayKey));
       days.push({ dayKey: key, due, filed, measured, flags });
     }
     const filedDays = days.filter((d) => d.filed !== null);
