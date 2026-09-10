@@ -121,9 +121,18 @@ function add(t: Tally, r: BookingRecord): void {
   else t.unknown += 1;
 }
 
-function finish<T extends Tally>(t: T): T {
+/** Share of finished calls that must have an outcome before a show rate is shown at all. */
+export const SHOW_RATE_MIN_KNOWN = 0.5;
+
+/** Showed over showed + no-show — but only when at least half the finished calls have an outcome; a rate off a small known minority says nothing. */
+export function showRateOf(t: { due: number; showed: number; noShow: number }): number | null {
   const known = t.showed + t.noShow;
-  t.showRatePct = known > 0 ? Math.round((t.showed / known) * 100) : null;
+  if (known === 0 || known < t.due * SHOW_RATE_MIN_KNOWN) return null;
+  return Math.round((t.showed / known) * 100);
+}
+
+function finish<T extends Tally>(t: T): T {
+  t.showRatePct = showRateOf(t);
   return t;
 }
 

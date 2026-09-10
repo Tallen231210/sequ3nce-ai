@@ -14,7 +14,8 @@ const tally = (bookings: number, showed: number, noShow: number) => ({
   noShow,
   rescheduled: 0,
   unknown: bookings - showed - noShow,
-  showRatePct: showed + noShow > 0 ? Math.round((showed / (showed + noShow)) * 100) : null,
+  showRatePct: showed + noShow >= bookings / 2 ? Math.round((showed / (showed + noShow)) * 100) : null,
+  outcomeKnown: showed + noShow,
 });
 const money = (closes: number, cash: number) => ({ closes, cash });
 

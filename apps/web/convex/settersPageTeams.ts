@@ -6,7 +6,7 @@
 // ============================================================================
 
 import type { BookingRecord } from "./setterTeamBookings";
-import { emptyTally, type LaneTotals, type PersonRow, type ConfirmationRow } from "./setterTeamLanes";
+import { emptyTally, showRateOf, type LaneTotals, type PersonRow, type ConfirmationRow } from "./setterTeamLanes";
 import type { RosterRef } from "./lib/setterTeamAttribution";
 import { elapsedWorkingMs, type defaultBusinessHours } from "./setterFunnelResolve";
 import { TEAM_ORDER, type SetterTeamType } from "./settersPageLabels";
@@ -33,7 +33,11 @@ export interface TeamStripColumn extends Money {
   unknown: number;
   showRatePct: number | null;
   /** Confirmation only: self-booked funnel calls contacted over all of them. */
-  coverage: { contacted: number; newSelfBooks: number; pct: number | null } | null;
+  coverage: { contacted: number; newSelfBooks: number; pct: number | null
+  /** Finished calls, and how many of them have an outcome — the show rate's footing. */
+  due: number;
+  outcomeKnown: number;
+} | null;
 }
 
 export interface OutboundBookingRow extends PersonRow, Money {
@@ -104,6 +108,7 @@ export function teamStrip(
     const sum = (pick: (t: LaneTotals) => number) => parts.reduce((n, t) => n + pick(t), 0);
     const showed = sum((t) => t.showed);
     const noShow = sum((t) => t.noShow);
+    const due = sum((t) => t.due);
     return {
       team,
       label: labels[team],
@@ -111,7 +116,10 @@ export function teamStrip(
       showed,
       noShow,
       unknown: sum((t) => t.unknown),
-      showRatePct: showed + noShow > 0 ? Math.round((showed / (showed + noShow)) * 100) : null,
+      /** Finished calls, and how many of them have an outcome — the show rate's footing. */
+      due,
+      outcomeKnown: showed + noShow,
+      showRatePct: showRateOf({ due, showed, noShow }),
       ...moneyWhere(records, (r) => lanes.includes(r.classification.lane)),
       coverage:
         team === "confirmation"
