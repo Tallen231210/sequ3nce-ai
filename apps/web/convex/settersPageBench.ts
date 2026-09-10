@@ -8,7 +8,7 @@ import { internalQuery } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { moneyOf } from "./setterTeamBookingHelpers";
 import { isStubLead } from "./settersPageSpeed";
-import { dialAnswered } from "./lib/dialAnswered";
+import { dialConnected } from "./lib/dialAnswered";
 import { dmRows, percentiles } from "./settersPageTeams";
 import { teamLabelsFor } from "./settersPageLabels";
 
@@ -64,15 +64,15 @@ export const rulesBench = internalQuery({
       { name: "percentiles: empty → nulls", pass: eq(percentiles([]), { median: null, p90: null }) },
       { name: "percentiles: nearest rank, odd", pass: eq(percentiles([5, 1, 3]), { median: 3, p90: 5 }) },
       { name: "percentiles: nearest rank, ten values", pass: eq(percentiles([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), { median: 5, p90: 9 }) },
-      { name: "answered: Close disposition answered, 3 seconds", pass: dialAnswered({ callDurationSec: 3, disposition: "answered" }) === true },
-      { name: "answered: Close no-answer", pass: dialAnswered({ callDurationSec: 0, disposition: "no-answer" }) === false },
-      { name: "answered: no disposition, time on the line", pass: dialAnswered({ callDurationSec: 5 }) === true },
-      { name: "answered: no disposition, zero", pass: dialAnswered({ callDurationSec: 0 }) === false },
-      { name: "answered: nothing known", pass: dialAnswered(undefined) === false },
+      { name: "connect: answered but 3 seconds at a 30s threshold", pass: dialConnected({ callDurationSec: 3, disposition: "answered" }, 30) === false },
+      { name: "connect: answered, 45 seconds at 30s", pass: dialConnected({ callDurationSec: 45, disposition: "answered" }, 30) === true },
+      { name: "connect: no-answer never counts", pass: dialConnected({ callDurationSec: 90, disposition: "no-answer" }, 30) === false },
+      { name: "connect: no disposition, over threshold", pass: dialConnected({ callDurationSec: 70 }, 60) === true },
+      { name: "connect: nothing known", pass: dialConnected(undefined, 60) === false },
       { name: "stub: inferred date", pass: isStubLead({ dateAdded: 1_000_000, dateAddedInferred: true }) === true },
-      { name: "stub: dial created the lead (seconds apart)", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 1_004_000 }) === true },
-      { name: "stub: first text 4 minutes before creation", pass: isStubLead({ dateAdded: 1_000_000, firstSmsOutboundAt: 760_000 }) === true },
-      { name: "not a stub: first dial an hour later", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 4_600_000 }) === false },
+      { name: "stub: a setter's dial created the lead (seconds apart)", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 1_004_000, firstDialByUserId: "user_x" }) === true },
+      { name: "not a stub: automated dial seconds after creation (no user)", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 1_004_000 }) === false },
+      { name: "not a stub: first dial an hour later", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 4_600_000, firstDialByUserId: "user_x" }) === false },
       { name: "not a stub: never touched", pass: isStubLead({ dateAdded: 1_000_000 }) === false },
       {
         name: "dm rows: configured person first, link matched case-insensitively, unconfigured link flagged",

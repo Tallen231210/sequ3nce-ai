@@ -24,7 +24,7 @@ export function EodRows({ clerkId, rosterId, rangeStart, rangeEnd }: { clerkId: 
   return (
     <div className="overflow-x-auto text-sm">
       <p className="mb-2 text-xs text-muted-foreground">
-        Filed / measured. {data.linked ? "Dials and connects (calls someone answered) are counted from Close for the same day." : "No Close user linked, so nothing is measured."}
+        Filed / measured. {data.linked ? "Dials and connects (answered calls over the team's threshold) are counted from Close for the same day." : "No Close user linked, so nothing is measured."}
         {data.truncated.length > 0 ? " Partial read." : ""}
       </p>
       <table className="w-full tabular-nums">

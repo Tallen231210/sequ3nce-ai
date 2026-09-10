@@ -9,6 +9,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CloseConnectionCard } from "../../setter-data/components/settings/CloseConnectionCard";
+import { ConnectionThresholdConfig } from "../../setter-data/components/settings/ConnectionThresholdConfig";
+import { useTeam } from "@/hooks/useTeam";
 import { NotificationsCard } from "../../setter-eods/NotificationsCard";
 import { RosterEditor } from "./RosterEditor";
 import { TeamConfigForm } from "./TeamConfigForm";
@@ -18,6 +20,7 @@ type Tab = "roster" | "team" | "posts" | "crm";
 export function SettingsDrawer({ clerkId, open, onClose }: { clerkId: string; open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("roster");
   const [flash, setFlash] = useState<string | null>(null);
+  const { team } = useTeam();
   const installation = useQuery(api.setterGhlOauth.getMyInstallationStatus, clerkId ? { clerkId } : "skip");
   // The Close OAuth callback lands on the old route with ?connected=1 or
   // ?ghl_error=…; the bounce forwards the query string here.
@@ -51,7 +54,19 @@ export function SettingsDrawer({ clerkId, open, onClose }: { clerkId: string; op
         </div>
         {flash && <p className="text-sm text-emerald-700">{flash}</p>}
         {tab === "roster" && <RosterEditor clerkId={clerkId} />}
-        {tab === "team" && <TeamConfigForm clerkId={clerkId} />}
+        {tab === "team" && (
+          <div className="space-y-5">
+            <TeamConfigForm clerkId={clerkId} />
+            <section className="rounded-lg border border-border p-4">
+              <h3 className="text-sm font-semibold">What counts as a connect</h3>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Close marks a dial "answered" whenever the line picked up, voicemail included, so a connect here is an answered call at or over this many
+                seconds. Tune it until the connects on the cards agree with the pick ups your setters file.
+              </p>
+              <ConnectionThresholdConfig thresholdSec={(team as { setterConnectionThresholdSec?: number } | null | undefined)?.setterConnectionThresholdSec ?? 60} />
+            </section>
+          </div>
+        )}
         {tab === "posts" && <NotificationsCard />}
         {tab === "crm" && (installation && installation.connected ? <CloseConnectionCard installation={installation} /> : <p className="py-4 text-sm text-muted-foreground">Close isn't connected. Connect it from Setter Data → Settings on an unflagged team, or ask us to connect it.</p>)}
       </DialogContent>

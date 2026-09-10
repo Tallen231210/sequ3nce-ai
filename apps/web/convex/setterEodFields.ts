@@ -23,7 +23,7 @@ export interface EodField {
 
 export const BOOKING_FIELDS: EodField[] = [
   { key: "dials", label: "Dials", hint: "phone call attempts that day — every attempt counts, incl. no-answers — prefilled from Close", optional: false, measured: true },
-  { key: "pickUps", label: "Pick ups", hint: "dials where a human answered and you spoke — prefilled from Close (calls someone answered)", optional: false, measured: true },
+  { key: "pickUps", label: "Pick ups", hint: "dials where a human answered and you spoke — prefilled from Close (calls over the team's connect threshold)", optional: false, measured: true },
   { key: "sets", label: "Sets", hint: "new sales calls you booked that day — prospect committed, time locked in — prefilled from the calendar", optional: false, measured: true },
   { key: "newLeadsHit", label: "New leads hit", hint: "brand-new leads you contacted for the first time that day", optional: false },
   { key: "followUps", label: "Follow ups", hint: "existing leads you re-contacted that day", optional: false },

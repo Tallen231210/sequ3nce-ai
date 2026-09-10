@@ -10,7 +10,7 @@
 
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { dialAnswered } from "./lib/dialAnswered";
+import { dialConnected } from "./lib/dialAnswered";
 
 /** Lead-event rows one call may read in total; past it the remaining leads go unread and the result says so. */
 const TOUCH_BUDGET = 12_000;
@@ -23,7 +23,7 @@ export interface RawTouch {
   at: number;
   /** Seconds on the line for a dial; null for texts or when Close sent none. */
   durationSec: number | null;
-  /** A dial a person picked up (Close's disposition; duration > 0 where there is none). */
+  /** A connect: answered and on the line at least the team's threshold. */
   answered: boolean;
 }
 
@@ -49,6 +49,7 @@ export async function loadLeadTouches(
   contactIds: Iterable<string>,
   fromMs: number,
   toMs: number,
+  connectSec: number,
 ): Promise<SetterTouches> {
   const byContact = new Map<string, LeadTouches>();
   const truncated: string[] = [];
@@ -85,7 +86,7 @@ export async function loadLeadTouches(
           kind: e.eventType === "dial_outbound" ? "dial" : "sms",
           at: e.occurredAt,
           durationSec,
-          answered: e.eventType === "dial_outbound" && dialAnswered(e.details),
+          answered: e.eventType === "dial_outbound" && dialConnected(e.details, connectSec),
         });
       } else if (e.eventType === "sms_inbound") {
         lead.inboundAt.push(e.occurredAt);

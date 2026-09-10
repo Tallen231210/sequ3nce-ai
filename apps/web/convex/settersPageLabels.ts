@@ -30,7 +30,7 @@ export const GLOSSARY = {
   callsOnCalendar: { label: "Calls on calendar", hint: "Credited bookings whose call falls in the range." },
   shown: { label: "Shown", hint: "Of the calls on the calendar, the ones that showed: a closer's form, a recording with the prospect on it, or a colour change we watched." },
   dials: { label: "Dials", hint: "Outbound calls in Close, every attempt." },
-  connects: { label: "Connects", hint: "Outbound calls a person answered, however short. Their EOD calls this pick ups." },
+  connects: { label: "Connects", hint: "Outbound calls answered and on the line at least the team's connect threshold. Their EOD calls this pick ups — tune the threshold until the two agree." },
   texts: { label: "Texts", hint: "Outbound texts sent in Close." },
   reached: { label: "Reached", hint: "A connect, or a text the lead answered — shown per lead in the drawer." },
   showRate: { label: "Show rate", hint: "Showed over showed plus no-show. Unknown outcomes are counted, not assumed." },

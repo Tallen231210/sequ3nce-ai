@@ -10,7 +10,7 @@ import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { dayKeyInTz } from "./closerPerformance";
 import { DAY_MS, dayKeyOf, readDailyStatsRange } from "./setterRollups";
-import { dialAnswered } from "./lib/dialAnswered";
+import { DEFAULT_CONNECT_SEC, dialConnected } from "./lib/dialAnswered";
 
 const EDGE_TAKE = 4_000;
 const EOD_TAKE = 2_000;
@@ -43,6 +43,7 @@ export interface ActivityLoad {
   /** Close user id → counts. "" is the blank user (automation / unattributed). */
   byUser: Map<string, ActivityCounts>;
   rollupsReady: boolean;
+  connectSec: number;
   truncated: string[];
 }
 
@@ -53,6 +54,7 @@ async function rawEdge(
   teamId: Id<"teams">,
   fromMs: number,
   toMs: number,
+  connectSec: number,
   into: Map<string, ActivityCounts>,
   truncated: string[],
 ): Promise<void> {
@@ -68,7 +70,7 @@ async function rawEdge(
   for (const e of dials) {
     const c = into.get(e.ghlUserId ?? "") ?? zero();
     c.dials += 1;
-    if (dialAnswered(e.details)) c.answered += 1;
+    if (dialConnected(e.details, connectSec)) c.answered += 1;
     into.set(e.ghlUserId ?? "", c);
   }
   const texts = await ctx.db
@@ -94,6 +96,7 @@ export async function loadActivity(
   endMs: number,
 ): Promise<ActivityLoad> {
   const teamId = team._id;
+  const connectSec = team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
   const byUser = new Map<string, ActivityCounts>();
   const truncated: string[] = [];
   const rollupsReady = team.setterRollupsBackfilledAt !== undefined;
@@ -111,12 +114,12 @@ export async function loadActivity(
       c.texts += r.smsOutbound ?? 0;
       byUser.set(r.setterId, c);
     }
-    await rawEdge(ctx, teamId, startMs, firstFull, byUser, truncated);
-    await rawEdge(ctx, teamId, lastFullEnd, endMs, byUser, truncated);
+    await rawEdge(ctx, teamId, startMs, firstFull, connectSec, byUser, truncated);
+    await rawEdge(ctx, teamId, lastFullEnd, endMs, connectSec, byUser, truncated);
   } else {
-    await rawEdge(ctx, teamId, startMs, endMs, byUser, truncated);
+    await rawEdge(ctx, teamId, startMs, endMs, connectSec, byUser, truncated);
   }
-  return { byUser, rollupsReady, truncated };
+  return { byUser, rollupsReady, connectSec, truncated };
 }
 
 const zeroFiled = (): FiledSums => ({
@@ -170,6 +173,7 @@ export async function loadUserDays(
   startMs: number,
   endMs: number,
   tz: string,
+  connectSec: number,
 ): Promise<{ byDay: Map<string, ActivityCounts>; truncated: boolean }> {
   const rows = await ctx.db
     .query("setterLeadEvents")
@@ -186,7 +190,7 @@ export async function loadUserDays(
     if (e.eventType === "sms_outbound") c.texts += 1;
     else {
       c.dials += 1;
-      if (dialAnswered(e.details)) c.answered += 1;
+      if (dialConnected(e.details, connectSec)) c.answered += 1;
     }
     byDay.set(key, c);
   }

@@ -42,7 +42,7 @@ export interface CardVM {
 
 const G = {
   dials: { label: "Dials", hint: "Outbound calls in Close, every attempt. Filed: dials." },
-  connects: { label: "Connects", hint: "Calls a person answered, however short. Filed: pick ups." },
+  connects: { label: "Connects", hint: "Answered calls at or over the team's connect threshold (settings). Filed: pick ups." },
   texts: { label: "Texts", hint: "Outbound texts sent in Close." },
   sets: { label: "Sets", hint: "Bookings made in the range credited to the setter. Filed: sets." },
   onCal: { label: "On calendar", hint: "Credited bookings whose call falls in the range. Filed: calls on the calendar." },

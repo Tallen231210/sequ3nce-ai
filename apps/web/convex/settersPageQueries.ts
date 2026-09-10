@@ -22,6 +22,7 @@ import { teamLabelsFor } from "./settersPageLabels";
 import { confirmationRows, dmRows, outboundRows, percentiles, responseTimes, teamStrip, type Hours } from "./settersPageTeams";
 import { confirmationSpeedDays, confirmationSpeedRows, outboundSpeed, speedBySetter, speedDaysFor, type SetterRef } from "./settersPageSpeed";
 import { loadCadence, nameLeads } from "./settersPageCadence";
+import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 
 const BOOKED_TAKE = 8_000;
 const RANGE_ARGS = { clerkId: v.string(), rangeStart: v.number(), rangeEnd: v.number() };
@@ -158,6 +159,7 @@ export const getSettersActivity = query({
     const rosterRows = (await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(200)).filter((r) => r.active);
     const rosters = rosterRefsOf(rosterRows);
     const [activity, filed] = await Promise.all([loadActivity(ctx, team, startMs, endMs), loadFiled(ctx, teamId, startMs, endMs, timezone)]);
+    const connectSec = activity.connectSec;
     const byRoster = rosters.map((r) => {
       const counts = r.crmUserId ? activity.byUser.get(r.crmUserId) ?? { dials: 0, answered: 0, texts: 0 } : null;
       return {
@@ -186,6 +188,7 @@ export const getSettersActivity = query({
     return {
       range: { startMs, endMs, timezone },
       rollupsReady: activity.rollupsReady,
+      connectSec,
       byRoster,
       unattributedDials,
       otherUsersDials,
@@ -207,7 +210,7 @@ export const getSettersSpeed = query({
       .filter((r) => r.role !== "confirmation" && r.crmUserId)
       .map((r) => ({ rosterId: r.rosterId, name: r.name, crmUserId: r.crmUserId as string }));
     const hours = await hoursFor(ctx, access);
-    const speed = await outboundSpeed(ctx, teamId, setters, hours, startMs, endMs, nowMs);
+    const speed = await outboundSpeed(ctx, teamId, setters, hours, startMs, endMs, nowMs, access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC);
     const byId = speedBySetter(speed, setters);
     const all = speed.rows;
     return {
@@ -235,12 +238,13 @@ export const getSettersCadence = query({
     const { teamId, startMs, endMs } = access;
     const rosterRows = (await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(200)).filter((r) => r.active);
     const setters = rosterRefsOf(rosterRows).filter((r) => r.role !== "confirmation" && r.crmUserId);
+    const connectSec = access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
     const bySetter = [];
     for (const r of setters) {
-      const { summary } = await loadCadence(ctx, teamId, r.crmUserId as string, startMs, endMs);
+      const { summary } = await loadCadence(ctx, teamId, r.crmUserId as string, startMs, endMs, connectSec);
       bySetter.push({ rosterId: r.rosterId, ...summary });
     }
-    return { range: { startMs, endMs }, bySetter, truncated: bySetter.some((s) => s.truncated) ? ["dials"] : [] };
+    return { range: { startMs, endMs }, connectSec, bySetter, truncated: bySetter.some((s) => s.truncated) ? ["dials"] : [] };
   },
 });
 
@@ -252,7 +256,7 @@ export const getCadenceRows = query({
     if (!access) return null;
     const roster = await rosterForAccess(ctx, access, args.rosterId);
     if (!roster || !roster.crmUserId) return null;
-    const { leads, summary } = await loadCadence(ctx, access.teamId, roster.crmUserId, access.startMs, access.endMs);
+    const { leads, summary } = await loadCadence(ctx, access.teamId, roster.crmUserId, access.startMs, access.endMs, access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC);
     return { summary, leads: await nameLeads(ctx, access.teamId, leads), listed: Math.min(leads.length, 300) };
   },
 });
@@ -271,7 +275,7 @@ export const getSetterDrawer = query({
     const roster = await rosterForAccess(ctx, access, args.rosterId);
     if (!roster) return null;
     const { teamId, startMs, endMs, timezone } = access;
-    const measured = roster.crmUserId ? await loadUserDays(ctx, teamId, roster.crmUserId, startMs, endMs, timezone) : null;
+    const measured = roster.crmUserId ? await loadUserDays(ctx, teamId, roster.crmUserId, startMs, endMs, timezone, access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC) : null;
     const rows: Array<{ dayKey: string; filed: Doc<"setterEodEntries"> | null; measured: { dials: number; answered: number; texts: number } | null }> = [];
     const lastKey = dayKeyInTz(endMs - 1, timezone);
     for (let key = dayKeyInTz(startMs, timezone); key <= lastKey; key = addDaysKey(key, 1)) {
@@ -304,7 +308,7 @@ export const getSpeedByDay = query({
     const setters: SetterRef[] = rosterRefsOf(rosterRows)
       .filter((r) => r.role !== "confirmation" && r.crmUserId)
       .map((r) => ({ rosterId: r.rosterId, name: r.name, crmUserId: r.crmUserId as string }));
-    const speed = await outboundSpeed(ctx, access.teamId, setters, hours, access.startMs, access.endMs, access.nowMs);
+    const speed = await outboundSpeed(ctx, access.teamId, setters, hours, access.startMs, access.endMs, access.nowMs, access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC);
     return { kind: "outbound" as const, basis: basisOf(hours), truncated: speed.truncated, ...speedDaysFor(speed, String(roster._id), access.timezone, slowest) };
   },
 });

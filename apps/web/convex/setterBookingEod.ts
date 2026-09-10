@@ -16,7 +16,7 @@ import { resolveSetterSessionCtx } from "./setterAuth";
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
 import { collectTeamBookings, type BookingRecord } from "./setterTeamBookings";
 import { teamHasSetterTeams } from "./setterTeamQueries";
-import { dialAnswered } from "./lib/dialAnswered";
+import { DEFAULT_CONNECT_SEC, dialConnected } from "./lib/dialAnswered";
 
 const MEASURE_LOOKBACK_DAYS = 30;
 const COHORT_TAKE = 1_500;
@@ -84,6 +84,7 @@ export const getMeasuredForDay = query({
     // person picked up — what their EOD calls pick ups.
     let dials: number | null = null;
     let pickUps: number | null = null;
+    const connectSec = team?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
     if (me.crmUserId) {
       const rows = await ctx.db
         .query("setterLeadEvents")
@@ -98,7 +99,7 @@ export const getMeasuredForDay = query({
       for (const e of rows) {
         if (e.eventType !== "dial_outbound") continue;
         dials += 1;
-        if (dialAnswered(e.details)) pickUps += 1;
+        if (dialConnected(e.details, connectSec)) pickUps += 1;
       }
     }
     const measured: BookingMeasured = { ...bookings, dials, pickUps };
@@ -109,6 +110,7 @@ export const getMeasuredForDay = query({
       measuredExists: data.records.some((r) => mine(r, String(me.rosterId))) || (dials ?? 0) > 0,
       truncated: [...truncated, ...data.truncated],
       linked: !!me.crmUserId,
+      connectSec,
     };
   },
 });

@@ -3,7 +3,7 @@ import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { bumpDailyStat, bumpDailyStats } from "./setterRollups";
-import { dialAnswered } from "./lib/dialAnswered";
+import { dialConnected } from "./lib/dialAnswered";
 import {
   ATTENDANCE_BETA_FLAG,
   stampAttendanceFromStatus,
@@ -969,7 +969,7 @@ export async function recordCallEvent(
   // `answered` counts every outbound call a person picked up (the Setters
   // page's "connects"); `connects` below still fires once per lead at the
   // team's duration threshold.
-  const answered = ev.direction === "outbound" && dialAnswered({ callDurationSec: durationSec, ...(ev.extraDetails ?? {}) });
+  const answered = ev.direction === "outbound" && dialConnected({ callDurationSec: durationSec, ...(ev.extraDetails ?? {}) }, connectionThresholdSec);
   await bumpDailyStats(
     ctx,
     args.teamId,
@@ -1127,7 +1127,7 @@ export const applyCallDuration = internalMutation({
     // A late duration means a person was on the line (no disposition on this
     // path), whether or not the lead was already connected — so this bump
     // sits before that check.
-    if (dialAnswered({ callDurationSec: args.durationSec })) {
+    if (dialConnected({ callDurationSec: args.durationSec }, thresholdSec)) {
       await bumpDailyStat(ctx, args.teamId, event.occurredAt, event.ghlUserId, "answered");
     }
 

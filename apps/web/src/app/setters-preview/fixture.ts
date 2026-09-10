@@ -134,6 +134,7 @@ export const SPEED: SpeedData = {
 
 export const CADENCE: CadenceData = {
   range: { startMs: NOW - 7 * D, endMs: NOW },
+  connectSec: 60,
   truncated: [],
   bySetter: [
     { rosterId: "r-ezra", dials: 1_230, leadsDialled: 312, dialsPerLead: 3.9, threePlusPct: 56, medianPursuitDays: 2.1, leadsAnswered: 88, truncated: false },
@@ -145,6 +146,7 @@ export const CADENCE: CadenceData = {
 export const ACTIVITY: ActivityData = {
   range: { startMs: NOW - 7 * D, endMs: NOW, timezone: "America/New_York" },
   rollupsReady: true,
+  connectSec: 60,
   byRoster: [
     { rosterId: "r-ezra", name: "Ezra", role: "booking", linked: true, dials: 1_230, answered: 98, texts: 310, filed: filed({ dials: 1_150, pickUps: 98, sets: 29, callsOnCalendar: 38, callsShown: 28, callsClosed: 4, cashCollected: 19_000, cashReported: true }) },
     { rosterId: "r-ivan", name: "Ivan", role: "booking", linked: true, dials: 1_635, answered: 71, texts: 120, filed: filed({ dials: 1_604, pickUps: 92, sets: 13, callsOnCalendar: 13, callsShown: 5, callsClosed: 1, cashCollected: 6_000, cashReported: true }) },

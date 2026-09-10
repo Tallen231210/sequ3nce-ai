@@ -43,6 +43,7 @@ import {
 } from "./setterTeamBookingHelpers";
 import { lookupLeadsByEmailNorm } from "./setterLeadLookup";
 import { loadLeadTouches } from "./setterTeamTouches";
+import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const MAX_TEAM_RANGE_DAYS = 14;
@@ -174,6 +175,7 @@ export async function collectTeamBookings(
   const tz = (team as { timezone?: string } | null)?.timezone || DEFAULT_TIMEZONE;
   const teamWords = team?.closerExcludedBookingTitles;
   const countAiContractValue = team?.closerCountAiContractValue ?? true;
+  const connectSec = team?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
   const rosters = rosterRefsOf(rosterRows);
   const rosterNames = rosterNamesOf(rosters);
   const rosterByCrm = new Map(rosters.filter((r) => r.crmUserId).map((r) => [r.crmUserId as string, r]));
@@ -212,6 +214,7 @@ export async function collectTeamBookings(
     Array.from(lookup.leads.values()).map((l) => l.ghlContactId),
     startMs - TOUCH_HISTORY_MS,
     endMs,
+    connectSec,
   );
   truncated.push(...touchData.truncated);
 

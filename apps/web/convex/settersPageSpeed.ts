@@ -25,10 +25,12 @@ const STUB_WINDOW_MS = 5 * 60 * 1000;
  * A lead with no real arrival time: Close created it from the first dial (or
  * we inferred its date from the first activity we saw). Counted, never timed.
  */
-export function isStubLead(lead: { dateAdded: number; dateAddedInferred?: boolean; firstDialAt?: number; firstSmsOutboundAt?: number }): boolean {
+export function isStubLead(lead: { dateAdded: number; dateAddedInferred?: boolean; firstDialAt?: number; firstDialByUserId?: string }): boolean {
   if (lead.dateAddedInferred === true) return true;
-  const firstActivity = Math.min(lead.firstDialAt ?? Infinity, lead.firstSmsOutboundAt ?? Infinity);
-  return Number.isFinite(firstActivity) && Math.abs(firstActivity - lead.dateAdded) <= STUB_WINDOW_MS;
+  // Only a person's dial creates a lead this way. An automated welcome text
+  // seconds after creation is normal and says nothing about arrival.
+  if (!lead.firstDialByUserId || lead.firstDialAt === undefined) return false;
+  return Math.abs(lead.firstDialAt - lead.dateAdded) <= STUB_WINDOW_MS;
 }
 
 export type SpeedNote = "no arrival time" | "never contacted" | "touched before arrival" | "contacted, time unknown" | "self-booked" | null;
@@ -136,6 +138,7 @@ export async function outboundSpeed(
   startMs: number,
   endMs: number,
   nowMs: number,
+  connectSec: number,
 ): Promise<OutboundSpeed> {
   const truncated: string[] = [];
   const leads: Doc<"setterLeads">[] = await ctx.db
@@ -150,7 +153,7 @@ export async function outboundSpeed(
   const selfBooked = await selfBookedEmails(ctx, teamId, startMs, endMs);
   if (selfBooked.truncated) truncated.push("self-booked events");
   const toRead = live.filter((l) => !(l.emailNorm && selfBooked.emails.has(l.emailNorm)));
-  const touches = await loadLeadTouches(ctx, teamId, toRead.map((l) => l.ghlContactId), startMs, nowMs);
+  const touches = await loadLeadTouches(ctx, teamId, toRead.map((l) => l.ghlContactId), startMs, nowMs, connectSec);
   truncated.push(...touches.truncated);
   const byCrm = new Map(setters.map((s) => [s.crmUserId, s]));
 

@@ -7,7 +7,7 @@
 
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { dialAnswered } from "./lib/dialAnswered";
+import { dialConnected } from "./lib/dialAnswered";
 import { percentiles } from "./settersPageTeams";
 
 /** Dial rows read per setter for the range; a busier fortnight than this is reported as partial. */
@@ -37,7 +37,7 @@ export interface CadenceSummary {
   truncated: boolean;
 }
 
-export async function loadCadence(ctx: QueryCtx, teamId: Id<"teams">, crmUserId: string, startMs: number, endMs: number): Promise<{ leads: CadenceLead[]; summary: CadenceSummary }> {
+export async function loadCadence(ctx: QueryCtx, teamId: Id<"teams">, crmUserId: string, startMs: number, endMs: number, connectSec: number): Promise<{ leads: CadenceLead[]; summary: CadenceSummary }> {
   const rows = await ctx.db
     .query("setterLeadEvents")
     .withIndex("by_team_and_setter_and_time", (q) => q.eq("teamId", teamId).eq("ghlUserId", crmUserId).gte("occurredAt", startMs).lt("occurredAt", endMs))
@@ -50,7 +50,7 @@ export async function loadCadence(ctx: QueryCtx, teamId: Id<"teams">, crmUserId:
     dials += 1;
     const l = byLead.get(e.ghlContactId) ?? { leadId: e.ghlContactId, attempts: 0, answered: 0, firstAt: e.occurredAt, lastAt: e.occurredAt };
     l.attempts += 1;
-    if (dialAnswered(e.details)) l.answered += 1;
+    if (dialConnected(e.details, connectSec)) l.answered += 1;
     l.firstAt = Math.min(l.firstAt, e.occurredAt);
     l.lastAt = Math.max(l.lastAt, e.occurredAt);
     byLead.set(e.ghlContactId, l);
