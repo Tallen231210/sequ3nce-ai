@@ -101,8 +101,9 @@ export interface ConfirmationMeasured {
   confirmedUnknown: number | null;
 }
 
-function herTouches(r: BookingRecord, rosterId: string) {
-  return r.touches.filter((t) => t.rosterId === rosterId && t.afterBooking);
+/** Their post-booking touches on a record, optionally only those made before `untilMs` (the end of the day being measured). */
+function ownTouches(r: BookingRecord, rosterId: string, untilMs?: number) {
+  return r.touches.filter((t) => t.rosterId === rosterId && t.afterBooking && (untilMs === undefined || t.at < untilMs));
 }
 
 /** Her cohort: funnel self-books that no outbound or DM setter owns. */
@@ -111,24 +112,29 @@ export function isHers(r: BookingRecord): boolean {
   return r.classification.isFunnel && lane !== "outbound" && lane !== "dm" && !r.isFollowUp;
 }
 
-function contactedBy(r: BookingRecord, rosterId: string): boolean {
+function contactedBy(r: BookingRecord, rosterId: string, untilMs?: number): boolean {
   return (
-    herTouches(r, rosterId).length > 0 ||
+    ownTouches(r, rosterId, untilMs).length > 0 ||
     (r.classification.attributedBy === "tag" && r.classification.creditRosterIds.includes(rosterId))
   );
 }
 
-export function measureConfirmationDay(records: BookingRecord[], rosterId: string, dayKey: string, linked: boolean): ConfirmationMeasured {
+/**
+ * The confirmation setter's day. `untilMs` (the day's end) bounds contacted
+ * and reached to touches made THAT day, so a truthful same-day filing stays
+ * true after they keep working the list later in the week.
+ */
+export function measureConfirmationDay(records: BookingRecord[], rosterId: string, dayKey: string, linked: boolean, untilMs?: number): ConfirmationMeasured {
   const mine = records.filter(isHers);
   const bookedToday = mine.filter((r) => r.bookedDayKey === dayKey);
   if (!linked) {
     return { newSelfBooked: bookedToday.length, contacted: null, reached: null, confirmedOnCalendar: null, confirmedShowed: null, confirmedUnknown: null };
   }
-  const scheduledToday = mine.filter((r) => r.dayKey === dayKey && contactedBy(r, rosterId));
+  const scheduledToday = mine.filter((r) => r.dayKey === dayKey && contactedBy(r, rosterId, untilMs));
   return {
     newSelfBooked: bookedToday.length,
-    contacted: bookedToday.filter((r) => contactedBy(r, rosterId)).length,
-    reached: bookedToday.filter((r) => herTouches(r, rosterId).some((t) => t.reached)).length,
+    contacted: bookedToday.filter((r) => contactedBy(r, rosterId, untilMs)).length,
+    reached: bookedToday.filter((r) => ownTouches(r, rosterId, untilMs).some((t) => t.reached)).length,
     confirmedOnCalendar: scheduledToday.length,
     confirmedShowed: scheduledToday.filter((r) => r.verdict.result === "showed").length,
     confirmedUnknown: scheduledToday.filter((r) => r.verdict.result === "unknown").length,
@@ -150,13 +156,14 @@ export function measuredDayFor(
   roster: { rosterId: string; role: "booking" | "confirmation"; linked: boolean },
   dayKey: string,
   activity: DayActivity | null,
+  untilMs?: number,
 ): MeasuredDay {
   const none: MeasuredDay = {
     dials: null, pickUps: null, sets: null, callsOnCalendar: null, callsShown: null, callsUnknown: null,
     newSelfBooked: null, contacted: null, reached: null, confirmedOnCalendar: null, confirmedShowed: null, confirmedUnknown: null,
   };
   if (roster.role === "confirmation") {
-    return { ...none, ...measureConfirmationDay(records, roster.rosterId, dayKey, roster.linked) };
+    return { ...none, ...measureConfirmationDay(records, roster.rosterId, dayKey, roster.linked, untilMs) };
   }
   const b = measureBookingDay(records, roster.rosterId, dayKey);
   return {

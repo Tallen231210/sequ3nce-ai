@@ -7,7 +7,7 @@
 // setter_teams flag see it; the sidebar hides it for everyone else.
 // ============================================================================
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { Loader2, Settings2 } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
@@ -26,6 +26,21 @@ export default function SettersPage() {
   const flagged = flags.includes("setter_teams");
   const [range, setRange] = useState(() => ({ start: Date.now() - 7 * DAY_MS, end: Date.now() }));
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"roster" | "team" | "posts" | "crm">("roster");
+  const [flash, setFlash] = useState<string | null>(null);
+  // The CRM OAuth callback lands on the old route with ?connected=1 or
+  // ?ghl_error=…, and the bounce forwards the query string here. Open the
+  // drawer on the CRM tab so the result is actually seen.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected") === "1";
+    const error = params.get("ghl_error");
+    if (!connected && !error) return;
+    setFlash(connected ? "CRM connected." : `CRM connection failed: ${error}`);
+    setSettingsTab("crm");
+    setSettingsOpen(true);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   const args = clerkId && flagged ? { clerkId, rangeStart: range.start, rangeEnd: range.end } : "skip";
   const bookings = useQuery(api.settersPageQueries.getSettersBookings, args);
   const sets = useQuery(api.settersPageQueries.getSettersSets, args);
@@ -62,16 +77,19 @@ export default function SettersPage() {
       <Header title="Setters" description="Every setter, by team — what the calendar and Close measured, beside what they filed." />
       <div className="space-y-5 px-6 py-6 pb-16">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">Last 7 days by default; up to 14 in one look.</p>
+          <p className="text-sm text-muted-foreground">
+            Whole days, from the first day of the range through today so far. Up to 14 days in one look.
+            {bookings?.rangeClampedToDays ? ` Showing the last ${bookings.rangeClampedToDays} days of the range you picked.` : ""}
+          </p>
           <div className="flex items-center gap-2">
-            <DateRangeSelect rangeStart={range.start} rangeEnd={range.end} onChange={(start, end) => setRange({ start, end })} />
+            <DateRangeSelect rangeStart={range.start} rangeEnd={range.end} onChange={(start, end) => setRange({ start, end })} maxDays={14} />
             <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm hover:border-foreground/40">
               <Settings2 className="h-4 w-4" />
               Settings
             </button>
           </div>
         </div>
-        {clerkId && <SettingsDrawer clerkId={clerkId} open={settingsOpen} onClose={() => setSettingsOpen(false)} checks={checks} />}
+        {clerkId && <SettingsDrawer clerkId={clerkId} open={settingsOpen} onClose={() => setSettingsOpen(false)} checks={checks} initialTab={settingsTab} flash={flash} />}
         {bookings === undefined && (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

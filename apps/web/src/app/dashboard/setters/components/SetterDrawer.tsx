@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { BookingsData, CardVM, CrossCheckData } from "../lib/cards";
 import { BookingEvidenceList } from "./BookingEvidenceList";
@@ -31,6 +31,12 @@ export function SetterDrawer({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("bookings");
+  // Keep the last card while the dialog fades out, so the title and body
+  // don't blank mid-close.
+  const [shown, setShown] = useState<CardVM | null>(card);
+  useEffect(() => {
+    if (card) setShown(card);
+  }, [card]);
   const rows = card
     ? records
         .filter((r) => (card.rosterId ? r.creditIds.includes(card.rosterId) : r.lane === "dm" && (r.dmPerson ?? "no name on the link").toLowerCase() === card.dmLinkName))
@@ -55,9 +61,9 @@ export function SetterDrawer({
     >
       <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{card?.name ?? ""}</DialogTitle>
+          <DialogTitle>{(card ?? shown)?.name ?? ""}</DialogTitle>
         </DialogHeader>
-        <div className="flex gap-1 border-b border-border">
+        <div className="flex flex-wrap gap-1 border-b border-border">
           {tabs
             .filter((t) => t.show)
             .map((t) => (

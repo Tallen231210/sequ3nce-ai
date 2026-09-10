@@ -22,13 +22,13 @@ export interface EodField {
 }
 
 export const BOOKING_FIELDS: EodField[] = [
-  { key: "dials", label: "Dials", hint: "phone call attempts that day — every attempt counts, incl. no-answers — prefilled from Close", optional: false, measured: true },
-  { key: "pickUps", label: "Pick ups", hint: "dials where a human answered and you spoke — prefilled from Close (calls over the team's connect threshold)", optional: false, measured: true },
-  { key: "sets", label: "Sets", hint: "new sales calls you booked that day — prospect committed, time locked in — prefilled from the calendar", optional: false, measured: true },
+  { key: "dials", label: "Dials", hint: "phone call attempts that day — every attempt counts, incl. no-answers", optional: false, measured: true },
+  { key: "pickUps", label: "Pick ups", hint: "dials where a human answered and you spoke", optional: false, measured: true },
+  { key: "sets", label: "Sets", hint: "new sales calls you booked that day — prospect committed, time locked in", optional: false, measured: true },
   { key: "newLeadsHit", label: "New leads hit", hint: "brand-new leads you contacted for the first time that day", optional: false },
   { key: "followUps", label: "Follow ups", hint: "existing leads you re-contacted that day", optional: false },
-  { key: "callsOnCalendar", label: "Calls on the calendar", hint: "first consults from YOUR sets that were scheduled for that day — prefilled", optional: true, measured: true },
-  { key: "callsShown", label: "Calls shown", hint: "of those, how many showed — follow-ups / second calls don't count — prefilled where we know", optional: true, measured: true },
+  { key: "callsOnCalendar", label: "Calls on the calendar", hint: "first consults from YOUR sets that were scheduled for that day", optional: true, measured: true },
+  { key: "callsShown", label: "Calls shown", hint: "of those, how many showed — follow-ups / second calls don't count", optional: true, measured: true },
   { key: "callsClosed", label: "Calls closed", hint: "deals from YOUR sets that closed that day — follow-up closes count", optional: true },
   { key: "cashCollected", label: "Cash collected ($)", hint: "cash collected that day from your sets' deals — later payments count", optional: true },
 ];

@@ -7,9 +7,9 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { addDaysKey } from "./dataHealthCore";
 import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
+import { dayKeyOf } from "./setterRollups";
 import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { teamHasSetterTeams } from "./setterTeamQueries";
@@ -164,11 +164,12 @@ export const setConnectThreshold = mutation({
     // change made while one is running just needs another run after it.
     const requestedAt = team.setterRollupsRecountRequestedAt ?? 0;
     if (requestedAt > nowMs) return { ok: true, recount: "queued" as const }; // a deferred run is already waiting
-    const tz = (team as { timezone?: string }).timezone || DEFAULT_TIMEZONE;
     const runAt = requestedAt > nowMs - RECOUNT_COOLDOWN_MS ? requestedAt + RECOUNT_COOLDOWN_MS : nowMs;
-    const endDayKey = dayKeyInTz(runAt, tz);
+    // Rollups are keyed by UTC day; end one day past the run so the UTC day
+    // in progress (an evening in the Americas) is recounted too.
+    const endDayKey = addDaysKey(dayKeyOf(runAt), 1);
     await ctx.db.patch(teamId, { setterRollupsRecountRequestedAt: runAt });
-    await ctx.scheduler.runAfter(Math.max(0, runAt - nowMs), internal.setterRollups.recountRange, { teamId, startDayKey: addDaysKey(endDayKey, -RECOUNT_DAYS), endDayKey });
+    await ctx.scheduler.runAfter(Math.max(0, runAt - nowMs), internal.setterRollups.recountRange, { teamId, startDayKey: addDaysKey(endDayKey, -(RECOUNT_DAYS + 1)), endDayKey });
     return { ok: true, recount: runAt > nowMs ? ("queued" as const) : ("started" as const) };
   },
 });

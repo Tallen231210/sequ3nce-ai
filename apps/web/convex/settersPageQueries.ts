@@ -9,22 +9,24 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { dayKeyInTz } from "./closerPerformance";
-import { addDaysKey } from "./dataHealthCore";
 import { activeFunnelFor } from "./setterFunnels";
 import { workingHoursFor } from "./setterFunnelResolve";
 import { collectTeamBookings, type BookingRecord } from "./setterTeamBookings";
 import { rosterRefsOf } from "./setterTeamBookingHelpers";
 import { buildSetterTeamsView } from "./setterTeamLanes";
-import { loadActivity, loadFiled, loadUserDays } from "./settersPageActivity";
+import { loadActivity, loadFiled } from "./settersPageActivity";
 import { resolveSettersPageAccess, type SettersPageAccess } from "./settersPageGate";
 import { teamLabelsFor } from "./settersPageLabels";
 import { confirmationRows, dmRows, outboundRows, percentiles, responseTimes, teamStrip, type Hours } from "./settersPageTeams";
 import { confirmationSpeedDays, confirmationSpeedRows, outboundSpeed, speedBySetter, speedDaysFor, type SetterRef } from "./settersPageSpeed";
-import { loadCadence, nameLeads } from "./settersPageCadence";
+import { CADENCE_BUDGET, loadCadence, nameLeads, type CadenceSummary } from "./settersPageCadence";
 import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 
 const BOOKED_TAKE = 8_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** How far back / forward a booking's call may sit and still be in the sets cohort — bounds the collector's window whatever one stray row says. */
+const SETS_LOOKBACK_MS = 30 * DAY_MS;
+const SETS_LOOKAHEAD_MS = 60 * DAY_MS;
 const RANGE_ARGS = { clerkId: v.string(), rangeStart: v.number(), rangeEnd: v.number() };
 
 async function hoursFor(ctx: Parameters<typeof activeFunnelFor>[0], access: SettersPageAccess): Promise<Hours> {
@@ -44,9 +46,16 @@ async function collectBookedInRange(ctx: Parameters<typeof collectTeamBookings>[
     .take(BOOKED_TAKE);
   const truncated = rows.length >= BOOKED_TAKE ? ["booked events"] : [];
   if (rows.length === 0) return { records: [] as BookingRecord[], rosters: rosterRefsOf([]), truncated, crmUserNames: {} };
-  const starts = rows.map((e) => e.startTime);
-  const data = await collectTeamBookings(ctx, access.teamId, Math.min(access.startMs, ...starts), Math.max(...starts) + 1, access.nowMs, {
-    eventRows: rows,
+  // The collector's window is bounded by the range, not by the stray row:
+  // one event logged for a call weeks ago must not squeeze this week's sets
+  // for calls far out past the collector's span cap.
+  const from = Math.max(Math.min(access.startMs, ...rows.map((e) => e.startTime)), access.startMs - SETS_LOOKBACK_MS);
+  const to = Math.min(Math.max(...rows.map((e) => e.startTime)) + 1, access.endMs + SETS_LOOKAHEAD_MS);
+  const inWindow = rows.filter((e) => e.startTime >= from && e.startTime < to);
+  const dropped = rows.length - inWindow.length;
+  if (dropped > 0) truncated.push(`${dropped} ${dropped === 1 ? "booking" : "bookings"} for calls more than 60 days out or 30 days back (not counted as sets)`);
+  const data = await collectTeamBookings(ctx, access.teamId, from, to, access.nowMs, {
+    eventRows: inWindow,
     skipCalls: true,
   });
   return { records: data.records, rosters: data.rosters, truncated: [...truncated, ...data.truncated], crmUserNames: data.crmUserNames };
@@ -160,16 +169,29 @@ export const getSettersActivity = query({
     const rosters = rosterRefsOf(rosterRows);
     const [activity, filed] = await Promise.all([loadActivity(ctx, team, startMs, endMs), loadFiled(ctx, teamId, startMs, endMs, timezone)]);
     const connectSec = activity.connectSec;
+    // One roster row per Close user: a second row on the same user would
+    // show the same dials twice. The first row keeps them; the rest are named.
+    const ownerOfCrm = new Map<string, string>();
+    const duplicates: string[] = [];
+    for (const r of rosters) {
+      if (!r.crmUserId) continue;
+      const owner = ownerOfCrm.get(r.crmUserId);
+      if (owner) duplicates.push(`${r.name} shares a Close user with ${owner}; their dials are counted under ${owner}`);
+      else ownerOfCrm.set(r.crmUserId, r.name);
+    }
+    const connectsKnown = activity.uncountedDays.length === 0;
     const byRoster = rosters.map((r) => {
-      const counts = r.crmUserId ? activity.byUser.get(r.crmUserId) ?? { dials: 0, answered: 0, texts: 0 } : null;
+      const owns = !!r.crmUserId && ownerOfCrm.get(r.crmUserId) === r.name;
+      const counts = owns ? activity.byUser.get(r.crmUserId as string) ?? { dials: 0, answered: 0, texts: 0 } : null;
       return {
         rosterId: r.rosterId,
         name: r.name,
         role: r.role,
         linked: !!r.crmUserId,
         dials: counts ? counts.dials : null,
-        answered: counts ? counts.answered : null,
-        texts: counts ? counts.texts : null,
+        // Counted only where every rollup day in the range carries the counters.
+        answered: counts && connectsKnown ? counts.answered : null,
+        texts: counts && connectsKnown ? counts.texts : null,
         filed: filed.byRoster.get(r.rosterId) ?? null,
       };
     });
@@ -179,8 +201,12 @@ export const getSettersActivity = query({
     const rosterCrm = new Set(rosters.map((r) => r.crmUserId).filter((id): id is string => !!id));
     let otherUsersDials = 0;
     for (const [user, counts] of activity.byUser) if (user !== "" && !rosterCrm.has(user)) otherUsersDials += counts.dials;
-    const coverage: string[] = [];
+    const coverage: string[] = [...duplicates];
     if (!activity.rollupsReady) coverage.push("Daily rollups aren't built for this team yet, so dials are read from raw events and may be partial.");
+    if (activity.uncountedDays.length > 0) {
+      const n = activity.uncountedDays.length;
+      coverage.push(`Connects and texts aren't shown: ${n} ${n === 1 ? "day" : "days"} in this range (${activity.uncountedDays[0]} to ${activity.uncountedDays[n - 1]}) predate the connect and text counters. A recount fills them in.`);
+    }
     if (unattributedDials > 0) coverage.push(`${unattributedDials} dials in the range carry no Close user and aren't credited to anyone.`);
     if (otherUsersDials > 0) coverage.push(`${otherUsersDials} dials in the range were made by Close users who aren't on the setter roster (closers, admins, people who left).`);
     const truncated = [...activity.truncated, ...filed.truncated];
@@ -239,12 +265,14 @@ export const getSettersCadence = query({
     const rosterRows = (await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(200)).filter((r) => r.active);
     const setters = rosterRefsOf(rosterRows).filter((r) => r.role !== "confirmation" && r.crmUserId);
     const connectSec = access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
-    const bySetter = [];
+    const bySetter: Array<{ rosterId: string } & CadenceSummary> = [];
+    const budget = { left: CADENCE_BUDGET };
     for (const r of setters) {
-      const { summary } = await loadCadence(ctx, teamId, r.crmUserId as string, startMs, endMs, connectSec);
+      const { summary } = await loadCadence(ctx, teamId, r.crmUserId as string, startMs, endMs, connectSec, budget);
       bySetter.push({ rosterId: r.rosterId, ...summary });
     }
-    return { range: { startMs, endMs }, connectSec, bySetter, truncated: bySetter.some((s) => s.truncated) ? ["dials"] : [] };
+    const unread = setters.filter((_, i) => bySetter[i].truncated).map((r) => r.name);
+    return { range: { startMs, endMs }, connectSec, bySetter, truncated: unread.length > 0 ? [`cadence dials (${unread.join(", ")})`] : [] };
   },
 });
 
@@ -262,7 +290,10 @@ export const getCadenceRows = query({
 });
 
 async function rosterForAccess(ctx: Parameters<typeof collectTeamBookings>[0], access: SettersPageAccess, rosterId: string): Promise<Doc<"setterRoster"> | null> {
-  const row = await ctx.db.get(rosterId as Id<"setterRoster">);
+  // A client string: a malformed id, or one from another table, is "nothing", never an error.
+  const id = ctx.db.normalizeId("setterRoster", rosterId);
+  if (!id) return null;
+  const row = await ctx.db.get(id);
   return row && row.teamId === access.teamId ? row : null;
 }
 

@@ -6,7 +6,7 @@
 // ============================================================================
 
 import type { BookingRecord } from "./setterTeamBookings";
-import type { LaneTotals, PersonRow, ConfirmationRow } from "./setterTeamLanes";
+import { emptyTally, type LaneTotals, type PersonRow, type ConfirmationRow } from "./setterTeamLanes";
 import type { RosterRef } from "./lib/setterTeamAttribution";
 import { elapsedWorkingMs, type defaultBusinessHours } from "./setterFunnelResolve";
 import { TEAM_ORDER, type SetterTeamType } from "./settersPageLabels";
@@ -119,7 +119,14 @@ export function teamStrip(
 
 export function outboundRows(rows: PersonRow[], records: BookingRecord[], rosters: RosterRef[]): OutboundBookingRow[] {
   const byId = new Map(rosters.map((r) => [r.rosterId, r]));
-  return rows.map((row) => {
+  // Every active booking-role setter gets a row, bookings or not — a new
+  // setter's dials, sets and speed have nowhere to show otherwise.
+  const present = new Set(rows.map((r) => r.id));
+  const seeded: PersonRow[] = [
+    ...rows,
+    ...rosters.filter((r) => r.role === "booking" && r.active && !present.has(r.rosterId)).map((r) => ({ id: r.rosterId, name: r.name, tagged: 0, crmOnly: 0, ...emptyTally() })),
+  ];
+  return seeded.map((row) => {
     const roster = byId.get(row.id);
     return {
       ...row,

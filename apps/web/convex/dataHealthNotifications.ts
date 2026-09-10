@@ -60,7 +60,12 @@ async function maybeSend(
   });
   if (!data) return { sent: false, reason: "team not found" };
   if (data.bookings === 0 && !opts?.force) return { sent: false, reason: "no sales bookings that week" };
-  const checks: CrossCheckRange | null = await ctx.runQuery(internal.setterEodCrossCheck.getEodCrossCheckForWeek, { teamId: team._id, weekStartKey });
+  let checks: CrossCheckRange | null = null;
+  try {
+    checks = await ctx.runQuery(internal.setterEodCrossCheck.getEodCrossCheckForWeek, { teamId: team._id, weekStartKey });
+  } catch (err) {
+    console.error(`[dataHealth] EOD cross-check failed for team ${team._id}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   const isTest = opts?.dedupSuffix?.includes("_test") === true;
   const blocks = buildDataHealthSlackBlocks(data, checks);
@@ -139,8 +144,14 @@ export const preview = internalAction({
     const weekStartKey = args.weekStartKey ?? addDaysKey(weekStartKeyFor(dayKeyInTz(Date.now(), tz)), -7);
     const data = await ctx.runQuery(internal.dataHealthQueries.getDataHealthForPost, { teamId: team._id, weekStartKey });
     if (!data) return { error: "no data" };
-    const checks: CrossCheckRange | null = await ctx.runQuery(internal.setterEodCrossCheck.getEodCrossCheckForWeek, { teamId: team._id, weekStartKey });
-    return { weekStartKey, text: dataHealthFallbackText(data, checks), blocks: buildDataHealthSlackBlocks(data, checks), data, checks };
+    let checks: CrossCheckRange | null = null;
+    let checksError: string | null = null;
+    try {
+      checks = await ctx.runQuery(internal.setterEodCrossCheck.getEodCrossCheckForWeek, { teamId: team._id, weekStartKey });
+    } catch (err) {
+      checksError = err instanceof Error ? err.message : String(err);
+    }
+    return { weekStartKey, text: dataHealthFallbackText(data, checks), blocks: buildDataHealthSlackBlocks(data, checks), data, checks, checksError };
   },
 });
 

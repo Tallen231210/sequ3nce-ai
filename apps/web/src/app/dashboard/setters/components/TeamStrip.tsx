@@ -13,7 +13,7 @@ export function TeamStrip({ strip, basis }: { strip: BookingsData["strip"]; basi
     { label: "Show rate", hint: "Showed over showed plus no-show", cell: (c) => pct(c.showRatePct) },
     { label: "Closes", hint: "Taken calls logged closed, follow-ups included", cell: (c) => int(c.closes) },
     { label: "Cash", hint: "Cash collected on those closes", cell: (c) => money(c.cash) },
-    { label: "Coverage", hint: "Self-booked funnel calls contacted over all of them", cell: (c) => (c.coverage ? `${pct(c.coverage.pct)} · ${c.coverage.contacted}/${c.coverage.newSelfBooks}` : "") },
+    { label: "Coverage", hint: "Self-booked funnel calls contacted over all of them", cell: (c) => (c.coverage ? `${pct(c.coverage.pct)} · ${c.coverage.contacted}/${c.coverage.newSelfBooks}` : "—") },
   ];
   return (
     <section className="rounded-xl border border-border bg-card">

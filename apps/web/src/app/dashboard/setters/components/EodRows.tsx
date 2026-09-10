@@ -14,11 +14,11 @@ const BOOKING_COLUMNS: Column[] = [
   { field: "callsShown", label: "Shown", measuredKey: "callsShown", hint: "Filed: calls shown they typed. Measured: of those calls, the ones with a verified show. A '+N?' is calls with no verdict yet — they may still turn out to have shown." },
 ];
 const CONFIRMATION_COLUMNS: Column[] = [
-  { field: "newSelfBooked", label: "New self-books", measuredKey: "newSelfBooked", hint: "Filed: what she typed. Measured: self-booked funnel calls made that day." },
-  { field: "contacted", label: "Contacted", measuredKey: "contacted", hint: "Filed: what she typed. Measured: of those, the ones she called, texted, or tagged after the booking." },
-  { field: "reached", label: "Reached", measuredKey: "reached", hint: "Filed: what she typed. Measured: of those, a connect or a reply." },
-  { field: "confirmedOnCalendar", label: "Confirmed on cal", measuredKey: "confirmedOnCalendar", hint: "Filed: what she typed. Measured: self-books whose call was that day and that she had contacted." },
-  { field: "confirmedShowed", label: "Confirmed showed", measuredKey: "confirmedShowed", hint: "Filed: what she typed. Measured: of those, verified shows. '+N?' = no verdict yet." },
+  { field: "newSelfBooked", label: "New self-books", measuredKey: "newSelfBooked", hint: "Filed: what they typed. Measured: self-booked funnel calls made that day." },
+  { field: "contacted", label: "Contacted", measuredKey: "contacted", hint: "Filed: what they typed. Measured: of those, the ones they called, texted, or tagged that day after the booking." },
+  { field: "reached", label: "Reached", measuredKey: "reached", hint: "Filed: what they typed. Measured: of those, a connect or a reply that day." },
+  { field: "confirmedOnCalendar", label: "Confirmed on cal", measuredKey: "confirmedOnCalendar", hint: "Filed: what they typed. Measured: self-books whose call was that day and that they had contacted." },
+  { field: "confirmedShowed", label: "Confirmed showed", measuredKey: "confirmedShowed", hint: "Filed: what they typed. Measured: of those, verified shows. '+N?' = no verdict yet." },
 ];
 
 function GapBadge({ flag }: { flag: CrossCheckFlag }) {
@@ -81,14 +81,14 @@ export function EodRows({ rosterId, checks }: { rosterId: string; checks: CrossC
         <p>
           <span className="font-medium text-foreground">Filed</span> is what they typed on their EOD. <span className="font-medium text-foreground">Measured</span> (after the slash) is what we can count for the same day:{" "}
           {confirmation
-            ? "self-books and calls from the calendar; contacted and reached from her own Close activity."
+            ? "self-books and calls from the calendar; contacted and reached from their own Close activity."
             : me.linked
               ? "dials and pick-ups from their own Close calls; sets, calls on the calendar and shows from the calendar."
               : "only the calendar — no Close user is linked to this roster row, so dials and pick-ups can't be counted."}
         </p>
         {!confirmation && me.linked && (
           <p>
-            <span className="font-medium text-foreground">Pick-ups</span> show a ladder: answered calls in Close lasting at least 30, 45, 60 or 90 seconds. The bold step ({checks.connectSec}s+) is the team&apos;s
+            <span className="font-medium text-foreground">Pick-ups</span> show a ladder: answered calls in Close lasting at least {checks.ladderThresholds.map((t) => `${t}`).join(", ").replace(/, (\d+)$/, " or $1")} seconds. The bold step ({checks.connectSec}s+) is the team&apos;s
             connect threshold, the number the cards and the flags use. Close marks a dial &quot;answered&quot; whenever the line picked up, voicemail included, so the shorter steps include machines and hang-ups.
           </p>
         )}

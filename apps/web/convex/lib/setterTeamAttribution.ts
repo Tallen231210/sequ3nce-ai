@@ -87,15 +87,17 @@ export function classifyBooking(i: ClassifyInput): Classification {
   const handCreated = i.eventName === null && i.descriptionTrusted;
 
   const tagged = (role: RosterRole) => i.taggedRosterIds.filter((id) => roleOf.get(id) === role);
-  const touched = (role: RosterRole) =>
+  const touched = (role: RosterRole, beforeBookingOnly = false) =>
     uniq(
       i.touches
-        .filter((t) => t.rosterId !== null && roleOf.get(t.rosterId) === role)
+        .filter((t) => t.rosterId !== null && roleOf.get(t.rosterId) === role && (!beforeBookingOnly || !t.afterBooking))
         .map((t) => t.rosterId as string),
     );
   const outboundTag = tagged("booking");
   const confirmationTag = tagged("confirmation");
-  const outboundTouch = touched("booking");
+  // Only a touch BEFORE the booking can make a booking setter the setter; a
+  // call or text after the lead booked is confirmation work, not the set.
+  const outboundTouch = touched("booking", true);
   const confirmationTouch = touched("confirmation");
   const anyTag = i.taggedRosterIds.length > 0;
   const anyTouch = i.touches.length > 0;

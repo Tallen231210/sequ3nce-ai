@@ -101,7 +101,7 @@ const LANE_LABEL: Record<SetterLane, string> = {
 };
 const LANE_ORDER: SetterLane[] = ["dm", "outbound", "confirmation", "self_booked_uncontacted", "unattributed"];
 
-const emptyTally = (): Tally => ({ bookings: 0, due: 0, showed: 0, noShow: 0, rescheduled: 0, unknown: 0, showRatePct: null });
+export const emptyTally = (): Tally => ({ bookings: 0, due: 0, showed: 0, noShow: 0, rescheduled: 0, unknown: 0, showRatePct: null });
 
 function add(t: Tally, r: BookingRecord): void {
   t.bookings += 1;

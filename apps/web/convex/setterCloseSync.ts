@@ -460,6 +460,8 @@ async function reconcilePath(
  *  carries a guessed creation date until this runs, and speed to lead reads
  *  that date — so the tick has to outrun the floor's new-lead rate. */
 const ENRICH_PER_TICK = 200;
+/** Wall-clock spent enriching per tick; the reconcile action has ten minutes for everything. */
+const ENRICH_TIME_BUDGET_MS = 3 * 60 * 1000;
 
 async function enrichNewLeads(ctx: any, key: string, teamId: any, cursor?: string): Promise<{ done: boolean; cursor: string | null; enriched: number }> {
   const batch: any = await ctx.runQuery(
@@ -467,7 +469,13 @@ async function enrichNewLeads(ctx: any, key: string, teamId: any, cursor?: strin
     { teamId, limit: 200, cursor },
   );
   const items: any[] = [];
+  const startedAt = Date.now();
+  let stoppedEarly = false;
   for (const l of batch.needing.slice(0, ENRICH_PER_TICK)) {
+    if (Date.now() - startedAt > ENRICH_TIME_BUDGET_MS) {
+      stoppedEarly = true;
+      break;
+    }
     try {
       const lead: any = await closeFetch(key, `/lead/${l.closeLeadId}/`, {
         query: { _fields: "id,display_name,date_created,contacts" },
@@ -484,6 +492,12 @@ async function enrichNewLeads(ctx: any, key: string, teamId: any, cursor?: strin
       const msg = err instanceof Error ? err.message : String(err);
       if (/Close API 404/.test(msg)) {
         items.push({ id: l.id, name: "(removed from Close)" });
+      } else if (/429|rate.?limit/i.test(msg)) {
+        // Close is throttling us: every further lead would sleep and fail.
+        // Stop here; the next tick picks up where this one left off.
+        console.warn(`[closeSync] rate-limited while enriching leads; stopping after ${items.length}`);
+        stoppedEarly = true;
+        break;
       }
       // else: skip — transient, retried on the next tick
     }
@@ -491,14 +505,14 @@ async function enrichNewLeads(ctx: any, key: string, teamId: any, cursor?: strin
   if (items.length > 0) {
     await ctx.runMutation(internal.setterCloseIngest.applyLeadEnrichment, { items });
   }
-  return { done: batch.isDone === true, cursor: batch.continueCursor ?? null, enriched: items.length };
+  return { done: batch.isDone === true && !stoppedEarly, cursor: batch.continueCursor ?? null, enriched: items.length };
 }
 
 /**
  * Drain a team's enrichment backlog now: page through the leads newest-first
  * until Close has answered for every one still carrying a guessed creation
  * date, or `maxLeads` is reached. One Close GET per lead; run from the CLI.
- *   npx convex run setterCloseSync:enrichBacklog '{"teamId":"…","maxLeads":2000}' --prod
+ *   npx convex run setterCloseSync:enrichBacklog '{"teamId":"…","maxLeads":500}' --prod
  */
 export const enrichBacklog = internalAction({
   args: { teamId: v.id("teams"), maxLeads: v.optional(v.number()) },
@@ -516,7 +530,7 @@ export const enrichBacklog = internalAction({
       throw new Error("No active Close installation for that team");
     }
     const key = decryptApiKey(install.accessToken);
-    const limit = args.maxLeads ?? 2_000;
+    const limit = args.maxLeads ?? 500;
     let cursor: string | undefined;
     let pages = 0;
     let enriched = 0;

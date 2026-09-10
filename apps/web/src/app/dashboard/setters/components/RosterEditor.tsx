@@ -17,9 +17,13 @@ function CopyLink({ token }: { token: string }) {
     <button
       type="button"
       onClick={async () => {
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        try {
+          await navigator.clipboard.writeText(url);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          window.prompt("Copy their EOD link:", url);
+        }
       }}
       className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
       title="Copy their personal EOD link"
@@ -37,7 +41,21 @@ export function RosterEditor({ clerkId }: { clerkId: string }) {
   const rotate = useMutation(api.setterEod.rotateSetterToken);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Run one roster mutation with the row marked busy and any failure shown, never swallowed. */
+  const act = async (rosterId: string, what: () => Promise<unknown>, fallback: string) => {
+    setRowBusy(rosterId);
+    setError(null);
+    try {
+      await what();
+    } catch (err) {
+      const data = (err as { data?: unknown })?.data;
+      setError(typeof data === "string" ? data : fallback);
+    } finally {
+      setRowBusy(null);
+    }
+  };
   const roster = data?.roster ?? [];
   const active = roster.filter((r) => r.active);
   const inactive = roster.filter((r) => !r.active);
@@ -82,16 +100,17 @@ export function RosterEditor({ clerkId }: { clerkId: string }) {
             <CopyLink token={r.token} />
             <button
               type="button"
-              onClick={async () => {
+              disabled={rowBusy === r._id}
+              onClick={() => {
                 if (!window.confirm(`New link for ${r.name}? Their old link stops working.`)) return;
-                await rotate({ clerkId, rosterId: r._id });
+                void act(r._id, () => rotate({ clerkId, rosterId: r._id }), "Couldn't make a new link");
               }}
-              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
               <RefreshCw className="h-3 w-3" />
               new link
             </button>
-            <button type="button" onClick={() => setActive({ clerkId, rosterId: r._id, active: false })} className="text-muted-foreground underline hover:text-rose-600">
+            <button type="button" disabled={rowBusy === r._id} onClick={() => void act(r._id, () => setActive({ clerkId, rosterId: r._id, active: false }), "Couldn't remove them")} className="text-muted-foreground underline hover:text-rose-600 disabled:opacity-50">
               remove
             </button>
           </span>
@@ -104,7 +123,7 @@ export function RosterEditor({ clerkId }: { clerkId: string }) {
             <span key={r._id}>
               {i > 0 && ", "}
               {r.name}{" "}
-              <button type="button" onClick={() => setActive({ clerkId, rosterId: r._id, active: true })} className="underline">
+              <button type="button" disabled={rowBusy === r._id} onClick={() => void act(r._id, () => setActive({ clerkId, rosterId: r._id, active: true }), "Couldn't restore them")} className="underline disabled:opacity-50">
                 restore
               </button>
             </span>

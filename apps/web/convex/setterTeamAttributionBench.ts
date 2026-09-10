@@ -36,13 +36,13 @@ const NAMES: RosterName[] = ROSTER.map((r) => ({
 }));
 const DM = ["instagram", "davud", "lazar"];
 const FUNNEL = ["facebook", "main training"];
-const touch = (crmUserId: string, kind: "dial" | "sms" = "dial", reached = false): Touch => ({
+const touch = (crmUserId: string, kind: "dial" | "sms" = "dial", reached = false, afterBooking = true): Touch => ({
   rosterId: ROSTER.find((r) => r.crmUserId === crmUserId)?.rosterId ?? null,
   crmUserId,
   kind,
   at: 1,
   reached,
-  afterBooking: true,
+  afterBooking,
 });
 
 interface ClassifyCase {
@@ -68,13 +68,15 @@ export const classifyBench = internalQuery({
       { name: "Main Training (Davud) → DM", title: "Ana and Karl", description: desc("Main Training (Davud)"), expect: "dm" },
       { name: "(e) + Facebook → outbound Erten (tag)", title: "(e) Tim and Karl", description: desc("Facebook"), leadInClose: true, touchedBefore: true, expect: "outbound", credit: ["erten"] },
       { name: "Facebook + Sophie dial → confirmation", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "confirmation", credit: ["sophie"] },
-      { name: "Facebook + Erten sms + Sophie dial → outbound (union rule)", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_erten", "sms"), touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "outbound", credit: ["erten"] },
+      { name: "Facebook + Erten sms BEFORE the booking + Sophie dial → outbound (she drove it)", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_erten", "sms", false, false), touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "outbound", credit: ["erten"] },
+      { name: "Facebook + Erten sms AFTER the booking + Sophie dial → confirmation (a touch after the booking is not the set)", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_erten", "sms"), touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "confirmation", credit: ["sophie"] },
       { name: "(s) Facebook, no Close touch → confirmation by tag", title: "(s) Gerry and Brittany", description: desc("Facebook"), leadInClose: false, touchedBefore: null, expect: "confirmation", credit: ["sophie"], contactKnown: true },
       { name: "Main Training, lead in Close, nobody touched → self-booked uncontacted", title: "Tim and Karl", description: desc("Main Training"), leadInClose: true, touchedBefore: false, expect: "self_booked_uncontacted", contactKnown: true },
       { name: "Facebook, lead not in Close, no tag → unattributed, contact unknown", title: "Tim and Karl", description: desc("Facebook"), leadInClose: false, touchedBefore: null, expect: "unattributed", sourceKnown: true, contactKnown: false },
       { name: "no description, old row, no tag → unattributed, source unknown", title: "Tim and Karl", description: null, trusted: false, expect: "unattributed", sourceKnown: false },
       { name: "no description, fresh row, (mo) → outbound hand-created", title: "(mo) Paul X Karl", description: null, trusted: true, expect: "outbound", credit: ["mo"], sourceKnown: true },
-      { name: "no description, fresh row, no tag, Marcus dialed → outbound", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_marcus")], leadInClose: true, touchedBefore: true, expect: "outbound", credit: ["marcus"] },
+      { name: "no description, fresh row, no tag, Marcus dialed before it was booked → outbound", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_marcus", "dial", false, false)], leadInClose: true, touchedBefore: true, expect: "outbound", credit: ["marcus"] },
+      { name: "no description, fresh row, no tag, Marcus dialed only after it was booked → needs a look", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_marcus")], leadInClose: true, touchedBefore: true, expect: "unattributed", credit: [] },
       { name: "(er) is Ethan exclusively", title: "(er) Sam and Karl", description: desc("Facebook"), expect: "outbound", credit: ["ethan"] },
       { name: "hand-created, only Sophie dialed → unattributed (not outbound)", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "unattributed", sourceKnown: false },
       { name: "hand-created with (s) → confirmation", title: "(s) Paul and Karl", description: null, trusted: true, expect: "confirmation", credit: ["sophie"] },

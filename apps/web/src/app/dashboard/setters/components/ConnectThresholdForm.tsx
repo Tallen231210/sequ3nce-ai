@@ -24,7 +24,8 @@ export function ConnectThresholdForm({ clerkId }: { clerkId: string }) {
   const [value, setValue] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   useEffect(() => {
-    if (config) setValue(config.connectSec);
+    if (config && value === null) setValue(config.connectSec);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
   if (!config || value === null) return null;
   const options = OPTIONS.some((o) => o.value === value) ? OPTIONS : [...OPTIONS, { value, label: `${value} seconds` }].sort((a, b) => a.value - b.value);

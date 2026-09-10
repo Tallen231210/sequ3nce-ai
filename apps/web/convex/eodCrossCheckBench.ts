@@ -5,6 +5,9 @@
 
 import { internalQuery } from "./_generated/server";
 import { crossCheckDay, DEFAULT_TOLERANCES, flagText, tolerancesFor, type MeasuredDay } from "./lib/eodCrossCheck";
+import { measureConfirmationDay } from "./setterEodMeasured";
+import { localDayBounds } from "./settersPageActivity";
+import type { BookingRecord } from "./setterTeamBookings";
 
 const measured = (m: Partial<MeasuredDay>): MeasuredDay => ({
   dials: null, pickUps: null, sets: null, callsOnCalendar: null, callsShown: null, callsUnknown: null,
@@ -38,6 +41,42 @@ export const rules = internalQuery({
       { name: "measured 0 shows an absolute gap", got: flagText(crossCheckDay({ dials: 3 }, measured({ dials: 0 }), t)[0]), expect: "dials: filed 3 · Close 0 (+3)" },
       { name: "team tolerance overrides, clamped", got: tolerancesFor({ dialsPct: 5, minGap: 99 }), expect: { dialsPct: 5, pickUpsPct: 25, confirmationPct: 15, minGap: 20 } },
       { name: "a 5% team flags 94 vs 100", got: fields(crossCheckDay({ dials: 94 }, measured({ dials: 100 }), tolerancesFor({ dialsPct: 5 }))), expect: ["dials"] },
+    ];
+    const results = cases.map((c) => ({ ...c, pass: JSON.stringify(c.got) === JSON.stringify(c.expect) }));
+    return { allPass: results.every((r) => r.pass), results };
+  },
+});
+
+// A self-book record with the confirmation setter's touches at given times.
+function selfBook(bookedDayKey: string, touches: Array<{ at: number; reached: boolean }>): BookingRecord {
+  return {
+    bookedDayKey,
+    dayKey: "2026-09-20",
+    isFollowUp: false,
+    classification: { lane: "confirmation", isFunnel: true, attributedBy: "crm_activity", creditRosterIds: [] },
+    touches: touches.map((t) => ({ rosterId: "r-sophie", crmUserId: "u1", kind: "sms", at: t.at, reached: t.reached, afterBooking: true })),
+    verdict: { result: "unknown", source: null, due: false },
+  } as unknown as BookingRecord;
+}
+
+/** The measured-day rules that sit under the cross-check: touches bounded to the day, day bounds across a DST change. */
+export const measuredRules = internalQuery({
+  args: {},
+  handler: async () => {
+    const tz = "America/New_York";
+    const day = localDayBounds("2026-09-08", "2026-09-08", tz)[0];
+    const nextDay = day.endMs + 3 * 60 * 60 * 1000; // 03:00 the next morning
+    const records = [selfBook("2026-09-08", [{ at: day.startMs + 60_000, reached: false }]), selfBook("2026-09-08", [{ at: nextDay, reached: true }]), selfBook("2026-09-08", [])];
+    const same = measureConfirmationDay(records, "r-sophie", "2026-09-08", true, day.endMs);
+    const later = measureConfirmationDay(records, "r-sophie", "2026-09-08", true);
+    const dst = localDayBounds("2026-03-07", "2026-03-09", tz);
+    const hours = dst.map((d) => (d.endMs - d.startMs) / 3_600_000);
+    const cases: Array<{ name: string; got: unknown; expect: unknown }> = [
+      { name: "bounded to the day: one contacted, none reached", got: [same.newSelfBooked, same.contacted, same.reached], expect: [3, 1, 0] },
+      { name: "unbounded (the prefill's later look): two contacted, one reached", got: [later.newSelfBooked, later.contacted, later.reached], expect: [3, 2, 1] },
+      { name: "day bounds are contiguous", got: dst.every((d, i) => i === 0 || dst[i - 1].endMs === d.startMs), expect: true },
+      { name: "the spring-forward day is 23 hours, its neighbours 24", got: hours, expect: [24, 23, 24] },
+      { name: "keys walk the calendar", got: dst.map((d) => d.dayKey), expect: ["2026-03-07", "2026-03-08", "2026-03-09"] },
     ];
     const results = cases.map((c) => ({ ...c, pass: JSON.stringify(c.got) === JSON.stringify(c.expect) }));
     return { allPass: results.every((r) => r.pass), results };

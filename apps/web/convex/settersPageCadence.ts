@@ -37,12 +37,30 @@ export interface CadenceSummary {
   truncated: boolean;
 }
 
-export async function loadCadence(ctx: QueryCtx, teamId: Id<"teams">, crmUserId: string, startMs: number, endMs: number, connectSec: number): Promise<{ leads: CadenceLead[]; summary: CadenceSummary }> {
-  const rows = await ctx.db
-    .query("setterLeadEvents")
-    .withIndex("by_team_and_setter_and_time", (q) => q.eq("teamId", teamId).eq("ghlUserId", crmUserId).gte("occurredAt", startMs).lt("occurredAt", endMs))
-    .order("desc")
-    .take(DIALS_TAKE);
+/** Rows one query may read across every setter's cadence — under the 32k-document budget with room for the roster reads. */
+export const CADENCE_BUDGET = 20_000;
+
+export async function loadCadence(
+  ctx: QueryCtx,
+  teamId: Id<"teams">,
+  crmUserId: string,
+  startMs: number,
+  endMs: number,
+  connectSec: number,
+  budget: { left: number } = { left: DIALS_TAKE },
+): Promise<{ leads: CadenceLead[]; summary: CadenceSummary }> {
+  // A shared budget: the setters read after it runs out are reported as
+  // unread rather than the whole query failing on the document limit.
+  const take = Math.min(DIALS_TAKE, Math.max(0, budget.left));
+  const rows = take === 0
+    ? []
+    : await ctx.db
+        .query("setterLeadEvents")
+        .withIndex("by_team_and_setter_and_time", (q) => q.eq("teamId", teamId).eq("ghlUserId", crmUserId).gte("occurredAt", startMs).lt("occurredAt", endMs))
+        .order("desc")
+        .take(take);
+  budget.left -= rows.length;
+  const capped = take === 0 || rows.length >= take;
   const byLead = new Map<string, CadenceLead>();
   let dials = 0;
   for (const e of rows) {
@@ -65,7 +83,7 @@ export async function loadCadence(ctx: QueryCtx, teamId: Id<"teams">, crmUserId:
     threePlusPct: n > 0 ? Math.round((leads.filter((l) => l.attempts >= 3).length / n) * 100) : null,
     medianPursuitDays: pursued.length > 0 ? Math.round((percentiles(pursued).median ?? 0) * 10) / 10 : null,
     leadsAnswered: leads.filter((l) => l.answered > 0).length,
-    truncated: rows.length >= DIALS_TAKE,
+    truncated: capped,
   };
   return { leads, summary };
 }

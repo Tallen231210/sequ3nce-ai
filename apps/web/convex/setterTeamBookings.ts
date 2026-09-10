@@ -159,10 +159,13 @@ export async function collectTeamBookings(
           .take(EVENT_TAKE),
   ]);
   if (!opts.eventRows && events.length >= EVENT_TAKE) truncated.push("events");
-  const calls: Doc<"calls">[] = opts.skipCalls
-    ? []
-    : opts.eventRows
+  // With supplied rows the calls are point reads per event — cheap, and the
+  // sales-booking test needs them (a bot-recorded call with no guest email
+  // is still a booking). `skipCalls` only skips the wide range scan.
+  const calls: Doc<"calls">[] = opts.eventRows
     ? await loadCallsForEvents(ctx, events)
+    : opts.skipCalls
+    ? []
     : await ctx.db
         .query("calls")
         .withIndex("by_team_and_date", (q) =>

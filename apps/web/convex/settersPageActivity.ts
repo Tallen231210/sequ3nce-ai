@@ -6,6 +6,7 @@
 // on one row here, only in range totals.
 // ============================================================================
 
+import { addDaysKey } from "./dataHealthCore";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { dayKeyInTz } from "./closerPerformance";
@@ -47,6 +48,63 @@ export interface ActivityLoad {
   rollupsReady: boolean;
   connectSec: number;
   truncated: string[];
+  /** UTC days whose rollup rows predate the connect/text counters — dials are counted, connects and texts are not. */
+  uncountedDays: string[];
+}
+
+/** One team-local day's UTC bounds. */
+export interface DayBounds {
+  dayKey: string;
+  startMs: number;
+  endMs: number;
+}
+
+/**
+ * The UTC instant of local midnight starting `dayKey` in `tz`. Two probes:
+ * the offset at noon gives a first guess; the offset AT that guess corrects
+ * it on a clock-change day (the change happens after midnight, so the
+ * offset in force at midnight is the one to use).
+ */
+export function localMidnightMs(dayKey: string, tz: string): number {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const wallMidnight = Date.UTC(y, m - 1, d);
+  const guess = wallMidnight - offsetMsAt(Date.UTC(y, m - 1, d, 12), tz);
+  return wallMidnight - offsetMsAt(guess, tz);
+}
+
+const offsetFormatters = new Map<string, Intl.DateTimeFormat>();
+function offsetFormatter(tz: string): Intl.DateTimeFormat {
+  let f = offsetFormatters.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" });
+    offsetFormatters.set(tz, f);
+  }
+  return f;
+}
+
+/** Ms that take UTC to local wall time at `ms` in `tz`, to the minute (offsets are whole minutes). */
+function offsetMsAt(ms: number, tz: string): number {
+  const parts = Object.fromEntries(offsetFormatter(tz).formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+  const wall = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour) % 24, Number(parts.minute));
+  return wall - Math.floor(ms / 60_000) * 60_000;
+}
+
+/**
+ * Bounds for every team-local day from startKey to endKey inclusive —
+ * contiguous (each day ends where the next begins, 23 or 25 hours on a
+ * clock-change day) and computed once, so per-row bucketing needs no
+ * date formatting.
+ */
+export function localDayBounds(startKey: string, endKey: string, tz: string): DayBounds[] {
+  const out: DayBounds[] = [];
+  let startMs = localMidnightMs(startKey, tz);
+  for (let key = startKey; key <= endKey; key = addDaysKey(key, 1)) {
+    const next = addDaysKey(key, 1);
+    const endMs = localMidnightMs(next, tz);
+    out.push({ dayKey: key, startMs, endMs });
+    startMs = endMs;
+  }
+  return out;
 }
 
 const zero = (): ActivityCounts => ({ dials: 0, answered: 0, texts: 0 });
@@ -59,6 +117,7 @@ async function rawEdge(
   connectSec: number,
   into: Map<string, ActivityCounts>,
   truncated: string[],
+  label: string,
 ): Promise<void> {
   if (toMs <= fromMs) return;
   const dials = await ctx.db
@@ -68,7 +127,7 @@ async function rawEdge(
     )
     .order("desc")
     .take(EDGE_TAKE);
-  if (dials.length >= EDGE_TAKE) truncated.push("dials (edge day)");
+  if (dials.length >= EDGE_TAKE) truncated.push(`dials (${label})`);
   for (const e of dials) {
     const c = into.get(e.ghlUserId ?? "") ?? zero();
     c.dials += 1;
@@ -82,7 +141,7 @@ async function rawEdge(
     )
     .order("desc")
     .take(EDGE_TAKE);
-  if (texts.length >= EDGE_TAKE) truncated.push("texts (edge day)");
+  if (texts.length >= EDGE_TAKE) truncated.push(`texts (${label})`);
   for (const e of texts) {
     const c = into.get(e.ghlUserId ?? "") ?? zero();
     c.texts += 1;
@@ -107,21 +166,25 @@ export async function loadActivity(
   // at either end from raw events. Without a backfill, everything is raw.
   const firstFull = Math.ceil(startMs / DAY_MS) * DAY_MS;
   const lastFullEnd = Math.floor(endMs / DAY_MS) * DAY_MS;
+  const uncounted = new Set<string>();
   if (rollupsReady && firstFull < lastFullEnd) {
     const rows = await readDailyStatsRange(ctx, teamId, dayKeyOf(firstFull), dayKeyOf(lastFullEnd - DAY_MS));
     for (const r of rows) {
       const c = byUser.get(r.setterId) ?? zero();
       c.dials += r.dials;
+      // Rows written before the connect/text counters existed carry neither.
+      // Missing is unknown, not zero: the day is named so the page can say so.
+      if (r.answered === undefined || r.smsOutbound === undefined) uncounted.add(r.dayKey);
       c.answered += r.answered ?? 0;
       c.texts += r.smsOutbound ?? 0;
       byUser.set(r.setterId, c);
     }
-    await rawEdge(ctx, teamId, startMs, firstFull, connectSec, byUser, truncated);
-    await rawEdge(ctx, teamId, lastFullEnd, endMs, connectSec, byUser, truncated);
+    await rawEdge(ctx, teamId, startMs, firstFull, connectSec, byUser, truncated, "edge day");
+    await rawEdge(ctx, teamId, lastFullEnd, endMs, connectSec, byUser, truncated, "edge day");
   } else {
-    await rawEdge(ctx, teamId, startMs, endMs, connectSec, byUser, truncated);
+    await rawEdge(ctx, teamId, startMs, endMs, connectSec, byUser, truncated, "whole range");
   }
-  return { byUser, rollupsReady, connectSec, truncated };
+  return { byUser, rollupsReady, connectSec, truncated, uncountedDays: Array.from(uncounted).sort() };
 }
 
 const zeroFiled = (): FiledSums => ({
@@ -167,40 +230,50 @@ export async function loadFiled(
   return { byRoster, truncated };
 }
 
-/** One setter's own Close events for the range, bucketed by team-local day — the drawer's measured column. */
+/** Events read per setter per day; a day past this is reported as unmeasurable rather than counted short. */
+const USER_DAY_TAKE = 2_000;
+
+/**
+ * One setter's own Close events, one read per team-local day — the drawer's
+ * measured column and the cross-check's dials / pick-ups. A day that hits
+ * the cap is left OUT of `byDay` (unknown, never zero) and named in
+ * `truncatedDays`. No per-row date formatting: the day's bounds do the work.
+ */
 export async function loadUserDays(
   ctx: QueryCtx,
   teamId: Id<"teams">,
   crmUserId: string,
-  startMs: number,
-  endMs: number,
-  tz: string,
+  days: DayBounds[],
   connectSec: number,
   ladder?: number[],
-): Promise<{ byDay: Map<string, ActivityCounts>; truncated: boolean }> {
-  const rows = await ctx.db
-    .query("setterLeadEvents")
-    .withIndex("by_team_and_setter_and_time", (q) =>
-      q.eq("teamId", teamId).eq("ghlUserId", crmUserId).gte("occurredAt", startMs).lt("occurredAt", endMs),
-    )
-    .order("desc")
-    .take(5_000);
+): Promise<{ byDay: Map<string, ActivityCounts>; truncatedDays: string[] }> {
   const byDay = new Map<string, ActivityCounts>();
-  for (const e of rows) {
-    if (e.eventType !== "dial_outbound" && e.eventType !== "sms_outbound") continue;
-    const key = dayKeyInTz(e.occurredAt, tz);
-    const c = byDay.get(key) ?? (ladder ? { ...zero(), answeredAt: ladder.map(() => 0) } : zero());
-    if (e.eventType === "sms_outbound") c.texts += 1;
-    else {
-      c.dials += 1;
-      if (dialConnected(e.details, connectSec)) c.answered += 1;
-      if (ladder && c.answeredAt) {
-        const sec = answeredDurationSec(e.details);
-        if (sec !== null) ladder.forEach((t, i) => { if (sec >= t) c.answeredAt![i] += 1; });
+  const truncatedDays: string[] = [];
+  for (const d of days) {
+    const rows = await ctx.db
+      .query("setterLeadEvents")
+      .withIndex("by_team_and_setter_and_time", (q) =>
+        q.eq("teamId", teamId).eq("ghlUserId", crmUserId).gte("occurredAt", d.startMs).lt("occurredAt", d.endMs),
+      )
+      .take(USER_DAY_TAKE);
+    if (rows.length >= USER_DAY_TAKE) {
+      truncatedDays.push(d.dayKey);
+      continue;
+    }
+    const c: ActivityCounts = ladder ? { ...zero(), answeredAt: ladder.map(() => 0) } : zero();
+    for (const e of rows) {
+      if (e.eventType === "sms_outbound") c.texts += 1;
+      else if (e.eventType === "dial_outbound") {
+        c.dials += 1;
+        if (dialConnected(e.details, connectSec)) c.answered += 1;
+        if (ladder && c.answeredAt) {
+          const sec = answeredDurationSec(e.details);
+          if (sec !== null) ladder.forEach((t, i) => { if (sec >= t) c.answeredAt![i] += 1; });
+        }
       }
     }
-    byDay.set(key, c);
+    byDay.set(d.dayKey, c);
   }
-  return { byDay, truncated: rows.length >= 5_000 };
+  return { byDay, truncatedDays };
 }
 

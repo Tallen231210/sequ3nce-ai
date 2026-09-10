@@ -4,7 +4,7 @@
 // (recognised by the name inside the booking link), and the word lists that
 // sort booking links into DM or funnel. Saves on blur or on Save.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "../../../../../convex/_generated/api";
@@ -25,8 +25,13 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
   const [dm, setDm] = useState("");
   const [funnel, setFunnel] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  // Seed the drafts once. The config query re-pushes whenever anything on
+  // the team record changes (another form's save, a cron), and reseeding on
+  // every push would wipe half-typed edits.
+  const seeded = useRef(false);
   useEffect(() => {
-    if (!config) return;
+    if (!config || seeded.current) return;
+    seeded.current = true;
     setLabelsDraft({ dm: config.labels.dm, outbound: config.labels.outbound, confirmation: config.labels.confirmation });
     setPeopleDraft(config.people);
     setDm(config.dmPatterns.join(", "));
@@ -54,7 +59,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
           {(["dm", "outbound", "confirmation"] as const).map((k) => (
             <label key={k} className="text-xs text-muted-foreground">
               {config.defaults[k]}
-              <input className={`${input} mt-1`} value={labels[k]} onChange={(e) => setLabelsDraft({ ...labels, [k]: e.target.value })} onBlur={() => void run(() => setLabels({ clerkId, labels }), "Couldn't save the names")} />
+              <input className={`${input} mt-1`} value={labels[k]} onChange={(e) => setLabelsDraft({ ...labels, [k]: e.target.value })} onBlur={() => { if (labels[k] !== config.labels[k]) void run(() => setLabels({ clerkId, labels }), "Couldn't save the names"); }} />
             </label>
           ))}
         </div>

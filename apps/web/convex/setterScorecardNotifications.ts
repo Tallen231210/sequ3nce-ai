@@ -7,6 +7,7 @@ import { formatInTimeZone } from "./setterDataNotifications";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { deliver } from "./setterEodNotifications";
 import { crossCheckDayFor } from "./setterEodCrossCheck";
+import type { CrossCheckFlag } from "./lib/eodCrossCheck";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 import {
   buildSetterScorecardDiscordEmbed,
@@ -124,18 +125,6 @@ export const getSetterScorecardData = internalQuery({
       dayKey = addDaysKey(dayKey, 1);
     }
 
-    // Teams on the Setters page get the cross-check: where a filed number
-    // sits outside tolerance of what Close / the calendar measured, with
-    // both numbers. Silent for everyone else.
-    const teamDoc = await ctx.db.get(args.teamId);
-    if (teamDoc && teamHasSetterTeams(teamDoc)) {
-      const checks = await crossCheckDayFor(ctx, teamDoc, args.reportDayKey, Date.now());
-      for (const row of byRoster.values()) {
-        const day = checks.get(row.rosterId);
-        if (row.filed && day) row.flags = day.flags;
-      }
-    }
-
     // Cash first, then sets, then name — a statistic ordering, nothing more.
     const rows = Array.from(byRoster.values()).sort(
       (a, b) => b.cash - a.cash || b.sets - a.sets || a.name.localeCompare(b.name),
@@ -158,6 +147,24 @@ export const getSetterScorecardData = internalQuery({
       filedCount: rows.filter((r) => r.filed).length,
       rosterCount: rows.length,
     };
+  },
+});
+
+/**
+ * The EOD cross-check for one day, roster id → flags, for teams on the
+ * Setters page (empty for everyone else). Its own query so a failure here
+ * can never cost a team its scorecard.
+ */
+export const getEodFlagsForDay = internalQuery({
+  args: { teamId: v.id("teams"), reportDayKey: v.string() },
+  handler: async (ctx, args): Promise<Record<string, CrossCheckFlag[]>> => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.reportDayKey)) return {};
+    const team = await ctx.db.get(args.teamId);
+    if (!team || !teamHasSetterTeams(team)) return {};
+    const checks = await crossCheckDayFor(ctx, team, args.reportDayKey, Date.now());
+    const out: Record<string, CrossCheckFlag[]> = {};
+    for (const [rosterId, day] of checks) if (day.filed && day.flags.length > 0) out[rosterId] = day.flags;
+    return out;
   },
 });
 
@@ -200,6 +207,14 @@ async function maybeSend(
     { teamId: team._id, reportDayKey },
   );
   if (data.rosterCount === 0) return { sent: false, reason: "no active setters on the roster" };
+  // Flags ride along for teams on the Setters page; if the cross-check
+  // fails, the post still goes out, just without them.
+  try {
+    const flags: Record<string, CrossCheckFlag[]> = await ctx.runQuery(internal.setterScorecardNotifications.getEodFlagsForDay, { teamId: team._id, reportDayKey });
+    for (const row of data.rows) if (row.filed && flags[row.rosterId]) row.flags = flags[row.rosterId];
+  } catch (err) {
+    console.error(`[setterScorecard] EOD cross-check failed for team ${team._id}: ${err instanceof Error ? err.message : String(err)}`);
+  }
   // Silence beats a post full of zeros: a day nobody filed is a job for the
   // missing-report, not the scoreboard.
   if (data.filedCount === 0 && !opts?.force) {

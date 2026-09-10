@@ -51,7 +51,7 @@ export const getMeasuredForDay = query({
     const linked = !!me.crmUserId;
     return {
       dayKey: args.dayKey,
-      measured: measureConfirmationDay(data.records, String(me.rosterId), args.dayKey, linked),
+      measured: measureConfirmationDay(data.records, String(me.rosterId), args.dayKey, linked, dayEnd),
       measuredExists: data.records.some(isHers),
       truncated: data.truncated,
       linked,

@@ -18,6 +18,7 @@ import { CustomRangeControl } from "@/components/CustomRangeControl";
 const PRESETS: Array<{ id: string; label: string; days: number }> = [
   { id: "today", label: "Today", days: 1 },
   { id: "7d", label: "Last 7 days", days: 7 },
+  { id: "14d", label: "Last 14 days", days: 14 },
   { id: "30d", label: "Last 30 days", days: 30 },
   { id: "90d", label: "Last 90 days", days: 90 },
 ];
@@ -28,6 +29,8 @@ interface DateRangeSelectProps {
   rangeStart: number;
   rangeEnd: number;
   onChange: (start: number, end: number) => void;
+  /** Hide presets longer than this many days — for pages whose queries clamp shorter than the default 90. */
+  maxDays?: number;
 }
 
 /**
@@ -40,8 +43,10 @@ export function DateRangeSelect({
   rangeStart,
   rangeEnd,
   onChange,
+  maxDays,
 }: DateRangeSelectProps) {
   const [customMode, setCustomMode] = useState(false);
+  const presets = maxDays ? PRESETS.filter((p) => p.days <= maxDays) : PRESETS;
 
   // Match current range against a preset: rolling windows end within a few
   // minutes of now and span the preset's days (1-day tolerance).
@@ -49,7 +54,7 @@ export function DateRangeSelect({
   const elapsedDays = Math.round((rangeEnd - rangeStart) / MS_PER_DAY);
   const matchedPreset =
     !customMode && endsNow
-      ? PRESETS.find((p) => Math.abs(p.days - elapsedDays) <= 1)
+      ? presets.find((p) => Math.abs(p.days - elapsedDays) <= 1)
       : undefined;
 
   const isCustom = customMode || !matchedPreset;
@@ -59,7 +64,7 @@ export function DateRangeSelect({
       setCustomMode(true);
       return;
     }
-    const preset = PRESETS.find((p) => p.id === presetId);
+    const preset = presets.find((p) => p.id === presetId);
     if (!preset) return;
     setCustomMode(false);
     const now = Date.now();
@@ -76,7 +81,7 @@ export function DateRangeSelect({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {PRESETS.map((p) => (
+          {presets.map((p) => (
             <SelectItem key={p.id} value={p.id}>
               {p.label}
             </SelectItem>

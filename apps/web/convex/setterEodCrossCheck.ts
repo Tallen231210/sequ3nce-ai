@@ -15,7 +15,7 @@ import { getLocalDateRangeUtc } from "./setterDataNotifications";
 import { RANGE_COHORT_TAKE, loadCohortRecords, measuredDayFor, type DayActivity } from "./setterEodMeasured";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { teamHasSetterTeams } from "./setterTeamQueries";
-import { loadUserDays } from "./settersPageActivity";
+import { loadUserDays, localDayBounds } from "./settersPageActivity";
 import { resolveSettersPageAccess } from "./settersPageGate";
 import { DEFAULT_CONNECT_SEC, ladderFor } from "./lib/dialAnswered";
 import { crossCheckDay, tolerancesFor, type CrossCheckFlag, type CrossCheckTolerances, type FiledDay, type MeasuredDay } from "./lib/eodCrossCheck";
@@ -94,6 +94,7 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
   const todayKey = dayKeyInTz(nowMs, tz);
   const yesterdayKey = addDaysKey(todayKey, -1);
   const endKey = [dayKeyInTz(endMs - 1, tz), todayKey].sort()[0];
+  const bounds = localDayBounds(startKey, endKey, tz);
   const truncated: string[] = [];
 
   const rosterRows = await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(ROSTER_TAKE);
@@ -115,24 +116,32 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
     const linked = !!row.crmUserId;
     const active = row.active !== false;
     let activity: Map<string, DayActivity> | null = null;
+    let unreadDays = new Set<string>();
     if (linked && role === "booking") {
-      const days = await loadUserDays(ctx, teamId, row.crmUserId as string, startMs, endMs, tz, connectSec, ladderThresholds);
-      if (days.truncated) truncated.push(`${row.name}'s Close events`);
+      const days = await loadUserDays(ctx, teamId, row.crmUserId as string, bounds, connectSec, ladderThresholds);
+      if (days.truncatedDays.length > 0) truncated.push(`${row.name}: ${days.truncatedDays.length} ${days.truncatedDays.length === 1 ? "day" : "days"} too busy to read`);
       activity = days.byDay;
+      unreadDays = new Set(days.truncatedDays);
     }
+    // Nothing is owed before the roster row existed.
+    const firstDueKey = dayKeyInTz(row._creationTime, tz);
     const days: DayCheck[] = [];
-    for (let key = startKey; key <= endKey; key = addDaysKey(key, 1)) {
+    for (const b of bounds) {
+      const key = b.dayKey;
       const entry = entryByRosterDay.get(`${rosterId}|${key}`) ?? null;
       // The form they filed decides which numbers are compared; the roster's
       // role only fills in for a day they haven't filed yet.
       const dayRole: "booking" | "confirmation" = entry?.formShape ?? role;
-      const dayActivity = activity?.get(key) ?? (activity ? { dials: 0, answered: 0, answeredAt: ladderThresholds.map(() => 0) } : null);
-      const measured = measuredDayFor(cohorts.records, { rosterId, role: dayRole, linked }, key, dayActivity);
+      // A day we could read but that has no events is a real zero; a day
+      // that hit the read cap is unknown — null, so it is never flagged.
+      const dayActivity = activity && !unreadDays.has(key) ? activity.get(key) ?? { dials: 0, answered: 0, answeredAt: ladderThresholds.map(() => 0) } : null;
+      const measured = measuredDayFor(cohorts.records, { rosterId, role: dayRole, linked }, key, dayActivity, b.endMs);
       const filed = entry ? filedOf(entry, dayRole) : null;
       const flags = filed ? crossCheckDay(filed, measured, tolerances) : [];
       // A filed day always counts as due (a Sunday they worked is still a
-      // day they reported); an unfiled one only once it is over, Mon–Sat.
-      const due = active && (entry !== null || (!isSunday(key) && key <= yesterdayKey));
+      // day they reported); an unfiled one only once it is over, Mon–Sat,
+      // and only from the day they joined the roster.
+      const due = active && (entry !== null || (!isSunday(key) && key <= yesterdayKey && key >= firstDueKey));
       const ladder = dayRole === "booking" && dayActivity?.answeredAt ? { thresholds: ladderThresholds, counts: dayActivity.answeredAt } : null;
       days.push({ dayKey: key, due, filed, measured, flags, ladder });
     }

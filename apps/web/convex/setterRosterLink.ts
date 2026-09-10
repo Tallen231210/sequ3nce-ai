@@ -109,6 +109,14 @@ async function applyRosterLink(
         .withIndex("by_team_and_ghl_user_id", (q: any) => q.eq("teamId", row.teamId).eq("ghlUserId", id))
         .first()) as Doc<"setterReps"> | null;
       if (!rep && !args.allowUnknownCrmUser) throw new ConvexError("That CRM user isn't in this team's synced user list");
+      // One active row per CRM user, or two cards would carry the same dials.
+      const rows = (await ctx.db
+        .query("setterRoster")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_team", (q: any) => q.eq("teamId", row.teamId))
+        .take(200)) as Doc<"setterRoster">[];
+      const other = rows.find((r) => String(r._id) !== String(row._id) && r.active !== false && r.crmUserId === id);
+      if (other) throw new ConvexError(`That CRM user is already linked to ${other.name}. Unlink it there first.`);
       patch.crmUserId = id;
       patch.setterRepId = rep?._id;
     }

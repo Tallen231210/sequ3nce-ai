@@ -195,7 +195,9 @@ export default function SetterEodPage() {
               <label key={f.key} className="block">
                 <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                   {f.label}
-                  {f.measured && measured?.measuredExists && <span className="ml-1 text-[10px] font-normal text-neutral-400">· prefilled</span>}
+                  {f.measured && measured?.measuredExists && typeof (measured.measured as unknown as Record<string, unknown>)[f.key] === "number" && (
+                    <span className="ml-1 text-[10px] font-normal text-neutral-400">· prefilled</span>
+                  )}
                 </span>
                 {f.hint && <span className="-mt-0.5 mb-1 block text-[10px] leading-tight text-neutral-400">{f.hint}</span>}
                 <input

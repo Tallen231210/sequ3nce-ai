@@ -92,6 +92,9 @@ export async function bumpDailyStat(
   await bumpDailyStats(ctx, teamId, occurredAt, setterId, [kind]);
 }
 
+/** Rows read per event type per day in a recount — a day beyond this is counted short and logged, never a dead chain. */
+const RECOUNT_TAKE = 20_000;
+
 const EVENT_TYPES: Array<{ type: string; kind: DailyStatKind }> = [
   { type: "dial_outbound", kind: "dials" },
   { type: "connected", kind: "connects" },
@@ -130,8 +133,13 @@ async function recountDayImpl(
       .withIndex("by_team_and_type_and_time", (q: any) =>
         q.eq("teamId", teamId).eq("eventType", type).gte("occurredAt", start).lt("occurredAt", end),
       )
-      .collect();
+      .take(RECOUNT_TAKE);
+    if (events.length >= RECOUNT_TAKE) {
+      console.warn(`[rollups] ${type} on ${dayKey} for team ${teamId} hit the ${RECOUNT_TAKE}-row cap; the day's ${kind} is counted short`);
+    }
     for (const e of events) {
+      // Texts with no Close user are automation; live counting skips them too.
+      if (type === "sms_outbound" && !e.ghlUserId) continue;
       bump(e.ghlUserId ?? "", kind);
       if (type === "dial_outbound" && dialConnected(e.details, connectSec)) bump(e.ghlUserId ?? "", "answered");
     }
@@ -176,8 +184,8 @@ export const recountDay = internalMutation({
 export const recountRange = internalMutation({
   args: { teamId: v.id("teams"), startDayKey: v.string(), endDayKey: v.string() },
   handler: async (ctx, args): Promise<void> => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.startDayKey) || !/^\d{4}-\d{2}-\d{2}$/.test(args.endDayKey)) {
-      throw new Error("day keys must be YYYY-MM-DD");
+    for (const key of [args.startDayKey, args.endDayKey]) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || dayKeyOf(dayStartMs(key)) !== key) throw new Error(`day keys must be real YYYY-MM-DD dates, got ${key}`);
     }
     if (args.startDayKey > args.endDayKey) return;
     await recountDayImpl(ctx, args.teamId, args.startDayKey);

@@ -5,7 +5,8 @@
 
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { DEFAULT_TIMEZONE } from "./closerPerformance";
+import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
+import { getLocalDateRangeUtc } from "./setterDataNotifications";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { MAX_TEAM_RANGE_DAYS, MAX_TEAM_RANGE_MS } from "./setterTeamBookings";
 import { teamHasSetterTeams } from "./setterTeamQueries";
@@ -46,15 +47,20 @@ export async function resolveSettersPageAccess(
     return null;
   }
   const nowMs = Date.now();
+  const timezone = (team as { timezone?: string }).timezone || DEFAULT_TIMEZONE;
   const endMs = Math.min(rangeEnd, nowMs + 7 * DAY_MS);
-  const startMs = Math.max(rangeStart, endMs - MAX_TEAM_RANGE_MS);
+  const clampedStart = Math.max(rangeStart, endMs - MAX_TEAM_RANGE_MS);
+  // Whole team-local days. The pickers hand us "now minus N days", and an
+  // EOD filed for the first day covers all of it — so the measured side
+  // must start at that day's local midnight or the first day reads short.
+  const startMs = getLocalDateRangeUtc(dayKeyInTz(clampedStart, timezone), timezone).startMs;
   return {
     teamId,
     team,
-    timezone: (team as { timezone?: string }).timezone || DEFAULT_TIMEZONE,
+    timezone,
     startMs,
     endMs,
     nowMs,
-    rangeClampedToDays: startMs > rangeStart ? MAX_TEAM_RANGE_DAYS : undefined,
+    rangeClampedToDays: clampedStart > rangeStart ? MAX_TEAM_RANGE_DAYS : undefined,
   };
 }

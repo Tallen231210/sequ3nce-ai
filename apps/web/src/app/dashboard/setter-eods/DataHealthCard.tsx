@@ -18,10 +18,7 @@ import { flagText } from "../../../../convex/lib/eodCrossCheck";
 const pct = (v: number | null) => (v === null ? "—" : `${v}%`);
 const named = (rows: Array<{ name: string; count: number }>) => rows.map((r) => `${r.name} ${r.count}`).join(", ");
 
-function humanDay(dayKey: string): string {
-  const [y, m, d] = dayKey.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-}
+import { humanDay } from "../setters/lib/format";
 
 export type DataHealthWeekView = NonNullable<FunctionReturnType<typeof api.dataHealthQueries.getDataHealthWeek>>;
 export type EodChecksView = NonNullable<FunctionReturnType<typeof api.setterEodCrossCheck.getEodCrossCheckThisWeek>>;

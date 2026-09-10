@@ -23,17 +23,38 @@ const named = (rows: Array<{ name: string; count: number }>, max = 6) =>
  * outside tolerance of what Close / the calendar measured — both numbers on
  * every one. Statistics only; the manager decides what a gap means.
  */
+/** Flagged days shown per setter before "…and N more" — keeps a bad week inside Slack's 3,000-character section. */
+const MAX_FLAGGED_DAYS_SHOWN = 3;
+const SLACK_SECTION_MAX = 2_900;
+const DISCORD_DESCRIPTION_MAX = 4_000;
+
+const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/** One setter's lines: the head, then at most a few flagged days with both numbers on every flag. */
+export function eodCheckLinesFor(r: CrossCheckRange["byRoster"][number]): string[] {
+  if (r.daysFiled === 0) return [];
+  const flagged = r.days.filter((d) => d.flags.length > 0);
+  const head = `${r.name}: filed ${r.daysFiled} of ${r.daysDue} due days` + (flagged.length === 0 ? ", all within tolerance of Close and the calendar." : `, ${flagged.length} off vs measured:`);
+  const lines = [head];
+  for (const d of flagged.slice(0, MAX_FLAGGED_DAYS_SHOWN)) lines.push(`  ${humanDay(d.dayKey)} — ${d.flags.map(flagText).join(" · ")}`);
+  if (flagged.length > MAX_FLAGGED_DAYS_SHOWN) lines.push(`  …and ${flagged.length - MAX_FLAGGED_DAYS_SHOWN} more ${flagged.length - MAX_FLAGGED_DAYS_SHOWN === 1 ? "day" : "days"} off — the Setters page has them all.`);
+  return lines;
+}
+
 export function eodCheckLines(c: CrossCheckRange | null | undefined): string[] {
   if (!c) return [];
-  const lines: string[] = [];
-  for (const r of c.byRoster) {
-    if (r.daysFiled === 0) continue;
-    const flagged = r.days.filter((d) => d.flags.length > 0);
-    const head = `${r.name}: filed ${r.daysFiled} of ${r.daysDue} due days` + (flagged.length === 0 ? ", all within tolerance of Close and the calendar." : `, ${flagged.length} off vs measured:`);
-    lines.push(head);
-    for (const d of flagged) lines.push(`  ${humanDay(d.dayKey)} — ${d.flags.map(flagText).join(" · ")}`);
-  }
-  return lines;
+  return c.byRoster.flatMap(eodCheckLinesFor);
+}
+
+/** One Slack section per setter, each clipped to Slack's limit, under one heading. */
+export function eodCheckBlocks(c: CrossCheckRange | null | undefined): any[] {
+  if (!c) return [];
+  const sections = c.byRoster
+    .map((r) => eodCheckLinesFor(r))
+    .filter((lines) => lines.length > 0)
+    .map((lines) => ({ type: "section", text: { type: "mrkdwn", text: clip(lines.join("\n"), SLACK_SECTION_MAX) } }));
+  if (sections.length === 0) return [];
+  return [{ type: "section", text: { type: "mrkdwn", text: "*EODs vs Close and the calendar*" } }, ...sections];
 }
 
 export function dataHealthLines(d: DataHealthWeek): string[] {
@@ -71,13 +92,12 @@ export function dataHealthFallbackText(d: DataHealthWeek, checks?: CrossCheckRan
 export function buildDataHealthSlackBlocks(d: DataHealthWeek, checks?: CrossCheckRange | null): any[] {
   const lines = dataHealthLines(d);
   const [score, parts, lanes, ...rest] = lines;
-  const eod = eodCheckLines(checks);
   return [
     { type: "header", text: { type: "plain_text", text: `Data health · week of ${humanDay(d.weekStartKey)}`, emoji: false } },
     { type: "section", text: { type: "mrkdwn", text: `*${score}*\n${parts}` } },
     { type: "context", elements: [{ type: "mrkdwn", text: lanes }] },
     { type: "section", text: { type: "mrkdwn", text: `*What moves it*\n${rest.join("\n")}` } },
-    ...(eod.length ? [{ type: "section", text: { type: "mrkdwn", text: `*EODs vs Close and the calendar*\n${eod.join("\n")}` } }] : []),
+    ...eodCheckBlocks(checks),
     {
       type: "context",
       elements: [
@@ -94,7 +114,7 @@ export function buildDataHealthDiscordEmbed(d: DataHealthWeek, checks?: CrossChe
   const eod = eodCheckLines(checks);
   return {
     title: `Data health · week of ${humanDay(d.weekStartKey)}`,
-    description: dataHealthLines(d).join("\n") + (eod.length ? `\n\n**EODs vs Close and the calendar**\n${eod.join("\n")}` : ""),
+    description: clip(dataHealthLines(d).join("\n") + (eod.length ? `\n\n**EODs vs Close and the calendar**\n${eod.join("\n")}` : ""), DISCORD_DESCRIPTION_MAX),
     color: 0x0d9488,
   };
 }

@@ -4,7 +4,7 @@
 // before the page, the daily post and the Monday post flag it. Percent of
 // the MEASURED number, with a floor so one call on a quiet day isn't a flag.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { api } from "../../../../../convex/_generated/api";
@@ -26,8 +26,10 @@ export function ToleranceForm({ clerkId }: { clerkId: string }) {
   const save = useMutation(api.settersPageConfig.setTolerances);
   const [draft, setDraft] = useState<Draft>({ dialsPct: "", pickUpsPct: "", confirmationPct: "", minGap: "" });
   const [status, setStatus] = useState<string | null>(null);
+  const seeded = useRef(false);
   useEffect(() => {
-    if (!config) return;
+    if (!config || seeded.current) return;
+    seeded.current = true;
     const t = config.tolerances;
     setDraft({ dialsPct: String(t.dialsPct), pickUpsPct: String(t.pickUpsPct), confirmationPct: String(t.confirmationPct), minGap: String(t.minGap) });
   }, [config]);
@@ -85,7 +87,7 @@ export function ToleranceForm({ clerkId }: { clerkId: string }) {
         <button type="button" onClick={submit} className="rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:border-foreground/40">
           Save
         </button>
-        {status && <span className="text-xs text-muted-foreground">{status}</span>}
+        {status && <span className={`text-xs ${status === "Saved" ? "text-emerald-600" : "text-rose-600"}`}>{status}</span>}
       </div>
     </section>
   );

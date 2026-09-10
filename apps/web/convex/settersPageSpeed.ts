@@ -117,17 +117,20 @@ export interface OutboundSpeed {
 const BOOKED_TAKE = 8_000;
 
 /** Guests who booked themselves in [startMs, endMs) — by normalised email — so they leave the outbound cohort. */
-async function selfBookedEmails(ctx: QueryCtx, teamId: Id<"teams">, startMs: number, endMs: number): Promise<{ emails: Set<string>; truncated: boolean }> {
+/** Guest email → the earliest time that guest booked in the range. */
+async function bookedAtByEmail(ctx: QueryCtx, teamId: Id<"teams">, startMs: number, endMs: number): Promise<{ bookedAt: Map<string, number>; truncated: boolean }> {
   const rows = await ctx.db
     .query("calendarEvents")
     .withIndex("by_team_and_booked_at", (q) => q.eq("teamId", teamId).gte("bookedAt", startMs).lt("bookedAt", endMs))
     .take(BOOKED_TAKE);
-  const emails = new Set<string>();
+  const bookedAt = new Map<string, number>();
   for (const e of rows) {
     const g = guestEmailOf([e]);
-    if (g) emails.add(g);
+    if (!g) continue;
+    const at = e.bookedAt ?? e._creationTime;
+    bookedAt.set(g, Math.min(bookedAt.get(g) ?? Infinity, at));
   }
-  return { emails, truncated: rows.length >= BOOKED_TAKE };
+  return { bookedAt, truncated: rows.length >= BOOKED_TAKE };
 }
 
 /**
@@ -152,12 +155,12 @@ export async function outboundSpeed(
     .take(LEAD_TAKE);
   if (leads.length >= LEAD_TAKE) truncated.push(`leads (newest ${LEAD_TAKE})`);
   const live = leads.filter((l) => l.isInternal !== true);
-  // A lead that booked itself is the confirmation team's: it never counts
-  // against an outbound setter's speed, whoever touched it first.
-  const selfBooked = await selfBookedEmails(ctx, teamId, startMs, endMs);
-  if (selfBooked.truncated) truncated.push("self-booked events");
-  const toRead = live.filter((l) => !(l.emailNorm && selfBooked.emails.has(l.emailNorm)));
-  const touches = await loadLeadTouches(ctx, teamId, toRead.map((l) => l.ghlContactId), startMs, nowMs, connectSec);
+  // A lead that booked itself BEFORE any outbound setter touched it is the
+  // confirmation team's and never counts against an outbound setter's speed.
+  // A lead the setter reached first and then booked is theirs — and timed.
+  const booked = await bookedAtByEmail(ctx, teamId, startMs, endMs);
+  if (booked.truncated) truncated.push("booked events");
+  const touches = await loadLeadTouches(ctx, teamId, live.map((l) => l.ghlContactId), startMs, nowMs, connectSec);
   truncated.push(...touches.truncated);
   const byCrm = new Map(setters.map((s) => [s.crmUserId, s]));
 
@@ -171,10 +174,7 @@ export async function outboundSpeed(
       leadName: lead.name || lead.email || "lead",
       arrivedAt: lead.dateAdded,
     };
-    if (lead.emailNorm && selfBooked.emails.has(lead.emailNorm)) {
-      rows.push({ ...base, ...none, note: "self-booked" });
-      continue;
-    }
+    const selfBookedAt = lead.emailNorm ? booked.bookedAt.get(lead.emailNorm) : undefined;
     if (touches.unread.has(lead.ghlContactId)) {
       unread += 1;
       continue;
@@ -189,6 +189,10 @@ export async function outboundSpeed(
     }
     const mine = (touches.byContact.get(lead.ghlContactId)?.touches ?? []).filter((t) => byCrm.has(t.crmUserId)).sort((a, b) => a.at - b.at);
     const first = mine[0];
+    if (selfBookedAt !== undefined && (!first || first.at > selfBookedAt)) {
+      rows.push({ ...base, ...none, note: "self-booked" });
+      continue;
+    }
     if (!first) {
       rows.push({ ...base, ...none, note: "never contacted" });
       continue;

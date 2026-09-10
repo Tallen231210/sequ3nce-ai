@@ -33,7 +33,13 @@ export function SettersView({
 }) {
   const [open, setOpen] = useState<CardVM | null>(null);
   const cards = useMemo(() => buildCards(bookings, sets, activity, speed, cadence, checks), [bookings, sets, activity, speed, cadence, checks]);
-  const coverage = [...bookings.coverage, ...(activity?.coverage ?? [])];
+  const partial = [
+    ...(sets?.truncated.length ? [`sets: ${sets.truncated.join(", ")}`] : []),
+    ...(speed?.truncated.length ? [`speed: ${speed.truncated.join(", ")}`] : []),
+    ...(cadence?.truncated.length ? [`cadence: ${cadence.truncated.join(", ")}`] : []),
+    ...(checks?.truncated.length ? [`EOD cross-check: ${checks.truncated.join(", ")}`] : []),
+  ];
+  const coverage = [...bookings.coverage, ...(activity?.coverage ?? []), ...(partial.length ? [`Partial: some reads hit their cap (${partial.join(" · ")}).`] : [])];
   const loadingNote = !sets || !activity || speed === undefined || cadence === undefined || checks === undefined ? "Still reading sets, Close activity, speed, cadence and the EOD cross-check…" : null;
   const sections: Array<{ team: "dm" | "outbound" | "confirmation"; description: string }> = [
     { team: "dm", description: "Book from the DM link. No dials to count — bookings and shows only." },

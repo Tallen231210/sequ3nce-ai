@@ -5,6 +5,9 @@
 // the posts and reminders, and the Close connection.
 
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useTeam } from "@/hooks/useTeam";
+import { ConnectionGate } from "../../setter-data/components/ConnectionGate";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,21 +22,28 @@ import type { CrossCheckData } from "../lib/cards";
 
 type Tab = "roster" | "team" | "posts" | "crm";
 
-export function SettingsDrawer({ clerkId, open, onClose, checks }: { clerkId: string; open: boolean; onClose: () => void; checks?: CrossCheckData | null }) {
-  const [tab, setTab] = useState<Tab>("roster");
-  const [flash, setFlash] = useState<string | null>(null);
+export function SettingsDrawer({
+  clerkId,
+  open,
+  onClose,
+  checks,
+  initialTab = "roster",
+  flash = null,
+}: {
+  clerkId: string;
+  open: boolean;
+  onClose: () => void;
+  checks?: CrossCheckData | null;
+  /** Which tab to open on — the page sets "crm" when a CRM callback landed. */
+  initialTab?: Tab;
+  flash?: string | null;
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const { team } = useTeam();
   const installation = useQuery(api.setterGhlOauth.getMyInstallationStatus, clerkId ? { clerkId } : "skip");
-  // The Close OAuth callback lands on the old route with ?connected=1 or
-  // ?ghl_error=…; the bounce forwards the query string here.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("connected") === "1") setFlash("Close connected.");
-    else if (params.get("ghl_error")) setFlash(`Close connection failed: ${params.get("ghl_error")}`);
-    if (params.has("connected") || params.has("ghl_error")) {
-      setTab("crm");
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-  }, []);
+    setTab(initialTab);
+  }, [initialTab]);
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "roster", label: "Roster" },
     { id: "team", label: "Teams & links" },
@@ -46,7 +56,7 @@ export function SettingsDrawer({ clerkId, open, onClose, checks }: { clerkId: st
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
-        <div className="flex gap-1 border-b border-border">
+        <div className="flex flex-wrap gap-1 border-b border-border">
           {tabs.map((t) => (
             <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === t.id ? "border-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
               {t.label}
@@ -71,7 +81,8 @@ export function SettingsDrawer({ clerkId, open, onClose, checks }: { clerkId: st
           </div>
         )}
         {tab === "posts" && <NotificationsCard />}
-        {tab === "crm" && (installation && installation.connected ? <CloseConnectionCard installation={installation} /> : <p className="py-4 text-sm text-muted-foreground">Close isn't connected. Connect it from Setter Data → Settings on an unflagged team, or ask us to connect it.</p>)}
+        {tab === "crm" && installation === undefined && <Loader2 className="my-6 h-4 w-4 animate-spin text-muted-foreground" />}
+        {tab === "crm" && installation !== undefined && (installation && installation.connected ? <CloseConnectionCard installation={installation} /> : <ConnectionGate teamId={team ? String((team as { _id: unknown })._id) : undefined} clerkId={clerkId} showClose />)}
       </DialogContent>
     </Dialog>
   );
