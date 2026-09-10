@@ -96,16 +96,23 @@ export function teamStrip(
   const byLane = new Map(comparison.map((c) => [c.lane, c]));
   return TEAM_ORDER.map((team) => {
     const lane = LANE_OF[team];
-    const t = byLane.get(lane);
+    // The confirmation column is every self-book the confirmation setter
+    // handled OR nobody did — a miss is still hers — so the four columns
+    // add up to every booking in the range.
+    const lanes: Array<typeof lane> = team === "confirmation" ? [lane, "self_booked_uncontacted"] : [lane];
+    const parts = lanes.map((l) => byLane.get(l)).filter((x): x is LaneTotals => !!x);
+    const sum = (pick: (t: LaneTotals) => number) => parts.reduce((n, t) => n + pick(t), 0);
+    const showed = sum((t) => t.showed);
+    const noShow = sum((t) => t.noShow);
     return {
       team,
       label: labels[team],
-      bookings: t?.bookings ?? 0,
-      showed: t?.showed ?? 0,
-      noShow: t?.noShow ?? 0,
-      unknown: t?.unknown ?? 0,
-      showRatePct: t?.showRatePct ?? null,
-      ...moneyWhere(records, (r) => r.classification.lane === lane),
+      bookings: sum((t) => t.bookings),
+      showed,
+      noShow,
+      unknown: sum((t) => t.unknown),
+      showRatePct: showed + noShow > 0 ? Math.round((showed / (showed + noShow)) * 100) : null,
+      ...moneyWhere(records, (r) => lanes.includes(r.classification.lane)),
       coverage:
         team === "confirmation"
           ? {

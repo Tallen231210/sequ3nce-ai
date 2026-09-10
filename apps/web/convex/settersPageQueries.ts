@@ -138,6 +138,8 @@ export const getSettersSets = query({
         // are named here so the two numbers explain each other.
         const workedByOutbound = selfBooks.filter((b) => b.classification.lane === "unattributed" && b.touches.some((t) => t.rosterId !== null && t.rosterId !== r.rosterId)).length;
         const nobody = selfBooks.filter((b) => b.classification.lane === "self_booked_uncontacted").length;
+        // Self-books with no lead in Close, or touched only by people off the roster: nobody's miss we can name.
+        const unknown = Math.max(0, selfBooks.length - contacted.length - workedByOutbound - nobody);
         return {
           rosterId: r.rosterId,
           newSelfBooks: selfBooks.length,
@@ -146,6 +148,7 @@ export const getSettersSets = query({
           coveragePct: selfBooks.length > 0 ? Math.round((contacted.length / selfBooks.length) * 100) : null,
           workedByOutbound,
           nobody,
+          unknown,
           responseMedianWorkingMs: median,
         };
       });

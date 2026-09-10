@@ -214,7 +214,15 @@ export function buildCards(
         metric("newSelfBooks", s ? s.newSelfBooks : null, "int", filedOr(f, (x) => x.newSelfBooked)),
         metric("contacted", s ? s.contacted : null, "int", filedOr(f, (x) => x.contacted)),
         metric("reached", s ? s.reached : null, "int", filedOr(f, (x) => x.reached)),
-        metric("coverage", s ? s.coveragePct : null, "pct", undefined, s ? `${s.contacted} of ${s.newSelfBooks}${s.workedByOutbound > 0 ? ` · ${s.workedByOutbound} worked by outbound setters` : ""}${s.nobody > 0 ? ` · ${s.nobody} by nobody` : ""}` : null),
+        metric(
+          "coverage",
+          s ? s.coveragePct : null,
+          "pct",
+          undefined,
+          s
+            ? `${s.contacted} of ${s.newSelfBooks}${s.workedByOutbound > 0 ? ` · ${s.workedByOutbound} worked by outbound setters` : ""}${s.nobody > 0 ? ` · ${s.nobody} by nobody` : ""}${s.unknown > 0 ? ` · ${s.unknown} no lead in Close or closer-only` : ""}`
+            : null,
+        ),
         metric("response", s ? s.responseMedianWorkingMs : null, "hours"),
         metric("confirmed", null, "int", filedOr(f, (x) => x.confirmed)),
         metric("onCal", row.bookings, "int", filedOr(f, (x) => x.confirmedOnCalendar)),
