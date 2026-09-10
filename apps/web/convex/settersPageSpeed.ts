@@ -183,14 +183,17 @@ export async function outboundSpeed(
       clipped += 1;
       continue;
     }
-    if (isStubLead(lead)) {
-      rows.push({ ...base, ...none, note: "no arrival time" });
-      continue;
-    }
     const mine = (touches.byContact.get(lead.ghlContactId)?.touches ?? []).filter((t) => byCrm.has(t.crmUserId)).sort((a, b) => a.at - b.at);
     const first = mine[0];
+    // "Self-booked" is the more telling reason, so it is checked before the
+    // arrival-time stub: a lead that booked itself is the confirmation
+    // team's whether or not Close knows when it arrived.
     if (selfBookedAt !== undefined && (!first || first.at > selfBookedAt)) {
       rows.push({ ...base, ...none, note: "self-booked" });
+      continue;
+    }
+    if (isStubLead(lead)) {
+      rows.push({ ...base, ...none, note: "no arrival time" });
       continue;
     }
     if (!first) {
