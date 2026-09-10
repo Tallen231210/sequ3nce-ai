@@ -27,6 +27,9 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
   const [dm, setDm] = useState("");
   const [funnel, setFunnel] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  // The two rule checkboxes: local state so the click shows at once, reverted if the save fails.
+  const [setsNeedInitials, setSetsNeedInitialsDraft] = useState<boolean | null>(null);
+  const [creditAfter, setCreditAfterDraft] = useState<boolean | null>(null);
   // Seed the drafts once. The config query re-pushes whenever anything on
   // the team record changes (another form's save, a cron), and reseeding on
   // every push would wipe half-typed edits.
@@ -38,6 +41,8 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
     setPeopleDraft(config.people);
     setDm(config.dmPatterns.join(", "));
     setFunnel(config.funnelPatterns.join(", "));
+    setSetsNeedInitialsDraft(config.setsNeedInitials);
+    setCreditAfterDraft(config.creditTouchAfterBooking);
   }, [config]);
   if (!config) return null;
 
@@ -48,6 +53,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
       setTimeout(() => setStatus(null), 1500);
     } catch (err) {
       setStatus(errText(err, fallback));
+      throw err;
     }
   };
   const split = (s: string) => s.split(",").map((w) => w.trim()).filter(Boolean);
@@ -61,7 +67,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
           {(["dm", "outbound", "confirmation", "unlabeled"] as const).map((k) => (
             <label key={k} className="text-xs text-muted-foreground">
               {config.defaults[k]}
-              <input className={`${input} mt-1`} value={labels[k]} onChange={(e) => setLabelsDraft({ ...labels, [k]: e.target.value })} onBlur={() => { if (labels[k] !== config.labels[k]) void run(() => setLabels({ clerkId, labels }), "Couldn't save the names"); }} />
+              <input className={`${input} mt-1`} value={labels[k]} onChange={(e) => setLabelsDraft({ ...labels, [k]: e.target.value })} onBlur={() => { if (labels[k] !== config.labels[k]) void run(() => setLabels({ clerkId, labels }), "Couldn't save the names").catch(() => undefined); }} />
             </label>
           ))}
         </div>
@@ -87,7 +93,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
             <button type="button" className="rounded-md border border-border px-2.5 py-1 text-xs" onClick={() => setPeopleDraft([...people, { name: "", linkName: "", active: true }])}>
               Add DM setter
             </button>
-            <button type="button" className="rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background" onClick={() => void run(() => setPeople({ clerkId, people }), "Couldn't save the DM setters")}>
+            <button type="button" className="rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background" onClick={() => void run(() => setPeople({ clerkId, people }), "Couldn't save the DM setters").catch(() => undefined)}>
               Save DM setters
             </button>
           </div>
@@ -107,7 +113,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
             <input className={`${input} mt-1`} value={funnel} onChange={(e) => setFunnel(e.target.value)} placeholder="facebook, main training" />
           </label>
         </div>
-        <button type="button" className="mt-3 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background" onClick={() => void run(() => setPatterns({ clerkId, dm: split(dm), funnel: split(funnel) }), "Couldn't save the word lists")}>
+        <button type="button" className="mt-3 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background" onClick={() => void run(() => setPatterns({ clerkId, dm: split(dm), funnel: split(funnel) }), "Couldn't save the word lists").catch(() => undefined)}>
           Save word lists
         </button>
       </section>
@@ -117,7 +123,16 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
           Initials on the booking, a DM link name, or a claim always credit the setter. This decides whether a setter&apos;s Close activity on the lead, with none of those, credits them too.
         </p>
         <label className="mt-3 flex items-start gap-2 text-sm">
-          <input type="checkbox" className="mt-0.5" checked={config.setsNeedInitials} onChange={(e) => void run(() => setSetsRule({ clerkId, setsNeedInitials: e.target.checked }), "Couldn't save the rule")} />
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={setsNeedInitials ?? config.setsNeedInitials}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setSetsNeedInitialsDraft(next);
+              void run(() => setSetsRule({ clerkId, setsNeedInitials: next }), "Couldn't save the rule").then(() => undefined, () => setSetsNeedInitialsDraft(!next));
+            }}
+          />
           <span>
             A set needs initials. A Close touch alone never credits one.
             <span className="block text-xs text-muted-foreground">On: bookings with no name on them go to {config.labels.unlabeled}, listed under whoever touched them, to be claimed or assigned. Off: a setter who worked the lead in Close is credited without initials.</span>
@@ -125,9 +140,9 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
         </label>
       </section>
 
-      <section className={`rounded-lg border border-border p-4 ${config.setsNeedInitials ? "opacity-60" : ""}`}>
+      <section className={`rounded-lg border border-border p-4 ${(setsNeedInitials ?? config.setsNeedInitials) ? "opacity-60" : ""}`}>
         <h3 className="text-sm font-semibold">Who counts as the setter on a self-booked lead</h3>
-        {config.setsNeedInitials && <p className="text-xs text-amber-800">Not in use while a set needs initials.</p>}
+        {(setsNeedInitials ?? config.setsNeedInitials) && <p className="text-xs text-amber-800">Not in use while a set needs initials.</p>}
         <p className="text-xs text-muted-foreground">
           A lead books itself through the funnel link, and an outbound setter calls or texts them afterwards, with no initials on the booking. Initials always credit the setter; this decides what a Close touch alone does.
         </p>
@@ -135,8 +150,13 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
           <input
             type="checkbox"
             className="mt-0.5"
-            checked={config.creditTouchAfterBooking}
-            onChange={(e) => void run(() => setCreditRule({ clerkId, creditTouchAfterBooking: e.target.checked }), "Couldn't save the rule")}
+            checked={creditAfter ?? config.creditTouchAfterBooking}
+            disabled={setsNeedInitials ?? config.setsNeedInitials}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setCreditAfterDraft(next);
+              void run(() => setCreditRule({ clerkId, creditTouchAfterBooking: next }), "Couldn't save the rule").then(() => undefined, () => setCreditAfterDraft(!next));
+            }}
           />
           <span>
             Credit the outbound setter who contacted them after the booking.

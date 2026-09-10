@@ -24,9 +24,9 @@ import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 
 const BOOKED_TAKE = 8_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** How far back / forward a booking's call may sit and still be in the sets cohort — bounds the collector's window whatever one stray row says. */
-const SETS_LOOKBACK_MS = 30 * DAY_MS;
-const SETS_LOOKAHEAD_MS = 60 * DAY_MS;
+/** How far back / forward a booking's call may sit and still be in the sets cohort — with the 14-day range, inside the collector's 60-day span. */
+const SETS_LOOKBACK_MS = 7 * DAY_MS;
+const SETS_LOOKAHEAD_MS = 39 * DAY_MS;
 const RANGE_ARGS = { clerkId: v.string(), rangeStart: v.number(), rangeEnd: v.number() };
 
 async function hoursFor(ctx: Parameters<typeof activeFunnelFor>[0], access: SettersPageAccess): Promise<Hours> {
@@ -53,11 +53,9 @@ async function collectBookedInRange(ctx: Parameters<typeof collectTeamBookings>[
   const to = Math.min(Math.max(...rows.map((e) => e.startTime)) + 1, access.endMs + SETS_LOOKAHEAD_MS);
   const inWindow = rows.filter((e) => e.startTime >= from && e.startTime < to);
   const dropped = rows.length - inWindow.length;
-  if (dropped > 0) truncated.push(`${dropped} ${dropped === 1 ? "booking" : "bookings"} for calls more than 60 days out or 30 days back (not counted as sets)`);
-  const data = await collectTeamBookings(ctx, access.teamId, from, to, access.nowMs, {
-    eventRows: inWindow,
-    skipCalls: true,
-  });
+  if (dropped > 0) truncated.push(`${dropped} ${dropped === 1 ? "booking" : "bookings"} for calls more than 39 days out or 7 days back (not counted as sets)`);
+  // Calls are point reads per event here; the sales-booking test needs them.
+  const data = await collectTeamBookings(ctx, access.teamId, from, to, access.nowMs, { eventRows: inWindow });
   return { records: data.records, rosters: data.rosters, truncated: [...truncated, ...data.truncated], crmUserNames: data.crmUserNames };
 }
 
@@ -101,6 +99,7 @@ export const getSettersBookings = query({
       unattributed: view.unattributed,
       followUpsExcluded: view.followUpsExcluded,
       records: view.records,
+      notASet: data.notASet,
       coverage,
     };
   },
@@ -131,7 +130,9 @@ export const getSettersSets = query({
       .filter((r) => r.role === "confirmation")
       .map((r) => {
         const hers = (b: BookingRecord) => b.touches.filter((t) => t.rosterId === r.rosterId && t.afterBooking);
-        const contacted = selfBooks.filter((b) => hers(b).length > 0 || (b.classification.attributedBy === "tag" && b.classification.creditRosterIds.includes(r.rosterId)));
+        const contacted = selfBooks.filter(
+          (b) => hers(b).length > 0 || ((b.classification.attributedBy === "tag" || b.classification.attributedBy === "claim") && b.classification.creditRosterIds.includes(r.rosterId)),
+        );
         const { median } = percentiles(confirmationSpeedRows(records, r.rosterId, r.name, hours).flatMap((row) => (row.workingMs === null ? [] : [row.workingMs])));
         // Every self-book is in her denominator (covering them is the job);
         // the ones an outbound setter worked instead sit in Unlabeled and
@@ -141,8 +142,9 @@ export const getSettersSets = query({
         // Her misses split two ways: a closer or the owner confirmed it themselves, or nobody did.
         const contactedByOthers = missed.filter((b) => b.touches.length > 0).length;
         const nobody = missed.length - contactedByOthers;
-        // Self-books with no lead in Close: nothing to read.
-        const unknown = Math.max(0, selfBooks.length - contacted.length - workedByOutbound - missed.length);
+        // Self-books with no lead in Close: nothing to read. Anything else left over is named as "other".
+        const leadMissing = selfBooks.filter((b) => !b.leadContactId).length;
+        const other = Math.max(0, selfBooks.length - contacted.length - workedByOutbound - missed.length - leadMissing);
         return {
           rosterId: r.rosterId,
           newSelfBooks: selfBooks.length,
@@ -152,7 +154,8 @@ export const getSettersSets = query({
           workedByOutbound,
           contactedByOthers,
           nobody,
-          unknown,
+          leadMissing,
+          other,
           responseMedianWorkingMs: median,
         };
       });
@@ -186,17 +189,17 @@ export const getSettersActivity = query({
     const connectSec = activity.connectSec;
     // One roster row per Close user: a second row on the same user would
     // show the same dials twice. The first row keeps them; the rest are named.
-    const ownerOfCrm = new Map<string, string>();
+    const ownerOfCrm = new Map<string, { rosterId: string; name: string }>();
     const duplicates: string[] = [];
     for (const r of rosters) {
       if (!r.crmUserId) continue;
       const owner = ownerOfCrm.get(r.crmUserId);
-      if (owner) duplicates.push(`${r.name} shares a Close user with ${owner}; their dials are counted under ${owner}`);
-      else ownerOfCrm.set(r.crmUserId, r.name);
+      if (owner) duplicates.push(`${r.name} shares a Close user with ${owner.name}; their dials are counted under ${owner.name}`);
+      else ownerOfCrm.set(r.crmUserId, { rosterId: r.rosterId, name: r.name });
     }
     const connectsKnown = activity.uncountedDays.length === 0;
     const byRoster = rosters.map((r) => {
-      const owns = !!r.crmUserId && ownerOfCrm.get(r.crmUserId) === r.name;
+      const owns = !!r.crmUserId && ownerOfCrm.get(r.crmUserId)?.rosterId === r.rosterId;
       const counts = owns ? activity.byUser.get(r.crmUserId as string) ?? { dials: 0, answered: 0, texts: 0 } : null;
       return {
         rosterId: r.rosterId,

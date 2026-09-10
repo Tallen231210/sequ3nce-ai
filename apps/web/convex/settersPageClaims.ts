@@ -12,6 +12,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { resolveSetterSessionCtx } from "./setterAuth";
 import { RANGE_COHORT_TAKE, loadCohortRecords } from "./setterEodMeasured";
+import { collectTeamBookings, type BookingRecord } from "./setterTeamBookings";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -29,15 +30,23 @@ function parseKey(bookingKey: string): { uid: string; startTime: number } | null
   return { uid: bookingKey.slice(0, at), startTime };
 }
 
-/** The key must name a calendar row of this team, or the claim would credit thin air. */
-async function bookingExists(ctx: QueryCtx | MutationCtx, teamId: Id<"teams">, bookingKey: string): Promise<boolean> {
+/** The calendar rows starting at the key's instant, when one of them carries the key's uid — or null. */
+async function bookingRows(ctx: QueryCtx | MutationCtx, teamId: Id<"teams">, bookingKey: string): Promise<Doc<"calendarEvents">[] | null> {
   const parsed = parseKey(bookingKey);
-  if (!parsed) return false;
+  if (!parsed) return null;
   const rows = await ctx.db
     .query("calendarEvents")
     .withIndex("by_team_and_time", (q) => q.eq("teamId", teamId).gte("startTime", parsed.startTime).lt("startTime", parsed.startTime + 1))
-    .take(100);
-  return rows.some((e) => e.uid === parsed.uid);
+    .take(300);
+  return rows.some((e) => e.uid === parsed.uid) ? rows : null;
+}
+
+/** The engine's own record for the key — attribution only, no call lookups. */
+async function recordFor(ctx: QueryCtx | MutationCtx, teamId: Id<"teams">, bookingKey: string, rows: Doc<"calendarEvents">[]): Promise<BookingRecord | null> {
+  const parsed = parseKey(bookingKey);
+  if (!parsed) return null;
+  const data = await collectTeamBookings(ctx as QueryCtx, teamId, parsed.startTime, parsed.startTime + 1, Date.now(), { eventRows: rows, skipCalls: true });
+  return data.records.find((r) => r.key === bookingKey) ?? null;
 }
 
 async function existingClaim(ctx: QueryCtx | MutationCtx, teamId: Id<"teams">, bookingKey: string): Promise<Doc<"setterBookingClaims"> | null> {
@@ -65,12 +74,15 @@ export const assign = mutation({
   args: { clerkId: v.string(), bookingKey: v.string(), rosterId: v.optional(v.id("setterRoster")), notASet: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const { teamId } = await managerTeam(ctx, args.clerkId);
-    if (!(await bookingExists(ctx, teamId, args.bookingKey))) throw new ConvexError("That booking isn't on this team's calendar");
+    const parsed = parseKey(args.bookingKey);
+    if (!parsed) throw new ConvexError("That booking key isn't valid");
     const current = await existingClaim(ctx, teamId, args.bookingKey);
     if (!args.rosterId && !args.notASet) {
+      // Clearing works even when the booking has since moved or vanished.
       if (current) await ctx.db.delete(current._id);
       return { ok: true, cleared: true };
     }
+    if (!(await bookingRows(ctx, teamId, args.bookingKey))) throw new ConvexError("That booking isn't on this team's calendar");
     if (args.rosterId) {
       const roster = await ctx.db.get(args.rosterId);
       if (!roster || roster.teamId !== teamId) throw new ConvexError("That setter isn't on this team's roster");
@@ -78,6 +90,8 @@ export const assign = mutation({
     const row = {
       teamId,
       bookingKey: args.bookingKey,
+      uid: parsed.uid,
+      startTime: parsed.startTime,
       creditRosterId: args.notASet ? undefined : args.rosterId,
       notASet: args.notASet ? true : undefined,
       claimedByRosterId: undefined,
@@ -99,12 +113,21 @@ export const claimMine = mutation({
     const teamId = me.teamId as Id<"teams">;
     const team = await ctx.db.get(teamId);
     if (!teamHasSetterTeams(team)) throw new ConvexError("Claims aren't switched on for your team");
-    if (!(await bookingExists(ctx, teamId, args.bookingKey))) throw new ConvexError("That booking isn't on the calendar any more");
+    const rows = await bookingRows(ctx, teamId, args.bookingKey);
+    if (!rows) throw new ConvexError("That booking isn't on the calendar any more");
     const current = await existingClaim(ctx, teamId, args.bookingKey);
     if (current) throw new ConvexError("Someone already claimed that one — ask your manager if it's yours");
+    // Only a booking with no setter named on it, and only one they touched:
+    // a claim outranks initials, so it must never take a set that carries them.
+    const record = await recordFor(ctx, teamId, args.bookingKey, rows);
+    if (!record || record.classification.lane !== "unattributed") throw new ConvexError("That booking already has a setter on it — ask your manager if it's yours");
+    if (!record.touches.some((t) => t.rosterId === String(me.rosterId))) throw new ConvexError("You can only claim bookings you contacted in Close");
+    const parsed = parseKey(args.bookingKey)!;
     await ctx.db.insert("setterBookingClaims", {
       teamId,
       bookingKey: args.bookingKey,
+      uid: parsed.uid,
+      startTime: parsed.startTime,
       creditRosterId: me.rosterId as Id<"setterRoster">,
       claimedByRosterId: me.rosterId as Id<"setterRoster">,
       claimedAt: Date.now(),

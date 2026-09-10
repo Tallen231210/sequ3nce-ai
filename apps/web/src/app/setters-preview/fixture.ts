@@ -65,7 +65,7 @@ export const BOOKINGS: BookingsData = {
     { team: "dm", label: "DM setters", ...tally(29, 13, 10), ...money(3, 14_500), coverage: null },
     { team: "outbound", label: "Outbound setters", ...tally(58, 26, 20), ...money(6, 31_000), coverage: null },
     { team: "confirmation", label: "Confirmation setters", ...tally(65, 29, 23), ...money(5, 22_800), coverage: { contacted: 64, newSelfBooks: 77, pct: 83 } },
-    { team: "unlabeled", label: "Unlabeled", ...tally(9, 3, 2), ...money(1, 4_000), coverage: null },
+    { team: "unlabeled", label: "Unlabeled", ...tally(3, 1, 1), ...money(0, 0), coverage: null },
   ],
   outbound: [
     { id: "r-ezra", rosterId: "r-ezra", name: "Ezra", active: true, linked: true, ...tally(35, 16, 12), tagged: 27, crmOnly: 8, claimed: 0, ...money(4, 19_000) },
@@ -83,6 +83,7 @@ export const BOOKINGS: BookingsData = {
   ],
   selfBookedUncontacted: [],
   unattributed: [],
+  notASet: [],
   followUpsExcluded: 6,
   records: [
     rec("b1", "Elena and Jonah", "outbound", 1, ["Ezra"], ["r-ezra"], "showed", { closed: true, cash: 5_000, touches: [{ name: "Ezra", rosterId: "r-ezra", kind: "dial", at: NOW - 3 * D, reached: true, afterBooking: false }] }),
@@ -111,7 +112,7 @@ export const SETS: SetsData = {
     { rosterId: "r-max", sets: 3, tagged: 3, crmOnly: 0, claimed: 0 },
     { rosterId: "r-miles", sets: 4, tagged: 4, crmOnly: 0, claimed: 0 },
   ],
-  confirmation: [{ rosterId: "r-sasha", newSelfBooks: 95, contacted: 77, reached: 22, coveragePct: 81, workedByOutbound: 6, contactedByOthers: 4, nobody: 8, unknown: 0, responseMedianWorkingMs: 1.4 * H }],
+  confirmation: [{ rosterId: "r-sasha", newSelfBooks: 95, contacted: 77, reached: 22, coveragePct: 81, workedByOutbound: 6, contactedByOthers: 4, nobody: 8, leadMissing: 0, other: 0, responseMedianWorkingMs: 1.4 * H }],
   dm: [
     { linkName: "dario", sets: 14 },
     { linkName: "luka", sets: 10 },

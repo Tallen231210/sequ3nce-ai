@@ -49,12 +49,14 @@ export function eodCheckLines(c: CrossCheckRange | null | undefined): string[] {
 /** One Slack section per setter, each clipped to Slack's limit, under one heading. */
 export function eodCheckBlocks(c: CrossCheckRange | null | undefined): any[] {
   if (!c) return [];
-  const sections = c.byRoster
-    .map((r) => eodCheckLinesFor(r))
-    .filter((lines) => lines.length > 0)
-    .map((lines) => ({ type: "section", text: { type: "mrkdwn", text: clip(lines.join("\n"), SLACK_SECTION_MAX) } }));
-  if (sections.length === 0) return [];
-  return [{ type: "section", text: { type: "mrkdwn", text: "*EODs vs Close and the calendar*" } }, ...sections];
+  const perSetter = c.byRoster.map((r) => eodCheckLinesFor(r)).filter((lines) => lines.length > 0);
+  if (perSetter.length === 0) return [];
+  // Slack allows 50 blocks a message; one section per setter up to 40, the rest folded into one.
+  const MAX_SECTIONS = 40;
+  const head = perSetter.slice(0, MAX_SECTIONS).map((lines) => ({ type: "section", text: { type: "mrkdwn", text: clip(lines.join("\n"), SLACK_SECTION_MAX) } }));
+  const tail = perSetter.slice(MAX_SECTIONS);
+  const folded = tail.length > 0 ? [{ type: "section", text: { type: "mrkdwn", text: clip(tail.map((l) => l[0]).join("\n"), SLACK_SECTION_MAX) } }] : [];
+  return [{ type: "section", text: { type: "mrkdwn", text: "*EODs vs Close and the calendar*" } }, ...head, ...folded];
 }
 
 export function dataHealthLines(d: DataHealthWeek): string[] {
@@ -72,7 +74,7 @@ export function dataHealthLines(d: DataHealthWeek): string[] {
   const drags: string[] = [];
   if (d.drags.untaggedSelfBooks.total > 0) drags.push(`Self-booked calls with no tag: ${d.drags.untaggedSelfBooks.total} (${named(d.drags.untaggedSelfBooks.byCloser)})`);
   if (d.drags.missingInitials.total > 0) drags.push(`Sets credited from Close only, initials missing: ${d.drags.missingInitials.total} (${named(d.drags.missingInitials.bySetter)})`);
-  if (d.drags.unlabeledTouched.total > 0) drags.push(`Unlabeled bookings a setter worked, no initials: ${d.drags.unlabeledTouched.total} (${named(d.drags.unlabeledTouched.bySetter)})` + (d.claimedThisWeek > 0 ? ` · claimed this week: ${d.claimedThisWeek}` : ""));
+  if (d.drags.unlabeledTouched.total > 0) drags.push(`Unlabeled bookings a setter worked, no initials: ${d.drags.unlabeledTouched.total} (${named(d.drags.unlabeledTouched.bySetter)})` + (d.claimedThisWeek > 0 ? `. Claims and assignments made this week (any booking): ${d.claimedThisWeek}` : ""));
   if (d.drags.notRecolored.total > 0) drags.push(`Calls not recoloured after the call: ${d.drags.notRecolored.total} (${named(d.drags.notRecolored.byCloser)})`);
   if (d.drags.handMadeUntagged > 0) drags.push(`Hand-made bookings with no tag and no Close touch: ${d.drags.handMadeUntagged}`);
   if (d.drags.leadMissing > 0) drags.push(`Funnel bookings with no lead in Close: ${d.drags.leadMissing}`);

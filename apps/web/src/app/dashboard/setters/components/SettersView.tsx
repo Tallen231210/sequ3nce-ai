@@ -48,17 +48,21 @@ export function SettersView({
     { team: "confirmation", description: "Call people who booked themselves. Coverage and response time are the job; shows are the result." },
   ];
   const rosterOptions: RosterOption[] = [
-    ...bookings.outbound.filter((r) => r.active).map((r) => ({ rosterId: r.rosterId, name: r.name, role: "booking" as const })),
-    ...bookings.confirmation.filter((r) => r.active).map((r) => ({ rosterId: r.rosterId, name: r.name, role: "confirmation" as const })),
+    ...bookings.outbound.map((r) => ({ rosterId: r.rosterId, name: r.name, role: "booking" as const, active: r.active })),
+    ...bookings.confirmation.map((r) => ({ rosterId: r.rosterId, name: r.name, role: "confirmation" as const, active: r.active })),
   ];
   const live = bookings.records.filter((r) => !r.isFollowUp);
-  const unlabeledSelfBooked = live.filter((r) => r.lane === "unattributed" && r.isFunnel && r.touches.some((t) => t.rosterId !== null)).length;
-  const unlabeledTotal = live.filter((r) => r.lane === "unattributed").length;
+  const unlabeled = live.filter((r) => r.lane === "unattributed");
+  const unlabeledSelfBooked = unlabeled.filter((r) => r.isFunnel).length;
+  const unlabeledWorkedByOutbound = unlabeled.filter((r) => r.isFunnel && r.touches.some((t) => t.rosterId !== null)).length;
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const stripNotes = [
-    ...(unlabeledSelfBooked > 0
-      ? [`${bookings.labels.confirmation}: self-booked calls the confirmation setter handled, a closer or the owner confirmed, or nobody did. ${unlabeledSelfBooked} self-booked ${unlabeledSelfBooked === 1 ? "call" : "calls"} worked only by an outbound setter ${unlabeledSelfBooked === 1 ? "sits" : "sit"} in ${bookings.labels.unlabeled}.`]
+    ...(unlabeledWorkedByOutbound > 0
+      ? [`${bookings.labels.confirmation}: self-booked calls the confirmation setter handled, a closer or the owner confirmed, or nobody did. ${plural(unlabeledWorkedByOutbound, "self-booked call", "self-booked calls")} worked only by an outbound setter ${unlabeledWorkedByOutbound === 1 ? "sits" : "sit"} in ${bookings.labels.unlabeled}.`]
       : []),
-    ...(unlabeledTotal > 0 ? [`${bookings.labels.unlabeled}: ${unlabeledTotal} ${unlabeledTotal === 1 ? "booking" : "bookings"} with no setter named (${unlabeledSelfBooked} self-booked, ${unlabeledTotal - unlabeledSelfBooked} hand-made or off-list). Listed below the sections.`] : []),
+    ...(unlabeled.length > 0
+      ? [`${bookings.labels.unlabeled}: ${plural(unlabeled.length, "booking", "bookings")} with no setter named — ${unlabeledSelfBooked} self-booked${unlabeledWorkedByOutbound > 0 ? ` (${unlabeledWorkedByOutbound} worked by an outbound setter, the rest with no lead in Close or touched only by closers)` : ""}, ${unlabeled.length - unlabeledSelfBooked} hand-made or off-list. Listed below the sections.`]
+      : []),
   ];
   return (
     <>
@@ -68,7 +72,7 @@ export function SettersView({
       {sections.map((s) => (
         <TeamSection key={s.team} label={bookings.labels[s.team]} description={s.description} cards={cards[s.team]} onOpen={setOpen} />
       ))}
-      <UnlabeledPanel records={bookings.records} rosters={rosterOptions} clerkId={clerkId} label={bookings.labels.unlabeled} timezone={bookings.range.timezone} />
+      <UnlabeledPanel records={bookings.records} notASet={bookings.notASet} rosters={rosterOptions} clerkId={clerkId} label={bookings.labels.unlabeled} timezone={bookings.range.timezone} />
       <CoveragePanel lines={coverage} />
       <SetterDrawer card={open} records={bookings.records} timezone={bookings.range.timezone} clerkId={clerkId} rangeStart={rangeStart} rangeEnd={rangeEnd} checks={checks} onClose={() => setOpen(null)} />
     </>

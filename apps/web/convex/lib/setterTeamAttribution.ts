@@ -60,7 +60,7 @@ export interface ClassifyInput {
   taggedRosterIds: readonly string[];
   touches: readonly Touch[];
   leadInClose: boolean;
-  /** From the lead's own first-touch stamps; null when the lead is not in Close. */
+  /** From the lead's own first-touch stamps; null when the lead is not in Close. Kept for callers and benches; the lane rule no longer reads it (a self-book nobody on the roster worked is the confirmation setter's whoever else touched it). */
   anyoneTouchedBefore: boolean | null;
   rosters: readonly RosterRef[];
   dmPatterns?: readonly string[];

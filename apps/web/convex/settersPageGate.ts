@@ -49,7 +49,9 @@ export async function resolveSettersPageAccess(
   const nowMs = Date.now();
   const timezone = (team as { timezone?: string }).timezone || DEFAULT_TIMEZONE;
   const endMs = Math.min(rangeEnd, nowMs + 7 * DAY_MS);
-  const clampedStart = Math.max(rangeStart, endMs - MAX_TEAM_RANGE_MS);
+  // Whole days plus today so far must still fit the collector's window, so
+  // the clamp leaves a day for the hours since midnight.
+  const clampedStart = Math.max(rangeStart, endMs - (MAX_TEAM_RANGE_MS - DAY_MS));
   // Whole team-local days. The pickers hand us "now minus N days", and an
   // EOD filed for the first day covers all of it — so the measured side
   // must start at that day's local midnight or the first day reads short.

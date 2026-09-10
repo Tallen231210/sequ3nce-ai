@@ -145,7 +145,7 @@ export function buildCards(
       linked: row.linked,
       configured: true,
       note: s
-        ? [`${s.tagged} by initials`, s.claimed > 0 ? `${s.claimed} claimed` : null, s.crmOnly > 0 ? `${s.crmOnly} from Close only` : null, unlabeledTouched.get(row.rosterId) ? `${unlabeledTouched.get(row.rosterId)} unlabeled they touched` : null]
+        ? [`${s.tagged} by initials`, s.claimed > 0 ? `${s.claimed} claimed` : null, s.crmOnly > 0 ? `${s.crmOnly} from Close only` : null, unlabeledTouched.get(row.rosterId) ? `${unlabeledTouched.get(row.rosterId)} unlabeled they touched (calls in range)` : null]
             .filter((x): x is string => x !== null)
             .join(" · ")
         : null,
@@ -208,7 +208,17 @@ export function buildCards(
       active: row.active,
       linked: row.linked,
       configured: true,
-      note: null,
+      note: s
+        ? [
+            s.workedByOutbound > 0 ? `${s.workedByOutbound} self-books worked by outbound setters` : null,
+            s.contactedByOthers > 0 ? `${s.contactedByOthers} confirmed by closers or the owner` : null,
+            s.nobody > 0 ? `${s.nobody} contacted by nobody` : null,
+            s.leadMissing > 0 ? `${s.leadMissing} with no lead in Close` : null,
+            s.other > 0 ? `${s.other} other` : null,
+          ]
+            .filter((x): x is string => x !== null)
+            .join(" · ") || null
+        : null,
       consistency: consistencyOf(row.rosterId),
       metrics: [
         metric("newSelfBooks", s ? s.newSelfBooks : null, "int", filedOr(f, (x) => x.newSelfBooked)),
@@ -219,9 +229,7 @@ export function buildCards(
           s ? s.coveragePct : null,
           "pct",
           undefined,
-          s
-            ? `${s.contacted} of ${s.newSelfBooks}${s.workedByOutbound > 0 ? ` · ${s.workedByOutbound} worked by outbound setters` : ""}${s.contactedByOthers > 0 ? ` · ${s.contactedByOthers} confirmed by closers or the owner` : ""}${s.nobody > 0 ? ` · ${s.nobody} by nobody` : ""}${s.unknown > 0 ? ` · ${s.unknown} no lead in Close` : ""}`
-            : null,
+          s ? `${s.contacted} of ${s.newSelfBooks}` : null,
         ),
         metric("response", s ? s.responseMedianWorkingMs : null, "hours"),
         metric("confirmed", null, "int", filedOr(f, (x) => x.confirmed)),

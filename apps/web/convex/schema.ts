@@ -1579,6 +1579,9 @@ export default defineSchema({
   setterBookingClaims: defineTable({
     teamId: v.id("teams"),
     bookingKey: v.string(),
+    /** The two halves of the key, so claims can be read by booking start and followed across a reschedule. */
+    uid: v.optional(v.string()),
+    startTime: v.optional(v.number()),
     /** The setter credited; absent when notASet. */
     creditRosterId: v.optional(v.id("setterRoster")),
     /** Not a sales booking at all (internal, support, a duplicate) — excluded from every count. */
@@ -1588,6 +1591,7 @@ export default defineSchema({
     claimedAt: v.number(),
   })
     .index("by_team_and_key", ["teamId", "bookingKey"])
+    .index("by_team_and_start", ["teamId", "startTime"])
     .index("by_team_and_claimed_at", ["teamId", "claimedAt"]),
 
   setterEodEntries: defineTable({

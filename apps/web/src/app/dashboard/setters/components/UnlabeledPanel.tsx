@@ -13,40 +13,57 @@ import type { BookingsData } from "../lib/cards";
 import { humanDay } from "../lib/format";
 
 type Rec = BookingsData["records"][number];
+type NotASet = BookingsData["notASet"][number];
 export interface RosterOption {
   rosterId: string;
   name: string;
   role: "booking" | "confirmation";
+  active: boolean;
 }
 
 const NOBODY = "__nobody";
 const verdictWord = (r: Rec) => (r.verdict.result === "showed" ? "showed" : r.verdict.result === "no_show" ? "no-show" : r.verdict.result === "rescheduled" ? "rescheduled" : r.verdict.due ? "no verdict" : "upcoming");
 const sourceWord = (r: Rec) => (r.isFunnel ? "self-booked" : r.eventName ? `booked via "${r.eventName}"` : "hand-made on the calendar");
 
-function touchLine(r: Rec, rosterId: string | null, confirmationName: string | null): string {
-  const own = r.touches.filter((t) => t.rosterId === rosterId);
+/** "dialed after the booking · not contacted by the confirmation setter" for the group's setter. */
+function touchLine(r: Rec, rosterId: string | null): string {
   const parts: string[] = [];
-  if (rosterId && own.length > 0) {
+  const own = rosterId ? r.touches.filter((t) => t.rosterId === rosterId) : [];
+  if (own.length > 0) {
     const kinds = new Set(own.map((t) => t.kind));
     const verb = kinds.has("dial") && kinds.has("sms") ? "dialed and texted" : kinds.has("dial") ? "dialed" : "texted";
     parts.push(`${verb} ${own.every((t) => t.afterBooking) ? "after the booking" : "before the booking"}`);
   }
-  if (r.isFunnel && confirmationName) {
-    const conf = r.touches.some((t) => t.name === confirmationName);
-    parts.push(`${confirmationName}: ${conf ? "contacted" : "no contact"}`);
-  }
+  // A self-book in this list was, by definition, not contacted by the confirmation setter.
+  if (r.isFunnel) parts.push("not contacted by the confirmation setter");
   return parts.join(" · ");
 }
 
-export function UnlabeledPanel({ records, rosters, clerkId, label, timezone }: { records: Rec[]; rosters: RosterOption[]; clerkId: string; label: string; timezone: string }) {
+export function UnlabeledPanel({
+  records,
+  notASet,
+  rosters,
+  clerkId,
+  label,
+  timezone,
+}: {
+  records: Rec[];
+  notASet: NotASet[];
+  /** Every roster row, active or not — names for the groups; only active ones are offered for assignment. */
+  rosters: RosterOption[];
+  clerkId: string;
+  label: string;
+  timezone: string;
+}) {
   const assign = useMutation(api.settersPageClaims.assign);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [saved, setSaved] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const unlabeled = records.filter((r) => !r.isFollowUp && r.lane === "unattributed");
   const claimed = records.filter((r) => !r.isFollowUp && r.claim);
-  if (unlabeled.length === 0 && claimed.length === 0) return null;
-  const confirmationName = rosters.find((r) => r.role === "confirmation")?.name ?? null;
+  if (unlabeled.length === 0 && claimed.length === 0 && notASet.length === 0) return null;
   const nameOf = new Map(rosters.map((r) => [r.rosterId, r.name]));
+  const options = rosters.filter((r) => r.active);
 
   // Group by the roster setter who touched the booking; one booking can sit under two names.
   const groups = new Map<string, Rec[]>();
@@ -56,51 +73,37 @@ export function UnlabeledPanel({ records, rosters, clerkId, label, timezone }: {
   }
   const ordered = [...Array.from(groups.keys()).filter((k) => k !== NOBODY).sort((a, b) => (groups.get(b)?.length ?? 0) - (groups.get(a)?.length ?? 0)), ...(groups.has(NOBODY) ? [NOBODY] : [])];
 
-  const act = async (key: string, what: () => Promise<unknown>) => {
-    setBusy(key);
+  const act = async (key: string, what: () => Promise<unknown>, doneText: string | null) => {
+    setBusy((s) => new Set(s).add(key));
     setError(null);
     try {
       await what();
+      setSaved((m) => {
+        const next = new Map(m);
+        if (doneText) next.set(key, doneText);
+        else next.delete(key);
+        return next;
+      });
     } catch (err) {
       setError(err instanceof ConvexError && typeof err.data === "string" ? err.data : "Couldn't save that — try again");
     } finally {
-      setBusy(null);
+      setBusy((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
     }
   };
   const when = (ms: number) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: timezone });
-
-  const Row = ({ r, groupId }: { r: Rec; groupId: string }) => (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 py-2 last:border-b-0">
-      <span className="min-w-0 flex-1 text-sm">
-        <span className="font-medium">{r.title}</span>
-        <span className="text-muted-foreground"> · {humanDay(r.dayKey)} {when(r.startTime)} with {r.closerName}</span>
-        <span className="block text-xs text-muted-foreground">
-          {sourceWord(r)}
-          {touchLine(r, groupId === NOBODY ? null : groupId, confirmationName) ? ` · ${touchLine(r, groupId === NOBODY ? null : groupId, confirmationName)}` : ""} · {verdictWord(r)}
-        </span>
-      </span>
-      <select
-        aria-label={`Assign ${r.title}`}
-        className="rounded-md border border-border bg-background px-2 py-1 text-xs"
-        value=""
-        disabled={busy === r.key}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (!v) return;
-          if (v === "not_a_set") void act(r.key, () => assign({ clerkId, bookingKey: r.key, notASet: true }));
-          else void act(r.key, () => assign({ clerkId, bookingKey: r.key, rosterId: v as never }));
-        }}
-      >
-        <option value="">Assign to…</option>
-        {rosters.map((o) => (
-          <option key={o.rosterId} value={o.rosterId}>
-            {o.name}
-          </option>
-        ))}
-        <option value="not_a_set">Not a set</option>
-      </select>
-    </li>
-  );
+  const onPick = (r: Rec, v: string) => {
+    if (!v) return;
+    if (v === "not_a_set") {
+      if (!window.confirm(`Mark "${r.title}" as not a set? It leaves every count. You can undo it below.`)) return;
+      void act(r.key, () => assign({ clerkId, bookingKey: r.key, notASet: true }), "Marked not a set");
+    } else {
+      void act(r.key, () => assign({ clerkId, bookingKey: r.key, rosterId: v as never }), `Assigned to ${nameOf.get(v) ?? "the setter"}`);
+    }
+  };
 
   return (
     <section className="rounded-xl border border-border bg-card">
@@ -116,18 +119,44 @@ export function UnlabeledPanel({ records, rosters, clerkId, label, timezone }: {
         {ordered.map((g) => (
           <div key={g} className="py-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {g === NOBODY ? "Nobody on the roster touched these" : `Touched by ${nameOf.get(g) ?? "a setter"}`} · {groups.get(g)?.length ?? 0}
+              {g === NOBODY ? "Nobody on the roster touched these" : `Touched by ${nameOf.get(g) ?? "a former setter"}`} · {groups.get(g)?.length ?? 0}
             </h3>
             <ul>
-              {(groups.get(g) ?? []).map((r) => (
-                <Row key={`${g}:${r.key}`} r={r} groupId={g} />
-              ))}
+              {(groups.get(g) ?? []).map((r) => {
+                const line = touchLine(r, g === NOBODY ? null : g);
+                const done = saved.get(r.key);
+                return (
+                  <li key={`${g}:${r.key}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 py-2 last:border-b-0">
+                    <span className="min-w-0 flex-1 text-sm">
+                      <span className="font-medium">{r.title}</span>
+                      <span className="text-muted-foreground"> · {humanDay(r.dayKey)} {when(r.startTime)} with {r.closerName}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {sourceWord(r)}
+                        {line ? ` · ${line}` : ""} · {verdictWord(r)}
+                      </span>
+                    </span>
+                    {done ? (
+                      <span className="text-xs font-medium text-emerald-700">{done} ✓</span>
+                    ) : (
+                      <select aria-label={`Assign ${r.title}`} className="rounded-md border border-border bg-background px-2 py-1 text-xs disabled:opacity-50" value="" disabled={busy.has(r.key)} onChange={(e) => onPick(r, e.target.value)}>
+                        <option value="">{busy.has(r.key) ? "Saving…" : "Assign to…"}</option>
+                        {options.map((o) => (
+                          <option key={o.rosterId} value={o.rosterId}>
+                            {o.name}
+                          </option>
+                        ))}
+                        <option value="not_a_set">Not a set</option>
+                      </select>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}
-        {claimed.length > 0 && (
+        {(claimed.length > 0 || notASet.length > 0) && (
           <details className="py-2 text-sm">
-            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">Claimed or assigned in this range · {claimed.length}</summary>
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">Claimed, assigned or marked not a set in this range · {claimed.length + notASet.length}</summary>
             <ul className="mt-1">
               {claimed.map((r) => (
                 <li key={r.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 py-2 text-sm last:border-b-0">
@@ -135,7 +164,18 @@ export function UnlabeledPanel({ records, rosters, clerkId, label, timezone }: {
                     <span className="font-medium">{r.title}</span>
                     <span className="text-muted-foreground"> · {humanDay(r.dayKey)} · credited to {nameOf.get(r.claim!.rosterId) ?? "a setter"} ({r.claim!.byRosterId ? "claimed by the setter" : "assigned by a manager"})</span>
                   </span>
-                  <button type="button" disabled={busy === r.key} className="text-xs text-muted-foreground underline hover:text-rose-600 disabled:opacity-50" onClick={() => void act(r.key, () => assign({ clerkId, bookingKey: r.key }))}>
+                  <button type="button" aria-label={`Undo the credit on ${r.title}`} disabled={busy.has(r.key)} className="text-xs text-muted-foreground underline hover:text-rose-600 disabled:opacity-50" onClick={() => void act(r.key, () => assign({ clerkId, bookingKey: r.key }), null)}>
+                    undo
+                  </button>
+                </li>
+              ))}
+              {notASet.map((n) => (
+                <li key={n.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 py-2 text-sm last:border-b-0">
+                  <span className="min-w-0 flex-1">
+                    <span className="font-medium">{n.title}</span>
+                    <span className="text-muted-foreground"> · {humanDay(n.dayKey)} with {n.closerName} · marked not a set</span>
+                  </span>
+                  <button type="button" aria-label={`Undo "not a set" on ${n.title}`} disabled={busy.has(n.key)} className="text-xs text-muted-foreground underline hover:text-rose-600 disabled:opacity-50" onClick={() => void act(n.key, () => assign({ clerkId, bookingKey: n.key }), null)}>
                     undo
                   </button>
                 </li>

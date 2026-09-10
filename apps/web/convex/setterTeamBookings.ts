@@ -66,6 +66,8 @@ const EVENT_TAKE = 8_000;
 const CALL_TAKE = 3_000;
 const LEAD_CAP = 1_500;
 const CLAIM_TAKE = 5_000;
+/** Claims are read for bookings starting this far outside the window too — a rescheduled call's claim sits on its old start time. */
+const CLAIM_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface BookingRecord {
   key: string;
@@ -106,6 +108,8 @@ export interface BookingRecord {
 
 export interface TeamBookings {
   records: BookingRecord[];
+  /** Bookings a person marked "not a set" — out of every count, listed so the mark can be undone. */
+  notASet: Array<{ key: string; title: string; startTime: number; dayKey: string; closerName: string; markedAt: number }>;
   rosters: RosterRef[];
   timezone: string;
   startMs: number;
@@ -162,13 +166,13 @@ export async function collectTeamBookings(
           .take(EVENT_TAKE),
   ]);
   if (!opts.eventRows && events.length >= EVENT_TAKE) truncated.push("events");
-  // With supplied rows the calls are point reads per event — cheap, and the
-  // sales-booking test needs them (a bot-recorded call with no guest email
-  // is still a booking). `skipCalls` only skips the wide range scan.
-  const calls: Doc<"calls">[] = opts.eventRows
-    ? await loadCallsForEvents(ctx, events)
-    : opts.skipCalls
+  // With supplied rows the calls are point reads per event. A caller that
+  // needs verdicts, money or the bot-recorded sales-booking test keeps them;
+  // one that only needs attribution passes skipCalls.
+  const calls: Doc<"calls">[] = opts.skipCalls
     ? []
+    : opts.eventRows
+    ? await loadCallsForEvents(ctx, events)
     : await ctx.db
         .query("calls")
         .withIndex("by_team_and_date", (q) =>
@@ -214,16 +218,31 @@ export async function collectTeamBookings(
   }
   const lookup = await lookupLeadsByEmailNorm(ctx, teamId, guestEmails, LEAD_CAP);
   if (lookup.capped) truncated.push("leads");
-  // Claims and assignments, newest first so the latest write on a key wins.
+  // Claims and assignments for bookings starting in (or near) the window —
+  // bounded by the window, never by the team's history. A rescheduled call
+  // keeps its calendar uid, so a claim on the old start time still applies
+  // when it is the only claim for that uid.
   const claimRows = await ctx.db
     .query("setterBookingClaims")
-    .withIndex("by_team_and_claimed_at", (q) => q.eq("teamId", teamId))
+    .withIndex("by_team_and_start", (q) => q.eq("teamId", teamId).gte("startTime", startMs - CLAIM_WINDOW_MS).lt("startTime", endMs + CLAIM_WINDOW_MS))
     .order("desc")
     .take(CLAIM_TAKE);
   if (claimRows.length >= CLAIM_TAKE) truncated.push("claims");
   const claimByKey = new Map<string, Doc<"setterBookingClaims">>();
-  for (const c of claimRows) if (!claimByKey.has(c.bookingKey)) claimByKey.set(c.bookingKey, c);
+  const claimsByUid = new Map<string, Doc<"setterBookingClaims">[]>();
+  for (const c of claimRows) {
+    if (!claimByKey.has(c.bookingKey)) claimByKey.set(c.bookingKey, c);
+    if (c.uid) claimsByUid.set(c.uid, [...(claimsByUid.get(c.uid) ?? []), c]);
+  }
+  const claimFor = (key: string, uid: string): Doc<"setterBookingClaims"> | null => {
+    const exact = claimByKey.get(key);
+    if (exact) return exact;
+    const sameUid = claimsByUid.get(uid) ?? [];
+    return sameUid.length === 1 ? sameUid[0] : null;
+  };
   const creditFromTouch = (team as { setterSetsNeedInitials?: boolean } | null)?.setterSetsNeedInitials !== true;
+  /** Bookings a person marked "not a set": out of every count, listed so the mark can be undone. */
+  const notASet: Array<{ key: string; title: string; startTime: number; dayKey: string; closerName: string; markedAt: number }> = [];
   const touchData = await loadLeadTouches(
     ctx,
     teamId,
@@ -255,10 +274,13 @@ export async function collectTeamBookings(
     const bookedAtInferred = bookedAt === null;
     const bookedBasis = bookedAt ?? Math.min(...copies.map((c) => c._creationTime));
     const key = `${anchor.uid}|${anchor.startTime}`;
-    const claimRow = claimByKey.get(key) ?? null;
+    const claimRow = claimFor(key, anchor.uid);
     // "Not a set": a person said this booking is not a sales call — it
     // leaves every count, like an excluded title.
-    if (claimRow?.notASet) continue;
+    if (claimRow?.notASet) {
+      notASet.push({ key, title: stripSetterToken(title), startTime: anchor.startTime, dayKey: dayKeyInTz(anchor.startTime, tz), closerName: closerName.get(closerId) ?? "closer", markedAt: claimRow.claimedAt });
+      continue;
+    }
 
     const guestEmailNorm = guestEmailOf(copies);
     const lead = guestEmailNorm ? lookup.leads.get(guestEmailNorm) ?? null : null;
@@ -357,6 +379,7 @@ export async function collectTeamBookings(
   records.sort((a, b) => a.startTime - b.startTime);
   return {
     records,
+    notASet,
     rosters,
     timezone: tz,
     startMs,
