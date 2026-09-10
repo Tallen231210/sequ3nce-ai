@@ -240,9 +240,12 @@ export function showVerdictFor(i: {
   // A post-call colour we watched change after the call, or one we first
   // found after the call with nothing saying it was there before: the
   // closer's word. A colour that provably predates the call stays unknown.
+  // RED IS NOT READ: in September 2026, 26 of E2's 28 red calls with a
+  // recording had the prospect on the call — red is used for "didn't
+  // close", not no-show. A red booking stays unknown until the recording
+  // says otherwise; see the no-outcome list. Revisit when the habit changes.
   if (i.recolor === "done" || i.recolor === "unverified") {
     if (i.colorId === COLOR.DARK_GREEN) return { result: "showed", source: "calendar_color", due };
-    if (i.colorId === COLOR.RED) return { result: "no_show", source: "calendar_color", due };
     if (i.colorId === COLOR.YELLOW) return { result: "rescheduled", source: "calendar_color", due };
   }
   return { result: "unknown", source: null, due };

@@ -12,7 +12,15 @@ type Rec = BookingsData["records"][number];
 
 function why(r: Rec): string {
   const rec = r.recorded ? "recording found but it couldn't tell" : "no recording";
-  const colour = r.colour.startsWith("uncolored") ? "calendar not coloured" : r.colour.includes("set before the call") ? `calendar ${r.colour}` : r.colour.startsWith("left") ? `calendar ${r.colour} (not a post-call colour)` : `calendar: ${r.colour}`;
+  const colour = r.colour.startsWith("uncolored")
+    ? "calendar not coloured"
+    : r.colour.startsWith("no-show")
+      ? `calendar red${r.colour.includes("set before the call") ? ", set before the call" : ""} — red isn't read as a no-show while it also means "didn't close"; a recording would settle it`
+      : r.colour.includes("set before the call")
+        ? `calendar ${r.colour}`
+        : r.colour.startsWith("left")
+          ? `calendar ${r.colour} (not a post-call colour)`
+          : `calendar: ${r.colour}`;
   return `${rec} · ${colour}`;
 }
 
@@ -28,7 +36,7 @@ export function NoOutcomePanel({ records, timezone }: { records: Rec[]; timezone
       <div className="border-b border-border px-5 py-3.5">
         <h2 className="text-sm font-semibold">Calls with no outcome · {open.length}</h2>
         <p className="text-xs text-muted-foreground">
-          Finished calls where nothing says whether the prospect showed: no recording that could tell, and no post-call colour on the calendar. A closer colouring the call after it, or the bot being on it, clears a line. Show rates on this page count only calls with an outcome.
+          Finished calls where nothing says whether the prospect showed: no recording that could tell, and no dark green or yellow on the calendar after the call. Red is listed here too, because this team uses red for &quot;didn&apos;t close&quot; as well as no-show, so only a recording can settle a red call. The bot being on the call clears a line for good.
         </p>
       </div>
       <div className="px-5 py-2">
