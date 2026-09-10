@@ -456,13 +456,18 @@ async function reconcilePath(
  * Per-item errors are skipped, not thrown — a transient blip retries next
  * tick; a 404 (lead deleted in Close) is marked so it isn't refetched forever.
  */
-async function enrichNewLeads(ctx: any, key: string, teamId: any): Promise<void> {
+/** Leads enriched per reconcile tick. Every stub lead we create from a dial
+ *  carries a guessed creation date until this runs, and speed to lead reads
+ *  that date — so the tick has to outrun the floor's new-lead rate. */
+const ENRICH_PER_TICK = 200;
+
+async function enrichNewLeads(ctx: any, key: string, teamId: any, cursor?: string): Promise<{ done: boolean; cursor: string | null; enriched: number }> {
   const batch: any = await ctx.runQuery(
     internal.setterCloseIngest.getLeadsNeedingEnrichment,
-    { teamId, limit: 200 },
+    { teamId, limit: 200, cursor },
   );
   const items: any[] = [];
-  for (const l of batch.needing.slice(0, 50)) {
+  for (const l of batch.needing.slice(0, ENRICH_PER_TICK)) {
     try {
       const lead: any = await closeFetch(key, `/lead/${l.closeLeadId}/`, {
         query: { _fields: "id,display_name,date_created,contacts" },
@@ -486,7 +491,50 @@ async function enrichNewLeads(ctx: any, key: string, teamId: any): Promise<void>
   if (items.length > 0) {
     await ctx.runMutation(internal.setterCloseIngest.applyLeadEnrichment, { items });
   }
+  return { done: batch.isDone === true, cursor: batch.continueCursor ?? null, enriched: items.length };
 }
+
+/**
+ * Drain a team's enrichment backlog now: page through the leads newest-first
+ * until Close has answered for every one still carrying a guessed creation
+ * date, or `maxLeads` is reached. One Close GET per lead; run from the CLI.
+ *   npx convex run setterCloseSync:enrichBacklog '{"teamId":"…","maxLeads":2000}' --prod
+ */
+export const enrichBacklog = internalAction({
+  args: { teamId: v.id("teams"), maxLeads: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<{ pages: number; enriched: number; done: boolean }> => {
+    const installs: any[] = await ctx.runQuery(internal.setterCloseInstall.getCloseInstallationsForReconcile, {});
+    let install: any = null;
+    for (const inst of installs) {
+      const candidate: any = await ctx.runQuery(internal.setterGhlOauth.getInstallationById, { installationId: inst.installationId });
+      if (candidate && String(candidate.teamId) === String(args.teamId)) {
+        install = candidate;
+        break;
+      }
+    }
+    if (!install || install.provider !== "close" || install.status !== "active") {
+      throw new Error("No active Close installation for that team");
+    }
+    const key = decryptApiKey(install.accessToken);
+    const limit = args.maxLeads ?? 2_000;
+    let cursor: string | undefined;
+    let pages = 0;
+    let enriched = 0;
+    let done = false;
+    while (enriched < limit && pages < 40) {
+      const r = await enrichNewLeads(ctx, key, args.teamId, cursor);
+      pages += 1;
+      enriched += r.enriched;
+      if (r.done || !r.cursor) {
+        done = true;
+        break;
+      }
+      cursor = r.cursor;
+    }
+    console.log(`[close] enrichBacklog team ${args.teamId}: ${enriched} leads over ${pages} pages, done=${done}`);
+    return { pages, enriched, done };
+  },
+});
 
 export const closeReconcile = internalAction({
   args: {},
