@@ -90,7 +90,7 @@ export const classifyBench = internalQuery({
       { name: "a claim outranks everything: Sophie's self-book claimed by Marcus → Marcus", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_sophie")], leadInClose: true, touchedBefore: true, creditFromTouch: false, claim: "marcus", expect: "outbound", credit: ["marcus"] },
       { name: "hand-made row, nobody touched, sets need initials → Unlabeled", title: "Paul and Karl", description: null, trusted: true, touches: [], leadInClose: false, touchedBefore: null, creditFromTouch: false, expect: "unattributed", credit: [] },
       { name: "(er) is Ethan exclusively", title: "(er) Sam and Karl", description: desc("Facebook"), expect: "outbound", credit: ["ethan"] },
-      { name: "hand-created, only Sophie dialed → unattributed (not outbound)", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "unattributed", sourceKnown: false },
+      { name: "hand-created, only Sophie dialed → confirmation, hers (booked it or confirmed it, either way)", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "confirmation", credit: ["sophie"], sourceKnown: true },
       { name: "hand-created with (s) → confirmation", title: "(s) Paul and Karl", description: null, trusted: true, expect: "confirmation", credit: ["sophie"] },
       { name: "unknown link word → unattributed", title: "Sam and Karl", description: desc("30 Minute Meeting"), leadInClose: true, touchedBefore: false, expect: "unattributed", sourceKnown: true },
     ];

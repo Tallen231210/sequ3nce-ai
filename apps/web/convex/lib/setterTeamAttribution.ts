@@ -132,7 +132,7 @@ export function classifyBooking(i: ClassifyInput): Classification {
   // not" either way, which is what makes contact KNOWN — including known-untouched.
   // A hand-made event's source is only known when a setter is visibly on it:
   // an outbound setter's tag or touch, or the confirmation setter's own mark.
-  const setterAttached = outboundTag.length > 0 || outboundTouchAll.length > 0 || confirmationTag.length > 0;
+  const setterAttached = outboundTag.length > 0 || outboundTouchAll.length > 0 || confirmationTag.length > 0 || confirmationTouch.length > 0;
   const sourceKnown = i.eventName !== null || (handCreated && setterAttached);
   const contactKnown = anyTag || anyTouch || i.leadInClose;
   const base = { dmPerson: null as string | null, sourceKnown, contactKnown, isFunnel };
@@ -159,6 +159,12 @@ export function classifyBooking(i: ClassifyInput): Classification {
     // "(s)" on a hand-made event: the confirmation setter marked it, but it
     // is not a funnel booking. Credit her, keep it out of the outbound lane.
     return { ...base, lane: "confirmation", creditRosterIds: confirmationTag, attributedBy: "hand_created" };
+  }
+  if (handCreated && confirmationTouch.length > 0) {
+    // A hand-made entry the confirmation setter contacted — whether she
+    // booked it and a closer wrote it down, or the closer booked it and she
+    // confirmed — is hers, the same as a self-book she contacted.
+    return { ...base, lane: "confirmation", creditRosterIds: confirmationTouch, attributedBy: "crm_activity" };
   }
   if (isFunnel && (confirmationTag.length > 0 || confirmationTouch.length > 0)) {
     return {
