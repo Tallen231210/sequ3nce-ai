@@ -577,6 +577,21 @@ export default defineSchema({
      */
     setterDmEventNamePatterns: v.optional(v.array(v.string())),
     setterFunnelEventNamePatterns: v.optional(v.array(v.string())),
+    /** Section labels on the Setters page (defaults in settersPageLabels). A team type, never a person. */
+    setterTeamLabels: v.optional(
+      v.object({
+        dm: v.optional(v.string()),
+        outbound: v.optional(v.string()),
+        confirmation: v.optional(v.string()),
+      }),
+    ),
+    /**
+     * DM setters: not CRM users and not on the EOD roster — recognised by the
+     * name inside the booking link ("Instagram (Davud)" → linkName "davud").
+     */
+    setterDmPeople: v.optional(
+      v.array(v.object({ name: v.string(), linkName: v.string(), active: v.boolean() })),
+    ),
 
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.
@@ -3650,6 +3665,10 @@ export default defineSchema({
     dials: v.number(),
     connects: v.number(),
     callsInbound: v.number(),
+    /** Outbound calls at or over the team's connect threshold, counted PER CALL (connects is once per lead). */
+    answered: v.optional(v.number()),
+    /** Outbound texts sent by a user. */
+    smsOutbound: v.optional(v.number()),
   })
     .index("by_team_and_day", ["teamId", "dayKey"])
     .index("by_team_day_setter", ["teamId", "dayKey", "setterId"]),

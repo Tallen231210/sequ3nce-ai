@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { bumpDailyStat } from "./setterRollups";
+import { bumpDailyStat, bumpDailyStats } from "./setterRollups";
 import {
   ATTENDANCE_BETA_FLAG,
   stampAttendanceFromStatus,
@@ -965,12 +965,14 @@ export async function recordCallEvent(
   // Daily rollup increment — same transaction as the event insert (and after
   // the dedup early-return above, so redeliveries can never double-count).
   // Wide-range scorecards read these instead of scanning event rows.
-  await bumpDailyStat(
+  // `answered` counts every outbound call over the threshold (the Setters
+  // page's "connects"); `connects` below still fires once per lead.
+  await bumpDailyStats(
     ctx,
     args.teamId,
     ev.occurredAt,
     ev.ghlUserId,
-    ev.direction === "outbound" ? "dials" : "callsInbound",
+    ev.direction === "outbound" ? (isConnect ? ["dials", "answered"] : ["dials"]) : ["callsInbound"],
   );
 
   // Outbound call → bump dial counters + maybe flip isConnected.
@@ -1119,6 +1121,9 @@ export const applyCallDuration = internalMutation({
     if (args.durationSec < thresholdSec) {
       return { applied: true, becameConnected: false };
     }
+    // A late duration over the threshold is an answered call whether or not
+    // the lead was already connected — so this bump sits before that check.
+    await bumpDailyStat(ctx, args.teamId, event.occurredAt, event.ghlUserId, "answered");
 
     const lead = event.setterLeadId
       ? await ctx.db.get(event.setterLeadId)
@@ -1191,6 +1196,9 @@ export async function recordSmsEvent(
     },
     ghlEventKey: ev.ghlEventKey,
   });
+  if (ev.direction === "outbound" && ev.ghlUserId) {
+    await bumpDailyStat(ctx, args.teamId, ev.occurredAt, ev.ghlUserId, "smsOutbound");
+  }
 
   // smsStatus state machine:
   //   none → sent (on first outbound)

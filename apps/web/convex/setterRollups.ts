@@ -41,20 +41,26 @@ export function dayStartMs(dayKey: string): number {
   return Date.parse(`${dayKey}T00:00:00.000Z`);
 }
 
-export type DailyStatKind = "dials" | "connects" | "callsInbound";
+export type DailyStatKind = "dials" | "connects" | "callsInbound" | "answered" | "smsOutbound";
+
+type DailyCounts = Record<DailyStatKind, number>;
+const zeroCounts = (): DailyCounts => ({ dials: 0, connects: 0, callsInbound: 0, answered: 0, smsOutbound: 0 });
 
 /**
- * Transactional single-event increment — called from recordCallEvent inside
- * the same mutation as the event insert (atomic for GHL webhook dispatch and
- * Close batch ingest alike).
+ * Transactional increment of one or more counters on one setter-day row —
+ * called from recordCallEvent / recordSmsEvent inside the same mutation as
+ * the event insert (atomic for GHL webhook dispatch and Close batch ingest
+ * alike). One read, one write, however many kinds. Older rows predate the
+ * `answered` / `smsOutbound` fields, so a missing counter reads as 0 here.
  */
-export async function bumpDailyStat(
+export async function bumpDailyStats(
   ctx: any,
   teamId: Id<"teams">,
   occurredAt: number,
   setterId: string | undefined,
-  kind: DailyStatKind,
+  kinds: DailyStatKind[],
 ): Promise<void> {
+  if (kinds.length === 0) return;
   const dayKey = dayKeyOf(occurredAt);
   const sid = setterId ?? "";
   const existing = await ctx.db
@@ -64,23 +70,32 @@ export async function bumpDailyStat(
     )
     .first();
   if (existing) {
-    await ctx.db.patch(existing._id, { [kind]: existing[kind] + 1 });
+    const patch: Partial<DailyCounts> = {};
+    for (const kind of kinds) patch[kind] = (existing[kind] ?? 0) + 1;
+    await ctx.db.patch(existing._id, patch);
   } else {
-    await ctx.db.insert("setterDailyStats", {
-      teamId,
-      dayKey,
-      setterId: sid,
-      dials: kind === "dials" ? 1 : 0,
-      connects: kind === "connects" ? 1 : 0,
-      callsInbound: kind === "callsInbound" ? 1 : 0,
-    });
+    const row = zeroCounts();
+    for (const kind of kinds) row[kind] += 1;
+    await ctx.db.insert("setterDailyStats", { teamId, dayKey, setterId: sid, ...row });
   }
+}
+
+/** Single-counter form, kept for the existing call sites. */
+export async function bumpDailyStat(
+  ctx: any,
+  teamId: Id<"teams">,
+  occurredAt: number,
+  setterId: string | undefined,
+  kind: DailyStatKind,
+): Promise<void> {
+  await bumpDailyStats(ctx, teamId, occurredAt, setterId, [kind]);
 }
 
 const EVENT_TYPES: Array<{ type: string; kind: DailyStatKind }> = [
   { type: "dial_outbound", kind: "dials" },
   { type: "connected", kind: "connects" },
   { type: "call_inbound", kind: "callsInbound" },
+  { type: "sms_outbound", kind: "smsOutbound" },
 ];
 
 /**
@@ -95,13 +110,15 @@ async function recountDayImpl(
 ): Promise<{ rows: number }> {
   const start = dayStartMs(dayKey);
   const end = start + DAY_MS;
+  // `answered` is a predicate on dial rows, not an event type: a live bump
+  // uses the threshold at event time, a recount the threshold at recount
+  // time. They only disagree if the team changes its threshold — then recount.
+  const team = await ctx.db.get(teamId);
+  const answeredSec: number = team?.setterConnectionThresholdSec ?? 60;
 
-  const counts = new Map<
-    string,
-    { dials: number; connects: number; callsInbound: number }
-  >();
+  const counts = new Map<string, DailyCounts>();
   const bump = (sid: string, kind: DailyStatKind) => {
-    const row = counts.get(sid) ?? { dials: 0, connects: 0, callsInbound: 0 };
+    const row = counts.get(sid) ?? zeroCounts();
     row[kind] += 1;
     counts.set(sid, row);
   };
@@ -113,7 +130,13 @@ async function recountDayImpl(
         q.eq("teamId", teamId).eq("eventType", type).gte("occurredAt", start).lt("occurredAt", end),
       )
       .collect();
-    for (const e of events) bump(e.ghlUserId ?? "", kind);
+    for (const e of events) {
+      bump(e.ghlUserId ?? "", kind);
+      if (type === "dial_outbound") {
+        const sec = (e.details as { callDurationSec?: unknown } | undefined)?.callDurationSec;
+        if (typeof sec === "number" && sec >= answeredSec) bump(e.ghlUserId ?? "", "answered");
+      }
+    }
   }
 
   const existing: Doc<"setterDailyStats">[] = await ctx.db
@@ -142,6 +165,35 @@ async function recountDayImpl(
 export const recountDay = internalMutation({
   args: { teamId: v.id("teams"), dayKey: v.string() },
   handler: async (ctx, args) => recountDayImpl(ctx, args.teamId, args.dayKey),
+});
+
+/**
+ * Recount a span of UTC days, one day per transaction, self-scheduling until
+ * endDayKey. The way to backfill a NEW counter (answered, smsOutbound) for a
+ * team without re-running the whole rollup backfill (which also repairs
+ * leads and re-stamps setterRollupsBackfilledAt). Kick ONCE per team —
+ * two concurrent chains OCC-thrash each other.
+ *   npx convex run setterRollups:recountRange '{"teamId":"…","startDayKey":"2026-09-01","endDayKey":"2026-09-10"}' --prod
+ */
+export const recountRange = internalMutation({
+  args: { teamId: v.id("teams"), startDayKey: v.string(), endDayKey: v.string() },
+  handler: async (ctx, args): Promise<void> => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.startDayKey) || !/^\d{4}-\d{2}-\d{2}$/.test(args.endDayKey)) {
+      throw new Error("day keys must be YYYY-MM-DD");
+    }
+    if (args.startDayKey > args.endDayKey) return;
+    await recountDayImpl(ctx, args.teamId, args.startDayKey);
+    const next = dayKeyOf(dayStartMs(args.startDayKey) + DAY_MS);
+    if (next <= args.endDayKey) {
+      await ctx.scheduler.runAfter(150, internal.setterRollups.recountRange, {
+        teamId: args.teamId,
+        startDayKey: next,
+        endDayKey: args.endDayKey,
+      });
+    } else {
+      console.log(`[rollups] recountRange complete for team ${args.teamId} (${args.endDayKey})`);
+    }
+  },
 });
 
 const BACKFILL_PHASE = v.union(v.literal("days"), v.literal("repair"));

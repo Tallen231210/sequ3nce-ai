@@ -9,6 +9,29 @@ import type { Doc } from "./_generated/dataModel";
 import type { RosterRef } from "./lib/setterTeamAttribution";
 import { firstNameOf, lastNameOf, type RosterName } from "./lib/setterTitleMatch";
 import { normalizeEmail } from "./setterCloserMatcher";
+import { countsContractValue, isTakenCall } from "./closerPerformanceMetrics";
+
+export interface BookingMoney {
+  closed: boolean;
+  cash: number;
+  contractValue: number;
+}
+
+/**
+ * The Team Performance rule for a booking's money, reused not redefined:
+ * a taken call (isTakenCall) with outcome "closed"; cash only on closes; the
+ * contract value only when the team counts AI-read figures or a human
+ * confirmed it. Deliberately NOT the show-verdict evidence gate.
+ */
+export function moneyOf(call: Doc<"calls"> | null, countAiContractValue: boolean): BookingMoney {
+  if (!call || !isTakenCall(call)) return { closed: false, cash: 0, contractValue: 0 };
+  const closed = call.outcome === "closed";
+  return {
+    closed,
+    cash: closed ? (call.cashCollected ?? 0) : 0,
+    contractValue: closed && countsContractValue(call, countAiContractValue) ? (call.contractValue ?? 0) : 0,
+  };
+}
 
 export function rosterRefsOf(rows: Doc<"setterRoster">[]): RosterRef[] {
   return rows.map((r) => ({

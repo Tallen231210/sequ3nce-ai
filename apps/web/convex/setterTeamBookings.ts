@@ -37,6 +37,7 @@ import {
   loadCallsForEvents,
   matchTokenExact,
   mergeImportedCopies,
+  moneyOf,
   rosterNamesOf,
   rosterRefsOf,
 } from "./setterTeamBookingHelpers";
@@ -48,6 +49,8 @@ export const MAX_TEAM_RANGE_DAYS = 14;
 export const MAX_TEAM_RANGE_MS = MAX_TEAM_RANGE_DAYS * DAY_MS;
 /** A lead is usually worked in the week before the call; older touches belong to an earlier booking. */
 const TOUCH_LOOKBACK_MS = 7 * DAY_MS;
+/** How far back touches are read at all — a self-book made weeks out keeps its confirmation touches. */
+const TOUCH_HISTORY_MS = 30 * DAY_MS;
 /** Calls can be created a little after the booking's start; widen the read. */
 const CALL_LOOKAHEAD_MS = 3 * 60 * 60 * 1000;
 /** Widest window a caller handing in its own rows may ask for (the confirmation prefill's far-out bookings). */
@@ -89,6 +92,12 @@ export interface BookingRecord {
   recolor: RecolorState;
   colorId: string | null;
   isFollowUp: boolean;
+  /** The linked recording / post-call form, when one exists. */
+  callId: string | null;
+  /** Money by the Team Performance rule (moneyOf); zero when no taken call is linked. */
+  closed: boolean;
+  cash: number;
+  contractValue: number;
 }
 
 export interface TeamBookings {
@@ -113,6 +122,8 @@ export interface CollectOptions {
    * copies starting on it; their calls are then read per event.
    */
   eventRows?: Doc<"calendarEvents">[];
+  /** Skip reading calls: no verdicts, no money — for cohorts that only need attribution (sets by booked date). */
+  skipCalls?: boolean;
 }
 
 export async function collectTeamBookings(
@@ -147,7 +158,9 @@ export async function collectTeamBookings(
           .take(EVENT_TAKE),
   ]);
   if (!opts.eventRows && events.length >= EVENT_TAKE) truncated.push("events");
-  const calls = opts.eventRows
+  const calls: Doc<"calls">[] = opts.skipCalls
+    ? []
+    : opts.eventRows
     ? await loadCallsForEvents(ctx, events)
     : await ctx.db
         .query("calls")
@@ -156,11 +169,12 @@ export async function collectTeamBookings(
         )
         .order("desc")
         .take(CALL_TAKE);
-  if (!opts.eventRows && calls.length >= CALL_TAKE) truncated.push("calls");
+  if (!opts.eventRows && !opts.skipCalls && calls.length >= CALL_TAKE) truncated.push("calls");
 
   const tz = (team as { timezone?: string } | null)?.timezone || DEFAULT_TIMEZONE;
   const teamWords = team?.closerExcludedBookingTitles;
   const connectSec = team?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
+  const countAiContractValue = team?.closerCountAiContractValue ?? true;
   const rosters = rosterRefsOf(rosterRows);
   const rosterNames = rosterNamesOf(rosters);
   const rosterByCrm = new Map(rosters.filter((r) => r.crmUserId).map((r) => [r.crmUserId as string, r]));
@@ -197,7 +211,7 @@ export async function collectTeamBookings(
     ctx,
     teamId,
     Array.from(lookup.leads.values()).map((l) => l.ghlContactId),
-    startMs - TOUCH_LOOKBACK_MS,
+    startMs - TOUCH_HISTORY_MS,
     endMs,
   );
   truncated.push(...touchData.truncated);
@@ -237,11 +251,12 @@ export async function collectTeamBookings(
 
     // Attribution reads the week before the call: an outbound setter who
     // worked the lead and then watched them self-book still drove the set.
-    // Touches after the booking are flagged — that is the confirmation job.
+    // Touches after the booking are flagged — that is the confirmation job —
+    // and are kept however far out the call was booked.
     const touches: Touch[] = [];
     const leadTouches = lead ? touchData.byContact.get(lead.ghlContactId) : undefined;
     if (lead && leadTouches) {
-      const windowStart = anchor.startTime - TOUCH_LOOKBACK_MS;
+      const windowStart = Math.min(anchor.startTime - TOUCH_LOOKBACK_MS, bookedBasis);
       for (const t of leadTouches.touches) {
         if (t.at < windowStart || t.at >= anchor.startTime) continue;
         const reached =
@@ -307,6 +322,8 @@ export async function collectTeamBookings(
       recolor,
       colorId,
       isFollowUp: isFollowUpTitle(title),
+      callId: recorded ? String(recorded._id) : null,
+      ...moneyOf(recorded, countAiContractValue),
     });
   }
   records.sort((a, b) => a.startTime - b.startTime);

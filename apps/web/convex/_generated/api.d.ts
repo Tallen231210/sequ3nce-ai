@@ -289,6 +289,7 @@ import type * as setterTeamRealDataProbe from "../setterTeamRealDataProbe.js";
 import type * as setterTeamRealDataSeedExtras from "../setterTeamRealDataSeedExtras.js";
 import type * as setterTeamRealDataTeardown from "../setterTeamRealDataTeardown.js";
 import type * as setterTeamTouches from "../setterTeamTouches.js";
+import type * as settersPageBench from "../settersPageBench.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
 import type * as speakerSwap from "../speakerSwap.js";
@@ -589,6 +590,7 @@ declare const fullApi: ApiFromModules<{
   setterTeamRealDataSeedExtras: typeof setterTeamRealDataSeedExtras;
   setterTeamRealDataTeardown: typeof setterTeamRealDataTeardown;
   setterTeamTouches: typeof setterTeamTouches;
+  settersPageBench: typeof settersPageBench;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
   speakerSwap: typeof speakerSwap;

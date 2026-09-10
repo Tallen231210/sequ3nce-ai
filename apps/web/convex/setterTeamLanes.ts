@@ -67,6 +67,10 @@ export interface DrillRecord {
   reason: string | null;
   attributedBy: string;
   credit: string[];
+  /** Roster ids behind `credit` — match on these, never on display names. */
+  creditIds: string[];
+  closed: boolean;
+  cash: number;
   dmPerson: string | null;
   token: string | null;
   touches: DrillTouch[];
@@ -244,6 +248,9 @@ function toDrill(r: BookingRecord, nameOf: Map<string, string>, crmUserNames: Re
     reason: r.classification.lane === "unattributed" ? unattributedReason(r) : null,
     attributedBy: r.classification.attributedBy,
     credit: r.classification.creditRosterIds.map((id) => nameOf.get(id) ?? "setter"),
+    creditIds: r.classification.creditRosterIds,
+    closed: r.closed,
+    cash: r.cash,
     dmPerson: r.classification.dmPerson,
     token: r.token,
     touches: r.touches.map((t) => ({
