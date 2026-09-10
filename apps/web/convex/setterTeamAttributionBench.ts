@@ -139,7 +139,8 @@ export const verdictBench = internalQuery({
       { name: "no call + dark green recoloured → showed, colour", input: { ...base, call: null, recolor: "done" as const, colorId: COLOR.DARK_GREEN }, expect: ["showed", "calendar_color"] },
       { name: "no call + yellow recoloured → rescheduled, colour", input: { ...base, call: null, recolor: "done" as const, colorId: COLOR.YELLOW }, expect: ["rescheduled", "calendar_color"] },
       { name: "no call + red set BEFORE the call → unknown", input: { ...base, call: null, recolor: "pre_colored_untouched" as const, colorId: COLOR.RED }, expect: ["unknown", null] },
-      { name: "no call + unverified red → unknown", input: { ...base, call: null, recolor: "unverified" as const, colorId: COLOR.RED }, expect: ["unknown", null] },
+      { name: "no call + red first seen after the call (unverified) → no-show by colour", input: { ...base, call: null, recolor: "unverified" as const, colorId: COLOR.RED }, expect: ["no_show", "calendar_color"] },
+      { name: "no call + red that predates the call → unknown", input: { ...base, call: null, recolor: "pre_colored_untouched" as const, colorId: COLOR.RED }, expect: ["unknown", null] },
       { name: "not due yet → unknown, not due", input: { call: null, recolor: "not_due" as const, endTime: NOW + 3_600_000, nowMs: NOW }, expect: ["unknown", null], due: false },
     ];
     const results = cases.map((c) => {

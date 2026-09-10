@@ -237,7 +237,10 @@ export function showVerdictFor(i: {
       return { result: fromCall(verdict), source: human ? "human" : "recording", due };
     }
   }
-  if (i.recolor === "done") {
+  // A post-call colour we watched change after the call, or one we first
+  // found after the call with nothing saying it was there before: the
+  // closer's word. A colour that provably predates the call stays unknown.
+  if (i.recolor === "done" || i.recolor === "unverified") {
     if (i.colorId === COLOR.DARK_GREEN) return { result: "showed", source: "calendar_color", due };
     if (i.colorId === COLOR.RED) return { result: "no_show", source: "calendar_color", due };
     if (i.colorId === COLOR.YELLOW) return { result: "rescheduled", source: "calendar_color", due };

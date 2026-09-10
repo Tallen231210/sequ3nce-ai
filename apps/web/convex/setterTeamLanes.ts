@@ -78,6 +78,8 @@ export interface DrillRecord {
   token: string | null;
   /** A funnel (self-booked) link, as opposed to a DM link or a hand-made row. */
   isFunnel: boolean;
+  /** A recording / call row is linked to this booking. */
+  recorded: boolean;
   claim: BookingRecord["claim"];
   touches: DrillTouch[];
   verdict: Verdict;
@@ -263,6 +265,7 @@ function toDrill(r: BookingRecord, nameOf: Map<string, string>, crmUserNames: Re
     dmPerson: r.classification.dmPerson,
     token: r.token,
     isFunnel: r.classification.isFunnel,
+    recorded: r.callId !== null,
     claim: r.claim,
     touches: r.touches.map((t) => ({
       name: (t.rosterId && nameOf.get(t.rosterId)) || friendlyCrmName(crmUserNames[t.crmUserId]),

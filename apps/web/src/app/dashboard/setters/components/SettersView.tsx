@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { buildCards, type ActivityData, type BookingsData, type CadenceData, type CardVM, type CrossCheckData, type SetsData, type SpeedData } from "../lib/cards";
 import { CoveragePanel } from "./CoveragePanel";
 import { UnlabeledPanel, type RosterOption } from "./UnlabeledPanel";
+import { NoOutcomePanel } from "./NoOutcomePanel";
 import { SetterDrawer } from "./SetterDrawer";
 import { TeamSection } from "./TeamSection";
 import { TeamStrip } from "./TeamStrip";
@@ -73,6 +74,7 @@ export function SettersView({
         <TeamSection key={s.team} label={bookings.labels[s.team]} description={s.description} cards={cards[s.team]} onOpen={setOpen} />
       ))}
       <UnlabeledPanel records={bookings.records} notASet={bookings.notASet} rosters={rosterOptions} clerkId={clerkId} label={bookings.labels.unlabeled} timezone={bookings.range.timezone} />
+      <NoOutcomePanel records={bookings.records} timezone={bookings.range.timezone} />
       <CoveragePanel lines={coverage} />
       <SetterDrawer card={open} records={bookings.records} timezone={bookings.range.timezone} clerkId={clerkId} rangeStart={rangeStart} rangeEnd={rangeEnd} checks={checks} onClose={() => setOpen(null)} />
     </>

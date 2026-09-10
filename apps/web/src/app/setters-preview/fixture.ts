@@ -51,6 +51,7 @@ const rec = (
   closed: false,
   cash: 0,
   isFunnel: lane !== "dm",
+  recorded: verdict !== "unknown",
   claim: null,
   ...extra,
 });
