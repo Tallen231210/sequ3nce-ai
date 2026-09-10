@@ -583,6 +583,7 @@ export default defineSchema({
         dm: v.optional(v.string()),
         outbound: v.optional(v.string()),
         confirmation: v.optional(v.string()),
+        unlabeled: v.optional(v.string()),
       }),
     ),
     /**
@@ -613,6 +614,8 @@ export default defineSchema({
      * (false / unset). Initials on the booking credit either way.
      */
     setterCreditTouchAfterBooking: v.optional(v.boolean()),
+    /** Attribution rule: a set needs the setter's initials (or a DM link name, or a claim); a Close touch alone never credits. */
+    setterSetsNeedInitials: v.optional(v.boolean()),
 
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.
@@ -1567,6 +1570,26 @@ export default defineSchema({
 
   /** One setter's end-of-day numbers. Self-reported; the CRM cross-check can
    *  come later once Close is connected. */
+  /**
+   * A manager's assignment or a setter's claim on one booking with no setter
+   * named on it. Keyed by the attribution engine's booking key
+   * "<calendar uid>|<startTime>". Read first by the classifier; one row per
+   * booking, the latest write wins.
+   */
+  setterBookingClaims: defineTable({
+    teamId: v.id("teams"),
+    bookingKey: v.string(),
+    /** The setter credited; absent when notASet. */
+    creditRosterId: v.optional(v.id("setterRoster")),
+    /** Not a sales booking at all (internal, support, a duplicate) — excluded from every count. */
+    notASet: v.optional(v.boolean()),
+    claimedByRosterId: v.optional(v.id("setterRoster")),
+    claimedByClerkId: v.optional(v.string()),
+    claimedAt: v.number(),
+  })
+    .index("by_team_and_key", ["teamId", "bookingKey"])
+    .index("by_team_and_claimed_at", ["teamId", "claimedAt"]),
+
   setterEodEntries: defineTable({
     teamId: v.id("teams"),
     rosterId: v.id("setterRoster"),

@@ -21,7 +21,8 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
   const setPeople = useMutation(api.settersPageConfig.setDmPeople);
   const setPatterns = useMutation(api.settersPageConfig.updateLanePatterns);
   const setCreditRule = useMutation(api.settersPageConfig.setCreditRule);
-  const [labels, setLabelsDraft] = useState({ dm: "", outbound: "", confirmation: "" });
+  const setSetsRule = useMutation(api.settersPageConfig.setSetsRule);
+  const [labels, setLabelsDraft] = useState({ dm: "", outbound: "", confirmation: "", unlabeled: "" });
   const [people, setPeopleDraft] = useState<Array<{ name: string; linkName: string; active: boolean }>>([]);
   const [dm, setDm] = useState("");
   const [funnel, setFunnel] = useState("");
@@ -33,7 +34,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
   useEffect(() => {
     if (!config || seeded.current) return;
     seeded.current = true;
-    setLabelsDraft({ dm: config.labels.dm, outbound: config.labels.outbound, confirmation: config.labels.confirmation });
+    setLabelsDraft({ dm: config.labels.dm, outbound: config.labels.outbound, confirmation: config.labels.confirmation, unlabeled: config.labels.unlabeled });
     setPeopleDraft(config.people);
     setDm(config.dmPatterns.join(", "));
     setFunnel(config.funnelPatterns.join(", "));
@@ -56,8 +57,8 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
       <section className="rounded-lg border border-border p-4">
         <h3 className="text-sm font-semibold">Section names</h3>
         <p className="text-xs text-muted-foreground">A team type, never a person. Blank means the default.</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          {(["dm", "outbound", "confirmation"] as const).map((k) => (
+        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+          {(["dm", "outbound", "confirmation", "unlabeled"] as const).map((k) => (
             <label key={k} className="text-xs text-muted-foreground">
               {config.defaults[k]}
               <input className={`${input} mt-1`} value={labels[k]} onChange={(e) => setLabelsDraft({ ...labels, [k]: e.target.value })} onBlur={() => { if (labels[k] !== config.labels[k]) void run(() => setLabels({ clerkId, labels }), "Couldn't save the names"); }} />
@@ -111,7 +112,22 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
         </button>
       </section>
       <section className="rounded-lg border border-border p-4">
+        <h3 className="text-sm font-semibold">What credits a set</h3>
+        <p className="text-xs text-muted-foreground">
+          Initials on the booking, a DM link name, or a claim always credit the setter. This decides whether a setter&apos;s Close activity on the lead, with none of those, credits them too.
+        </p>
+        <label className="mt-3 flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5" checked={config.setsNeedInitials} onChange={(e) => void run(() => setSetsRule({ clerkId, setsNeedInitials: e.target.checked }), "Couldn't save the rule")} />
+          <span>
+            A set needs initials. A Close touch alone never credits one.
+            <span className="block text-xs text-muted-foreground">On: bookings with no name on them go to {config.labels.unlabeled}, listed under whoever touched them, to be claimed or assigned. Off: a setter who worked the lead in Close is credited without initials.</span>
+          </span>
+        </label>
+      </section>
+
+      <section className={`rounded-lg border border-border p-4 ${config.setsNeedInitials ? "opacity-60" : ""}`}>
         <h3 className="text-sm font-semibold">Who counts as the setter on a self-booked lead</h3>
+        {config.setsNeedInitials && <p className="text-xs text-amber-800">Not in use while a set needs initials.</p>}
         <p className="text-xs text-muted-foreground">
           A lead books itself through the funnel link, and an outbound setter calls or texts them afterwards, with no initials on the booking. Initials always credit the setter; this decides what a Close touch alone does.
         </p>

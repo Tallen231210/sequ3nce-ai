@@ -68,7 +68,7 @@ const G = {
   newSelfBooks: { label: "Self-books", hint: "Self-booked funnel calls made in the range. Filed: new self-booked calls." },
   contacted: { label: "Contacted", hint: "Of those, called or texted after the booking, or tagged. Filed: contacted." },
   reached: { label: "Reached", hint: "Of those, a connect or a reply. Filed: reached." },
-  coverage: { label: "Coverage", hint: "Contacted over new self-books." },
+  coverage: { label: "Coverage", hint: "Contacted over ALL new self-books — covering them is the job. The line under it says who else worked some of them." },
   response: { label: "Response", hint: "Median working hours from the self-booking to the first touch." },
   confirmed: { label: "Confirmed", hint: "Filed only: said yes, they'll be there." },
 } as const;
@@ -121,6 +121,12 @@ export function buildCards(
   const setsDm = new Map((sets?.dm ?? []).map((s) => [s.linkName, s.sets]));
   const setsConf = new Map((sets?.confirmation ?? []).map((s) => [s.rosterId, s]));
   const act = new Map((activity?.byRoster ?? []).map((a) => [a.rosterId, a]));
+  // Unlabeled bookings (by call date) each roster setter touched — the ones they can claim.
+  const unlabeledTouched = new Map<string, number>();
+  for (const r of bookings.records) {
+    if (r.isFollowUp || r.lane !== "unattributed") continue;
+    for (const id of new Set(r.touches.map((t) => t.rosterId).filter((id): id is string => id !== null))) unlabeledTouched.set(id, (unlabeledTouched.get(id) ?? 0) + 1);
+  }
 
   const outbound: CardVM[] = bookings.outbound.map((row) => {
     const a = act.get(row.rosterId);
@@ -138,7 +144,11 @@ export function buildCards(
       active: row.active,
       linked: row.linked,
       configured: true,
-      note: s ? `${s.tagged} by initials · ${s.crmOnly} from Close only` : null,
+      note: s
+        ? [`${s.tagged} by initials`, s.claimed > 0 ? `${s.claimed} claimed` : null, s.crmOnly > 0 ? `${s.crmOnly} from Close only` : null, unlabeledTouched.get(row.rosterId) ? `${unlabeledTouched.get(row.rosterId)} unlabeled they touched` : null]
+            .filter((x): x is string => x !== null)
+            .join(" · ")
+        : null,
       consistency: consistencyOf(row.rosterId),
       metrics: [
         metric("dials", a?.dials ?? null, "int", filedOr(f, (x) => x.dials)),
@@ -204,7 +214,7 @@ export function buildCards(
         metric("newSelfBooks", s ? s.newSelfBooks : null, "int", filedOr(f, (x) => x.newSelfBooked)),
         metric("contacted", s ? s.contacted : null, "int", filedOr(f, (x) => x.contacted)),
         metric("reached", s ? s.reached : null, "int", filedOr(f, (x) => x.reached)),
-        metric("coverage", s ? s.coveragePct : null, "pct"),
+        metric("coverage", s ? s.coveragePct : null, "pct", undefined, s ? `${s.contacted} of ${s.newSelfBooks}${s.workedByOutbound > 0 ? ` · ${s.workedByOutbound} worked by outbound setters` : ""}${s.nobody > 0 ? ` · ${s.nobody} by nobody` : ""}` : null),
         metric("response", s ? s.responseMedianWorkingMs : null, "hours"),
         metric("confirmed", null, "int", filedOr(f, (x) => x.confirmed)),
         metric("onCal", row.bookings, "int", filedOr(f, (x) => x.confirmedOnCalendar)),

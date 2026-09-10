@@ -77,6 +77,7 @@ export function DataHealthView({ data, checks, children }: { data: DataHealthWee
   const drags: string[] = [];
   if (data.drags.untaggedSelfBooks.total > 0) drags.push(`Self-booked calls with no tag: ${data.drags.untaggedSelfBooks.total} (${named(data.drags.untaggedSelfBooks.byCloser)})`);
   if (data.drags.missingInitials.total > 0) drags.push(`Sets credited from Close only, initials missing: ${data.drags.missingInitials.total} (${named(data.drags.missingInitials.bySetter)})`);
+  if (data.drags.unlabeledTouched.total > 0) drags.push(`Unlabeled bookings a setter worked, no initials: ${data.drags.unlabeledTouched.total} (${named(data.drags.unlabeledTouched.bySetter)})${data.claimedThisWeek > 0 ? ` · claimed this week: ${data.claimedThisWeek}` : ""}`);
   if (data.drags.notRecolored.total > 0) drags.push(`Calls not recoloured after the call: ${data.drags.notRecolored.total} (${named(data.drags.notRecolored.byCloser)})`);
   if (data.drags.handMadeUntagged > 0) drags.push(`Hand-made bookings with no tag and no Close touch: ${data.drags.handMadeUntagged}`);
   if (data.drags.leadMissing > 0) drags.push(`Funnel bookings with no lead in Close: ${data.drags.leadMissing}`);

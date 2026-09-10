@@ -31,9 +31,10 @@ export interface LaneTotals extends Tally {
 export interface PersonRow extends Tally {
   id: string;
   name: string;
-  /** Sets whose credit came from the title tag vs from Close activity only. */
+  /** Sets whose credit came from the title tag vs from Close activity only, vs a claim or assignment. */
   tagged: number;
   crmOnly: number;
+  claimed: number;
 }
 
 export interface ConfirmationRow extends PersonRow {
@@ -45,6 +46,8 @@ export interface ConfirmationRow extends PersonRow {
 
 export interface DrillTouch {
   name: string;
+  /** Roster id when the toucher is a roster setter; null for closers and other Close users. */
+  rosterId: string | null;
   kind: "dial" | "sms";
   at: number;
   reached: boolean;
@@ -73,6 +76,9 @@ export interface DrillRecord {
   cash: number;
   dmPerson: string | null;
   token: string | null;
+  /** A funnel (self-booked) link, as opposed to a DM link or a hand-made row. */
+  isFunnel: boolean;
+  claim: BookingRecord["claim"];
   touches: DrillTouch[];
   verdict: Verdict;
   colour: string;
@@ -122,7 +128,7 @@ function finish<T extends Tally>(t: T): T {
 function rowFor(map: Map<string, PersonRow>, id: string, name: string): PersonRow {
   let row = map.get(id);
   if (!row) {
-    row = { id, name, tagged: 0, crmOnly: 0, ...emptyTally() };
+    row = { id, name, tagged: 0, crmOnly: 0, claimed: 0, ...emptyTally() };
     map.set(id, row);
   }
   return row;
@@ -156,6 +162,7 @@ export function buildSetterTeamsView(
         name: r.name,
         tagged: 0,
         crmOnly: 0,
+        claimed: 0,
         newSelfBooks: 0,
         contacted: 0,
         reached: 0,
@@ -176,6 +183,7 @@ export function buildSetterTeamsView(
       add(row, r);
       if (c.attributedBy === "tag") row.tagged += 1;
       if (c.attributedBy === "crm_activity") row.crmOnly += 1;
+      if (c.attributedBy === "claim") row.claimed += 1;
     };
     if (c.lane === "dm") {
       const person = c.dmPerson ?? "no name on the link";
@@ -229,6 +237,7 @@ export function buildSetterTeamsView(
 
 function unattributedReason(r: BookingRecord): string {
   if (r.classification.isFunnel && !r.leadContactId) return "Funnel booking, lead not in Close";
+  if (r.classification.isFunnel && r.touches.some((t) => t.rosterId !== null)) return "Self-booked; contacted only by an outbound setter, no initials";
   if (r.classification.isFunnel) return "Funnel booking touched by someone off the roster";
   if (r.eventName === null) return "No booking link, no tag, no outbound setter in Close";
   return "Booking link not in the team's word lists";
@@ -253,8 +262,11 @@ function toDrill(r: BookingRecord, nameOf: Map<string, string>, crmUserNames: Re
     cash: r.cash,
     dmPerson: r.classification.dmPerson,
     token: r.token,
+    isFunnel: r.classification.isFunnel,
+    claim: r.claim,
     touches: r.touches.map((t) => ({
       name: (t.rosterId && nameOf.get(t.rosterId)) || friendlyCrmName(crmUserNames[t.crmUserId]),
+      rosterId: t.rosterId,
       kind: t.kind,
       at: t.at,
       reached: t.reached,

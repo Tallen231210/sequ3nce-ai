@@ -33,16 +33,16 @@ async function manager(ctx: { db: any }, clerkId: string): Promise<Id<"teams">> 
   return user.teamId as Id<"teams">;
 }
 
-const LABELS = v.object({ dm: v.optional(v.string()), outbound: v.optional(v.string()), confirmation: v.optional(v.string()) });
+const LABELS = v.object({ dm: v.optional(v.string()), outbound: v.optional(v.string()), confirmation: v.optional(v.string()), unlabeled: v.optional(v.string()) });
 const PERSON = v.object({ name: v.string(), linkName: v.string(), active: v.boolean() });
 
-function cleanLabels(labels: { dm?: string; outbound?: string; confirmation?: string }) {
+function cleanLabels(labels: { dm?: string; outbound?: string; confirmation?: string; unlabeled?: string }) {
   const one = (s: string | undefined) => {
     const t = (s ?? "").trim();
     if (t.length > LABEL_MAX) throw new ConvexError(`Keep section names under ${LABEL_MAX} characters`);
     return t || undefined;
   };
-  return { dm: one(labels.dm), outbound: one(labels.outbound), confirmation: one(labels.confirmation) };
+  return { dm: one(labels.dm), outbound: one(labels.outbound), confirmation: one(labels.confirmation), unlabeled: one(labels.unlabeled) };
 }
 
 export function cleanPeople(people: Array<{ name: string; linkName: string; active: boolean }>) {
@@ -84,6 +84,7 @@ export const getConfig = query({
       connectSec: team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC,
       recountRequestedAt: team.setterRollupsRecountRequestedAt ?? null,
       creditTouchAfterBooking: team.setterCreditTouchAfterBooking === true,
+      setsNeedInitials: team.setterSetsNeedInitials === true,
     };
   },
 });
@@ -181,6 +182,25 @@ export const setCreditRule = mutation({
   handler: async (ctx, args) => {
     const teamId = await manager(ctx, args.clerkId);
     await ctx.db.patch(teamId, { setterCreditTouchAfterBooking: args.creditTouchAfterBooking });
+    return { ok: true };
+  },
+});
+
+/** A set needs initials (or a DM link name, or a claim): a Close touch alone never credits one. */
+export const setSetsRule = mutation({
+  args: { clerkId: v.string(), setsNeedInitials: v.boolean() },
+  handler: async (ctx, args) => {
+    const teamId = await manager(ctx, args.clerkId);
+    await ctx.db.patch(teamId, { setterSetsNeedInitials: args.setsNeedInitials });
+    return { ok: true };
+  },
+});
+
+/** CLI twin: npx convex run settersPageConfig:setSetsRuleForTeam '{"teamId":"…","setsNeedInitials":true}' --prod */
+export const setSetsRuleForTeam = internalMutation({
+  args: { teamId: v.id("teams"), setsNeedInitials: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.teamId, { setterSetsNeedInitials: args.setsNeedInitials });
     return { ok: true };
   },
 });

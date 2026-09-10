@@ -16,6 +16,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useSetter, type EodEntryView, type EodFieldView } from "../_components/SetterContext";
 import { MeasuredPrefill, type Drift } from "./MeasuredPrefill";
+import { UnlabeledClaims } from "./UnlabeledClaims";
 
 const CORE = ["dials", "pickUps", "sets", "newLeadsHit", "followUps"] as const;
 
@@ -234,6 +235,7 @@ export default function SetterEodPage() {
           {error && <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[13px] text-red-700">{error}</p>}
         </form>
       </div>
+      {hasPrefill && <UnlabeledClaims sessionToken={sessionToken} />}
     </div>
   );
 }

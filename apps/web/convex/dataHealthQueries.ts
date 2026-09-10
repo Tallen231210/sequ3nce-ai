@@ -16,6 +16,8 @@ import { collectTeamBookings } from "./setterTeamBookings";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 
 export interface DataHealthWeek extends DataHealth {
+  /** Claims and assignments made this week (any booking). */
+  claimedThisWeek: number;
   weekStartKey: string;
   /** Last day included (Sunday for a finished week, today for the card). */
   weekEndKey: string;
@@ -55,8 +57,15 @@ async function healthForWeek(
     }
   }
 
+  const claims = await ctx.db
+    .query("setterBookingClaims")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_claimed_at", (q: any) => q.eq("teamId", team._id).gte("claimedAt", startMs).lt("claimedAt", endMs))
+    .take(1_000);
+
   return {
     ...computeDataHealth(data.records, data.rosters, eodDays),
+    claimedThisWeek: claims.length,
     weekStartKey,
     weekEndKey,
     truncated: data.truncated,

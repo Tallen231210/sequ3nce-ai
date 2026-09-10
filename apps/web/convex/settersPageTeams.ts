@@ -64,6 +64,7 @@ const LANE_OF: Record<SetterTeamType, BookingRecord["classification"]["lane"]> =
   dm: "dm",
   outbound: "outbound",
   confirmation: "confirmation",
+  unlabeled: "unattributed",
 };
 
 /** Money over EVERY record in a lane — follow-up closes count, as the EOD's "calls closed" does. */
@@ -124,7 +125,7 @@ export function outboundRows(rows: PersonRow[], records: BookingRecord[], roster
   const present = new Set(rows.map((r) => r.id));
   const seeded: PersonRow[] = [
     ...rows,
-    ...rosters.filter((r) => r.role === "booking" && r.active && !present.has(r.rosterId)).map((r) => ({ id: r.rosterId, name: r.name, tagged: 0, crmOnly: 0, ...emptyTally() })),
+    ...rosters.filter((r) => r.role === "booking" && r.active && !present.has(r.rosterId)).map((r) => ({ id: r.rosterId, name: r.name, tagged: 0, crmOnly: 0, claimed: 0, ...emptyTally() })),
   ];
   return seeded.map((row) => {
     const roster = byId.get(row.id);

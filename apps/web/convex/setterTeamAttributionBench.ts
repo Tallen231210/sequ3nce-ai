@@ -55,6 +55,8 @@ interface ClassifyCase {
   touchedBefore?: boolean | null;
       bookingMomentKnown?: boolean;
       creditTouchAfterBooking?: boolean;
+      creditFromTouch?: boolean;
+      claim?: string;
   expect: SetterLane;
   credit?: string[];
   sourceKnown?: boolean;
@@ -81,6 +83,11 @@ export const classifyBench = internalQuery({
       { name: "no description, fresh row, no tag, Marcus dialed only after the row appeared → still Marcus (no real booking moment)", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_marcus")], leadInClose: true, touchedBefore: true, bookingMomentKnown: false, expect: "outbound", credit: ["marcus"] },
       { name: "no description, fresh row, no tag, Marcus dialed only after a REAL booking moment → needs a look", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_marcus")], leadInClose: true, touchedBefore: true, bookingMomentKnown: true, expect: "unattributed", credit: [] },
       { name: "Facebook + Erten sms AFTER the booking, team credits after-booking touches → outbound", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_erten", "sms"), touch("user_sophie")], leadInClose: true, touchedBefore: true, creditTouchAfterBooking: true, expect: "outbound", credit: ["erten"] },
+      { name: "sets need initials: Erten dialed before the booking, no initials → Unlabeled", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_erten", "dial", false, false)], leadInClose: true, touchedBefore: true, creditFromTouch: false, expect: "unattributed", credit: [] },
+      { name: "sets need initials: Sophie contacted it too → hers, whoever else dialed", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_erten", "sms"), touch("user_sophie")], leadInClose: true, touchedBefore: true, creditFromTouch: false, expect: "confirmation", credit: ["sophie"] },
+      { name: "sets need initials: initials still credit", title: "(e) Tim and Karl", description: desc("Facebook"), touches: [], leadInClose: true, touchedBefore: true, creditFromTouch: false, expect: "outbound", credit: ["erten"] },
+      { name: "a claim outranks everything: Sophie's self-book claimed by Marcus → Marcus", title: "Tim and Karl", description: desc("Facebook"), touches: [touch("user_sophie")], leadInClose: true, touchedBefore: true, creditFromTouch: false, claim: "marcus", expect: "outbound", credit: ["marcus"] },
+      { name: "hand-made row, nobody touched, sets need initials → Unlabeled", title: "Paul and Karl", description: null, trusted: true, touches: [], leadInClose: false, touchedBefore: null, creditFromTouch: false, expect: "unattributed", credit: [] },
       { name: "(er) is Ethan exclusively", title: "(er) Sam and Karl", description: desc("Facebook"), expect: "outbound", credit: ["ethan"] },
       { name: "hand-created, only Sophie dialed → unattributed (not outbound)", title: "Paul and Karl", description: null, trusted: true, touches: [touch("user_sophie")], leadInClose: true, touchedBefore: true, expect: "unattributed", sourceKnown: false },
       { name: "hand-created with (s) → confirmation", title: "(s) Paul and Karl", description: null, trusted: true, expect: "confirmation", credit: ["sophie"] },
@@ -101,6 +108,8 @@ export const classifyBench = internalQuery({
         funnelPatterns: FUNNEL,
         bookingMomentKnown: c.bookingMomentKnown,
         creditTouchAfterBooking: c.creditTouchAfterBooking,
+        creditFromTouch: c.creditFromTouch,
+        claim: c.claim ? { rosterId: ROSTER.find((r) => r.name.toLowerCase() === c.claim)?.rosterId ?? c.claim } : undefined,
       });
       const pass =
         got.lane === c.expect &&

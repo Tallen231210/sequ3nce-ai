@@ -65,6 +65,7 @@ export const UNKNOWN_CLOSER = "no-calendar-owner";
 const EVENT_TAKE = 8_000;
 const CALL_TAKE = 3_000;
 const LEAD_CAP = 1_500;
+const CLAIM_TAKE = 5_000;
 
 export interface BookingRecord {
   key: string;
@@ -93,6 +94,8 @@ export interface BookingRecord {
   recolor: RecolorState;
   colorId: string | null;
   isFollowUp: boolean;
+  /** A manager's assignment or a setter's claim on this booking, when one exists. */
+  claim: { rosterId: string; claimedAt: number; byRosterId: string | null; byClerkId: string | null } | null;
   /** The linked recording / post-call form, when one exists. */
   callId: string | null;
   /** Money by the Team Performance rule (moneyOf); zero when no taken call is linked. */
@@ -211,6 +214,16 @@ export async function collectTeamBookings(
   }
   const lookup = await lookupLeadsByEmailNorm(ctx, teamId, guestEmails, LEAD_CAP);
   if (lookup.capped) truncated.push("leads");
+  // Claims and assignments, newest first so the latest write on a key wins.
+  const claimRows = await ctx.db
+    .query("setterBookingClaims")
+    .withIndex("by_team_and_claimed_at", (q) => q.eq("teamId", teamId))
+    .order("desc")
+    .take(CLAIM_TAKE);
+  if (claimRows.length >= CLAIM_TAKE) truncated.push("claims");
+  const claimByKey = new Map<string, Doc<"setterBookingClaims">>();
+  for (const c of claimRows) if (!claimByKey.has(c.bookingKey)) claimByKey.set(c.bookingKey, c);
+  const creditFromTouch = (team as { setterSetsNeedInitials?: boolean } | null)?.setterSetsNeedInitials !== true;
   const touchData = await loadLeadTouches(
     ctx,
     teamId,
@@ -241,6 +254,11 @@ export async function collectTeamBookings(
     const bookedAt = bookedAts.length > 0 ? Math.min(...bookedAts) : null;
     const bookedAtInferred = bookedAt === null;
     const bookedBasis = bookedAt ?? Math.min(...copies.map((c) => c._creationTime));
+    const key = `${anchor.uid}|${anchor.startTime}`;
+    const claimRow = claimByKey.get(key) ?? null;
+    // "Not a set": a person said this booking is not a sales call — it
+    // leaves every count, like an excluded title.
+    if (claimRow?.notASet) continue;
 
     const guestEmailNorm = guestEmailOf(copies);
     const lead = guestEmailNorm ? lookup.leads.get(guestEmailNorm) ?? null : null;
@@ -280,6 +298,8 @@ export async function collectTeamBookings(
       : null;
 
     const classification = classifyBooking({
+      creditFromTouch,
+      claim: claimRow?.creditRosterId ? { rosterId: String(claimRow.creditRosterId) } : undefined,
       bookingMomentKnown: !bookedAtInferred,
       creditTouchAfterBooking: (team as { setterCreditTouchAfterBooking?: boolean } | null)?.setterCreditTouchAfterBooking === true,
       eventName,
@@ -301,7 +321,11 @@ export async function collectTeamBookings(
     const verdict = showVerdictFor({ call: evidence, recolor, colorId, endTime: anchor.endTime, nowMs });
 
     records.push({
-      key: `${anchor.uid}|${anchor.startTime}`,
+      key,
+      claim:
+        claimRow && claimRow.creditRosterId
+          ? { rosterId: String(claimRow.creditRosterId), claimedAt: claimRow.claimedAt, byRosterId: claimRow.claimedByRosterId ? String(claimRow.claimedByRosterId) : null, byClerkId: claimRow.claimedByClerkId ?? null }
+          : null,
       eventIds: copies.map((c) => String(c._id)),
       closerId,
       closerName: closerName.get(closerId) ?? (closerId === UNKNOWN_CLOSER ? "no calendar owner" : "closer"),

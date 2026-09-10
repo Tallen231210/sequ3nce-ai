@@ -51,7 +51,7 @@ export interface Touch {
   afterBooking: boolean;
 }
 
-export type AttributedBy = "event_name" | "tag" | "crm_activity" | "hand_created" | "none";
+export type AttributedBy = "event_name" | "tag" | "crm_activity" | "hand_created" | "claim" | "none";
 
 export interface ClassifyInput {
   eventName: string | null;
@@ -78,6 +78,13 @@ export interface ClassifyInput {
    * default). Initials on the booking always credit, whatever this says.
    */
   creditTouchAfterBooking?: boolean;
+  /**
+   * Team rule: a set needs initials — a Close touch alone never credits one
+   * (false / unset keeps touch credit). Touches still describe the booking.
+   */
+  creditFromTouch?: boolean;
+  /** A manager's assignment or a setter's claim on this booking — read before anything else. */
+  claim?: { rosterId: string };
 }
 
 export interface Classification {
@@ -112,7 +119,10 @@ export function classifyBooking(i: ClassifyInput): Classification {
   // unless the team's rule credits it. A hand-made row has no real booking
   // moment, so any touch on it counts.
   const beforeBookingOnly = (i.bookingMomentKnown ?? true) && i.creditTouchAfterBooking !== true;
-  const outboundTouch = touched("booking", beforeBookingOnly);
+  // Every outbound touch describes the booking (source, the Unlabeled list);
+  // only the crediting ones make a set, and none do when sets need initials.
+  const outboundTouchAll = touched("booking");
+  const outboundTouch = i.creditFromTouch === false ? [] : touched("booking", beforeBookingOnly);
   const confirmationTouch = touched("confirmation");
   const anyTag = i.taggedRosterIds.length > 0;
   const anyTouch = i.touches.length > 0;
@@ -122,11 +132,18 @@ export function classifyBooking(i: ClassifyInput): Classification {
   // not" either way, which is what makes contact KNOWN — including known-untouched.
   // A hand-made event's source is only known when a setter is visibly on it:
   // an outbound setter's tag or touch, or the confirmation setter's own mark.
-  const setterAttached = outboundTag.length > 0 || outboundTouch.length > 0 || confirmationTag.length > 0;
+  const setterAttached = outboundTag.length > 0 || outboundTouchAll.length > 0 || confirmationTag.length > 0;
   const sourceKnown = i.eventName !== null || (handCreated && setterAttached);
   const contactKnown = anyTag || anyTouch || i.leadInClose;
   const base = { dmPerson: null as string | null, sourceKnown, contactKnown, isFunnel };
 
+  // A claim or an assignment outranks everything: a person said whose it is.
+  if (i.claim) {
+    const role = roleOf.get(i.claim.rosterId);
+    if (role === "confirmation") return { ...base, lane: "confirmation", creditRosterIds: [i.claim.rosterId], attributedBy: "claim" };
+    if (role === "booking") return { ...base, lane: "outbound", creditRosterIds: [i.claim.rosterId], attributedBy: "claim" };
+    // A claim for a roster row that no longer exists falls through.
+  }
   if (isDm) {
     return { ...base, lane: "dm", creditRosterIds: [], dmPerson: personFromEventName(i.eventName), attributedBy: "event_name" };
   }
@@ -150,6 +167,12 @@ export function classifyBooking(i: ClassifyInput): Classification {
       creditRosterIds: uniq([...confirmationTag, ...confirmationTouch]),
       attributedBy: confirmationTag.length > 0 ? "tag" : "crm_activity",
     };
+  }
+  if (isFunnel && outboundTouchAll.length > 0) {
+    // A self-book that only an outbound setter worked, with no initials:
+    // not the confirmation setter's, not provably the outbound setter's.
+    // It sits in Unlabeled under that setter's name until someone claims it.
+    return { ...base, lane: "unattributed", creditRosterIds: [], attributedBy: "none" };
   }
   if (isFunnel && i.leadInClose && i.anyoneTouchedBefore === false) {
     return { ...base, lane: "self_booked_uncontacted", creditRosterIds: [], attributedBy: "event_name" };

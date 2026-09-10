@@ -80,8 +80,8 @@ export const rulesBench = internalQuery({
         pass: eq(
           dmRows(
             [
-              { id: "Davud", name: "Davud", bookings: 3, due: 3, showed: 1, noShow: 0, rescheduled: 0, unknown: 2, showRatePct: 100, tagged: 0, crmOnly: 0 },
-              { id: "Lazar", name: "Lazar", bookings: 2, due: 2, showed: 0, noShow: 0, rescheduled: 0, unknown: 2, showRatePct: null, tagged: 0, crmOnly: 0 },
+              { id: "Davud", name: "Davud", bookings: 3, due: 3, showed: 1, noShow: 0, rescheduled: 0, unknown: 2, showRatePct: 100, tagged: 0, crmOnly: 0, claimed: 0 },
+              { id: "Lazar", name: "Lazar", bookings: 2, due: 2, showed: 0, noShow: 0, rescheduled: 0, unknown: 2, showRatePct: null, tagged: 0, crmOnly: 0, claimed: 0 },
             ],
             [],
             [{ name: "David K.", linkName: "davud", active: true }],
@@ -89,7 +89,7 @@ export const rulesBench = internalQuery({
           [["David K.", "davud", true, 3], ["Lazar", "lazar", false, 2]],
         ),
       },
-      { name: "labels: defaults fill blanks", pass: eq(teamLabelsFor({ dm: "  ", outbound: "Dialers" }), { dm: "DM setters", outbound: "Dialers", confirmation: "Confirmation setters" }) },
+      { name: "labels: defaults fill blanks", pass: eq(teamLabelsFor({ dm: "  ", outbound: "Dialers" }), { dm: "DM setters", outbound: "Dialers", confirmation: "Confirmation setters", unlabeled: "Unlabeled" }) },
     ];
     return { allPass: cases.every((c) => c.pass), results: cases };
   },

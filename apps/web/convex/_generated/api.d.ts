@@ -299,6 +299,7 @@ import type * as setterTeamTouches from "../setterTeamTouches.js";
 import type * as settersPageActivity from "../settersPageActivity.js";
 import type * as settersPageBench from "../settersPageBench.js";
 import type * as settersPageCadence from "../settersPageCadence.js";
+import type * as settersPageClaims from "../settersPageClaims.js";
 import type * as settersPageConfig from "../settersPageConfig.js";
 import type * as settersPageGate from "../settersPageGate.js";
 import type * as settersPageLabels from "../settersPageLabels.js";
@@ -615,6 +616,7 @@ declare const fullApi: ApiFromModules<{
   settersPageActivity: typeof settersPageActivity;
   settersPageBench: typeof settersPageBench;
   settersPageCadence: typeof settersPageCadence;
+  settersPageClaims: typeof settersPageClaims;
   settersPageConfig: typeof settersPageConfig;
   settersPageGate: typeof settersPageGate;
   settersPageLabels: typeof settersPageLabels;

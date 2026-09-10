@@ -35,6 +35,7 @@ export async function loadCohortRecords(
   toMs: number,
   nowMs: number,
   take: number,
+  opts: { skipCalls?: boolean } = {},
 ): Promise<CohortRecords> {
   const [booked, starting] = await Promise.all([
     ctx.db
@@ -53,7 +54,7 @@ export async function loadCohortRecords(
   const eventRows = Array.from(byId.values());
   const rangeStart = Math.min(fromMs, ...eventRows.map((e) => e.startTime));
   const rangeEnd = Math.max(toMs, ...eventRows.map((e) => e.startTime + 1));
-  const data = await collectTeamBookings(ctx, teamId, rangeStart, rangeEnd, nowMs, { eventRows });
+  const data = await collectTeamBookings(ctx, teamId, rangeStart, rangeEnd, nowMs, { eventRows, skipCalls: opts.skipCalls });
   return { records: data.records, rosters: data.rosters, truncated: [...truncated, ...data.truncated] };
 }
 

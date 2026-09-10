@@ -5,28 +5,31 @@
 // Section labels are team types with per-team overrides — never a person.
 // ============================================================================
 
-export type SetterTeamType = "dm" | "outbound" | "confirmation";
+export type SetterTeamType = "dm" | "outbound" | "confirmation" | "unlabeled";
 
-export const TEAM_ORDER: SetterTeamType[] = ["dm", "outbound", "confirmation"];
+export const TEAM_ORDER: SetterTeamType[] = ["dm", "outbound", "confirmation", "unlabeled"];
 
 export const DEFAULT_TEAM_LABELS: Record<SetterTeamType, string> = {
   dm: "DM setters",
   outbound: "Outbound setters",
   confirmation: "Confirmation setters",
+  unlabeled: "Unlabeled",
 };
 
 export function teamLabelsFor(
-  overrides: { dm?: string; outbound?: string; confirmation?: string } | undefined,
+  overrides: { dm?: string; outbound?: string; confirmation?: string; unlabeled?: string } | undefined,
 ): Record<SetterTeamType, string> {
   return {
     dm: overrides?.dm?.trim() || DEFAULT_TEAM_LABELS.dm,
     outbound: overrides?.outbound?.trim() || DEFAULT_TEAM_LABELS.outbound,
     confirmation: overrides?.confirmation?.trim() || DEFAULT_TEAM_LABELS.confirmation,
+    unlabeled: overrides?.unlabeled?.trim() || DEFAULT_TEAM_LABELS.unlabeled,
   };
 }
 
 export const GLOSSARY = {
-  sets: { label: "Sets", hint: "Sales bookings made in the range and credited to the setter — booking link, title initials, or a Close touch in the week before the call." },
+  sets: { label: "Sets", hint: "Sales bookings made in the range and credited to the setter — the initials on the booking, a DM link name, or a claim. A Close touch alone credits only when the team allows it." },
+  unlabeled: { label: "Unlabeled", hint: "Bookings with no setter named on them: no initials, no DM link name, no claim. Listed under whoever on the roster touched them, so they can be claimed or assigned." },
   callsOnCalendar: { label: "Calls on calendar", hint: "Credited bookings whose call falls in the range." },
   shown: { label: "Shown", hint: "Of the calls on the calendar, the ones that showed: a closer's form, a recording with the prospect on it, or a colour change we watched." },
   dials: { label: "Dials", hint: "Outbound calls in Close, every attempt." },

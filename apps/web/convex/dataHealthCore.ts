@@ -29,6 +29,8 @@ export interface DataHealth {
     untaggedSelfBooks: { total: number; byCloser: NamedCount[] };
     /** Outbound sets credited from Close activity only — the initials were missing, by setter. */
     missingInitials: { total: number; bySetter: NamedCount[] };
+    /** Unlabeled bookings (no initials, no link name, no claim) that a roster setter touched, by setter. */
+    unlabeledTouched: { total: number; bySetter: NamedCount[] };
     /** Due bookings the closer never recoloured after the call, by closer. */
     notRecolored: { total: number; byCloser: NamedCount[] };
     /** Funnel bookings whose guest has no lead in Close. */
@@ -61,6 +63,7 @@ export function computeDataHealth(
   const lanes = { dm: 0, outbound: 0, confirmation: 0, selfBookedUncontacted: 0, unattributed: 0 };
   const untagged = new Map<string, number>();
   const missingInitials = new Map<string, number>();
+  const unlabeledTouched = new Map<string, number>();
   const notRecolored = new Map<string, number>();
   let leadMissing = 0;
   let handMadeUntagged = 0;
@@ -76,6 +79,9 @@ export function computeDataHealth(
     if (c.isFunnel && r.token === null) tally(untagged, r.closerName);
     if (c.lane === "outbound" && c.attributedBy === "crm_activity") {
       for (const id of c.creditRosterIds) tally(missingInitials, nameOf.get(id) ?? "setter");
+    }
+    if (c.lane === "unattributed") {
+      for (const id of new Set(r.touches.map((t) => t.rosterId).filter((id): id is string => id !== null))) tally(unlabeledTouched, nameOf.get(id) ?? "setter");
     }
     if (c.isFunnel && !r.leadContactId) leadMissing += 1;
     if (r.eventName === null && c.lane === "unattributed") handMadeUntagged += 1;
@@ -98,6 +104,7 @@ export function computeDataHealth(
     drags: {
       untaggedSelfBooks: { total: Array.from(untagged.values()).reduce((a, b) => a + b, 0), byCloser: sorted(untagged) },
       missingInitials: { total: Array.from(missingInitials.values()).reduce((a, b) => a + b, 0), bySetter: sorted(missingInitials) },
+      unlabeledTouched: { total: Array.from(unlabeledTouched.values()).reduce((a, b) => a + b, 0), bySetter: sorted(unlabeledTouched) },
       notRecolored: { total: Array.from(notRecolored.values()).reduce((a, b) => a + b, 0), byCloser: sorted(notRecolored) },
       leadMissing,
       handMadeUntagged,

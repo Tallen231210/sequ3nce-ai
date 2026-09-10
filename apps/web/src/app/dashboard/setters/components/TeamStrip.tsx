@@ -4,7 +4,7 @@ import type { BookingsData } from "../lib/cards";
 import { int, money, pct } from "../lib/format";
 
 /** One column per team type: what each team booked and how those calls went. */
-export function TeamStrip({ strip, basis }: { strip: BookingsData["strip"]; basis: string }) {
+export function TeamStrip({ strip, basis, notes = [] }: { strip: BookingsData["strip"]; basis: string; notes?: string[] }) {
   const rows: Array<{ label: string; hint: string; cell: (c: BookingsData["strip"][number]) => string }> = [
     { label: "Bookings", hint: "Calls in the range credited to this team", cell: (c) => int(c.bookings) },
     { label: "Showed", hint: "Proven shows", cell: (c) => int(c.showed) },
@@ -21,6 +21,9 @@ export function TeamStrip({ strip, basis }: { strip: BookingsData["strip"]; basi
         <div>
           <h2 className="text-sm font-semibold">By team</h2>
           <p className="text-xs text-muted-foreground">Who set the calls in this range, and how they went. Working hours: {basis}.</p>
+          {notes.map((n) => (
+            <p key={n} className="mt-0.5 text-xs text-muted-foreground">{n}</p>
+          ))}
         </div>
       </div>
       <div className="overflow-x-auto">

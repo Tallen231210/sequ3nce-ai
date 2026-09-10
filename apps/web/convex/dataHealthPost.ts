@@ -72,6 +72,7 @@ export function dataHealthLines(d: DataHealthWeek): string[] {
   const drags: string[] = [];
   if (d.drags.untaggedSelfBooks.total > 0) drags.push(`Self-booked calls with no tag: ${d.drags.untaggedSelfBooks.total} (${named(d.drags.untaggedSelfBooks.byCloser)})`);
   if (d.drags.missingInitials.total > 0) drags.push(`Sets credited from Close only, initials missing: ${d.drags.missingInitials.total} (${named(d.drags.missingInitials.bySetter)})`);
+  if (d.drags.unlabeledTouched.total > 0) drags.push(`Unlabeled bookings a setter worked, no initials: ${d.drags.unlabeledTouched.total} (${named(d.drags.unlabeledTouched.bySetter)})` + (d.claimedThisWeek > 0 ? ` · claimed this week: ${d.claimedThisWeek}` : ""));
   if (d.drags.notRecolored.total > 0) drags.push(`Calls not recoloured after the call: ${d.drags.notRecolored.total} (${named(d.drags.notRecolored.byCloser)})`);
   if (d.drags.handMadeUntagged > 0) drags.push(`Hand-made bookings with no tag and no Close touch: ${d.drags.handMadeUntagged}`);
   if (d.drags.leadMissing > 0) drags.push(`Funnel bookings with no lead in Close: ${d.drags.leadMissing}`);

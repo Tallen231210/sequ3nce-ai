@@ -123,6 +123,7 @@ export const getSettersSets = query({
           sets: mine.length,
           tagged: mine.filter((b) => b.classification.attributedBy === "tag").length,
           crmOnly: mine.filter((b) => b.classification.attributedBy === "crm_activity").length,
+          claimed: mine.filter((b) => b.classification.attributedBy === "claim").length,
         };
       });
     const selfBooks = records.filter(isSelfBook);
@@ -132,12 +133,19 @@ export const getSettersSets = query({
         const hers = (b: BookingRecord) => b.touches.filter((t) => t.rosterId === r.rosterId && t.afterBooking);
         const contacted = selfBooks.filter((b) => hers(b).length > 0 || (b.classification.attributedBy === "tag" && b.classification.creditRosterIds.includes(r.rosterId)));
         const { median } = percentiles(confirmationSpeedRows(records, r.rosterId, r.name, hours).flatMap((row) => (row.workingMs === null ? [] : [row.workingMs])));
+        // Every self-book is in her denominator (covering them is the job);
+        // the ones an outbound setter worked instead sit in Unlabeled and
+        // are named here so the two numbers explain each other.
+        const workedByOutbound = selfBooks.filter((b) => b.classification.lane === "unattributed" && b.touches.some((t) => t.rosterId !== null && t.rosterId !== r.rosterId)).length;
+        const nobody = selfBooks.filter((b) => b.classification.lane === "self_booked_uncontacted").length;
         return {
           rosterId: r.rosterId,
           newSelfBooks: selfBooks.length,
           contacted: contacted.length,
           reached: contacted.filter((b) => hers(b).some((t) => t.reached)).length,
           coveragePct: selfBooks.length > 0 ? Math.round((contacted.length / selfBooks.length) * 100) : null,
+          workedByOutbound,
+          nobody,
           responseMedianWorkingMs: median,
         };
       });
