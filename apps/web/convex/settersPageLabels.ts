@@ -36,7 +36,7 @@ export const GLOSSARY = {
   showRate: { label: "Show rate", hint: "Showed over showed plus no-show. Unknown outcomes are counted, not assumed." },
   closes: { label: "Closes", hint: "Taken calls a closer logged as closed, follow-up calls included." },
   cash: { label: "Cash", hint: "Cash collected on those closes." },
-  speed: { label: "Speed to lead", hint: "Working hours from arrival to the first touch by one of this team's setters. Automated texts and closers never stop the clock." },
+  speed: { label: "Speed to lead (working hours)", hint: "Time from arrival to the first touch by one of this team's setters, counting working hours only. Shown beside the same wait including nights and weekends. Automated texts and closers never stop the clock." },
   coverage: { label: "Coverage", hint: "Self-booked funnel calls contacted after the booking, over all self-booked funnel calls." },
   responseTime: { label: "Response time", hint: "Working hours from the self-booking to the first confirmation touch." },
 } as const;
