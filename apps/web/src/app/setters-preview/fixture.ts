@@ -132,6 +132,10 @@ export const ACTIVITY: ActivityData = {
     { rosterId: "r-sasha", name: "Sasha", role: "confirmation", linked: true, dials: 233, answered: 40, texts: 405, filed: filed({ days: 5, newSelfBooked: 95, contacted: 80, reached: 22, confirmed: 41, confirmedOnCalendar: 64, confirmedShowed: 29 }), speed: null },
   ],
   unattributedDials: 1_410,
+  otherUsersDials: 81,
   truncated: [],
-  coverage: ["1,410 dials in the range carry no Close user and aren't credited to anyone."],
+  coverage: [
+    "1,410 dials in the range carry no Close user and aren't credited to anyone.",
+    "81 dials in the range were made by Close users who aren't on the setter roster (closers, admins, people who left).",
+  ],
 };

@@ -178,9 +178,15 @@ export const getSettersActivity = query({
       };
     });
     const unattributedDials = activity.byUser.get("")?.dials ?? 0;
+    // Dials by Close users who aren't on the roster (closers, admins,
+    // departed setters): counted here so the page never silently loses them.
+    const rosterCrm = new Set(rosters.map((r) => r.crmUserId).filter((id): id is string => !!id));
+    let otherUsersDials = 0;
+    for (const [user, counts] of activity.byUser) if (user !== "" && !rosterCrm.has(user)) otherUsersDials += counts.dials;
     const coverage: string[] = [];
     if (!activity.rollupsReady) coverage.push("Daily rollups aren't built for this team yet, so dials are read from raw events and may be partial.");
     if (unattributedDials > 0) coverage.push(`${unattributedDials} dials in the range carry no Close user and aren't credited to anyone.`);
+    if (otherUsersDials > 0) coverage.push(`${otherUsersDials} dials in the range were made by Close users who aren't on the setter roster (closers, admins, people who left).`);
     const truncated = [...activity.truncated, ...filed.truncated, ...speed.truncated];
     if (truncated.length > 0) coverage.push(`Partial: some reads hit their cap (${truncated.join(", ")}).`);
     return {
@@ -189,6 +195,7 @@ export const getSettersActivity = query({
       basis: basisOf(hours),
       byRoster,
       unattributedDials,
+      otherUsersDials,
       truncated,
       coverage,
     };
