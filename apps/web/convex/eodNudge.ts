@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalQuery } from "./_generated/server";
+import { internalQuery, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { mergeDailyRows } from "./closerPerformanceMetrics";
 
@@ -25,23 +25,19 @@ export interface EodNudgeCloser {
   taken: number;
 }
 
-export const getEodNudgeData = internalQuery({
-  args: {
-    teamId: v.id("teams"),
-    /** Team-local day being chased, "YYYY-MM-DD". */
-    dayKey: v.string(),
-  },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{
-    dayKey: string;
-    missing: EodNudgeCloser[];
-    filed: number;
-    /** Everyone who worked, filed or not — for "3 of 5" phrasing. */
-    expected: number;
-  }> => {
-    const teamId = args.teamId as Id<"teams">;
+export interface EodFilingState {
+  dayKey: string;
+  missing: EodNudgeCloser[];
+  /** Names of the closers who worked that day and filed. */
+  filedNames: string[];
+  filed: number;
+  /** Everyone who worked, filed or not — for "3 of 5" phrasing. */
+  expected: number;
+}
+
+/** Who worked a team-local day and whether they filed their end-of-day — the nudge's and the Manager EOD's one source. */
+export async function eodFilingState(ctx: QueryCtx, teamId: Id<"teams">, dayKey: string): Promise<EodFilingState> {
+  const args = { dayKey };
 
     const [stats, overrides, entries, closers] = await Promise.all([
       ctx.db
@@ -71,6 +67,7 @@ export const getEodNudgeData = internalQuery({
     const byId = new Map(closers.map((c) => [String(c._id), c]));
 
     const missing: EodNudgeCloser[] = [];
+    const filedNames: string[] = [];
     let filed = 0;
     let expected = 0;
 
@@ -90,6 +87,7 @@ export const getEodNudgeData = internalQuery({
       expected += 1;
       if (row.confirmed) {
         filed += 1;
+        filedNames.push(closer.name ?? "Unknown");
       } else {
         missing.push({
           closerId: row.closerId,
@@ -104,6 +102,14 @@ export const getEodNudgeData = internalQuery({
     // a manager should chase first.
     missing.sort((a, b) => b.taken - a.taken || b.booked - a.booked);
 
-    return { dayKey: args.dayKey, missing, filed, expected };
+  return { dayKey: args.dayKey, missing, filedNames: filedNames.sort(), filed, expected };
+}
+
+export const getEodNudgeData = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    /** Team-local day being chased, "YYYY-MM-DD". */
+    dayKey: v.string(),
   },
+  handler: async (ctx, args): Promise<EodFilingState> => eodFilingState(ctx, args.teamId as Id<"teams">, args.dayKey),
 });

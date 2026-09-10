@@ -18,6 +18,7 @@ import {
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { resolveAuthUser } from "./setterGhlOauth";
 
+import { eodFilingState } from "./eodNudge";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
@@ -70,6 +71,8 @@ export interface ManagerEodData {
   } | null;
   tomorrowBooked: number;
   unreadCalls: number;
+  /** Who worked today and whether they filed their end-of-day — the same source as the nudge. */
+  eods: { filed: string[]; notYet: string[] };
 }
 
 /** A real conversation: the prospect actually spoke. Bot calls carry the
@@ -200,8 +203,11 @@ export const getManagerEodData = internalQuery({
       tomorrowUrls.add(e.meetingUrl);
     }
 
+    const filing = await eodFilingState(ctx, args.teamId, todayKey);
+
     return {
       dayKey: todayKey,
+      eods: { filed: filing.filedNames, notYet: filing.missing.map((m) => m.name).sort() },
       callsTaken: calls.length,
       realConversations: convos.length,
       botsNotAdmitted,
@@ -391,12 +397,22 @@ function buildSlackBlocks(
     },
   });
 
+  if (data.eods.filed.length + data.eods.notYet.length > 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `📝 *EODs* · Filed: ${data.eods.filed.length ? data.eods.filed.join(", ") : "nobody yet"}` + (data.eods.notYet.length ? ` · Not yet: ${data.eods.notYet.join(", ")}` : " · everyone who worked today has filed"),
+      },
+    });
+  }
+
   blocks.push({
     type: "context",
     elements: [
       {
         type: "mrkdwn",
-        text: "Built entirely from recordings — no forms required.",
+        text: "Calls read from recordings, no forms required. The EOD line is the closers' own end-of-day forms.",
       },
     ],
   });
@@ -434,6 +450,12 @@ function buildDiscordEmbed(
     name: "Tomorrow",
     value: `${data.tomorrowBooked} booked calls on the calendar`,
   });
+  if (data.eods.filed.length + data.eods.notYet.length > 0) {
+    fields.push({
+      name: "EODs",
+      value: `Filed: ${data.eods.filed.length ? data.eods.filed.join(", ") : "nobody yet"}` + (data.eods.notYet.length ? `\nNot yet: ${data.eods.notYet.join(", ")}` : "\nEveryone who worked today has filed"),
+    });
+  }
   return {
     title: `Manager EOD — ${local.weekday} ${local.month}/${local.day}`,
     description: narrative ?? undefined,
@@ -513,7 +535,7 @@ async function maybeSendForTeam(
   }
 
   const channel = (team as any).managerEodChannel;
-  const fallback = `Manager EOD: ${data.callsTaken} calls, ${data.realConversations} real conversations, ${data.closes} closed`;
+  const fallback = `Manager EOD: ${data.callsTaken} calls, ${data.realConversations} real conversations, ${data.closes} closed` + (data.eods.notYet.length ? ` · EODs not yet filed: ${data.eods.notYet.join(", ")}` : "");
 
   if (channel === "slack") {
     const channelId =

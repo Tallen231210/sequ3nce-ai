@@ -132,9 +132,13 @@ export async function maybeSendEodNudgeForTeam(
     }
   }
 
-  // Chase the day that has just ended. Chasing TODAY at 6pm would nag closers
-  // still on calls, which is how a useful nudge becomes a resented one.
-  const reported = formatInTimeZone(new Date(nowMs - 86_400_000), tz);
+  // Chase the day that has just ended. A team that runs this early (6pm)
+  // still has closers on calls, so it asks about yesterday; a team that runs
+  // it at 8pm or later asks about today, so the nudge and the Manager EOD
+  // posted the same evening describe the same day.
+  const hour = team.eodNudgeHourLocal;
+  const chaseToday = typeof hour === "number" && hour >= 20;
+  const reported = formatInTimeZone(new Date(chaseToday ? nowMs : nowMs - 86_400_000), tz);
   const dayKey = `${reported.year}-${pad2(reported.month)}-${pad2(reported.day)}`;
 
   const reportedWeekday = WEEKDAY_INDEX[reported.weekday] ?? -1;
