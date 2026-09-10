@@ -181,6 +181,7 @@ import type * as lib_calendarColorRules from "../lib/calendarColorRules.js";
 import type * as lib_callQualityAggregator from "../lib/callQualityAggregator.js";
 import type * as lib_closerTitleMatch from "../lib/closerTitleMatch.js";
 import type * as lib_dateRanges from "../lib/dateRanges.js";
+import type * as lib_dialAnswered from "../lib/dialAnswered.js";
 import type * as lib_encrypt from "../lib/encrypt.js";
 import type * as lib_eventName from "../lib/eventName.js";
 import type * as lib_extractProspectFromTitle from "../lib/extractProspectFromTitle.js";
@@ -292,6 +293,7 @@ import type * as setterTeamRealDataTeardown from "../setterTeamRealDataTeardown.
 import type * as setterTeamTouches from "../setterTeamTouches.js";
 import type * as settersPageActivity from "../settersPageActivity.js";
 import type * as settersPageBench from "../settersPageBench.js";
+import type * as settersPageCadence from "../settersPageCadence.js";
 import type * as settersPageConfig from "../settersPageConfig.js";
 import type * as settersPageGate from "../settersPageGate.js";
 import type * as settersPageLabels from "../settersPageLabels.js";
@@ -490,6 +492,7 @@ declare const fullApi: ApiFromModules<{
   "lib/callQualityAggregator": typeof lib_callQualityAggregator;
   "lib/closerTitleMatch": typeof lib_closerTitleMatch;
   "lib/dateRanges": typeof lib_dateRanges;
+  "lib/dialAnswered": typeof lib_dialAnswered;
   "lib/encrypt": typeof lib_encrypt;
   "lib/eventName": typeof lib_eventName;
   "lib/extractProspectFromTitle": typeof lib_extractProspectFromTitle;
@@ -601,6 +604,7 @@ declare const fullApi: ApiFromModules<{
   setterTeamTouches: typeof setterTeamTouches;
   settersPageActivity: typeof settersPageActivity;
   settersPageBench: typeof settersPageBench;
+  settersPageCadence: typeof settersPageCadence;
   settersPageConfig: typeof settersPageConfig;
   settersPageGate: typeof settersPageGate;
   settersPageLabels: typeof settersPageLabels;

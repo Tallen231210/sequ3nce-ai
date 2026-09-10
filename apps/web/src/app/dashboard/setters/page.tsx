@@ -30,6 +30,8 @@ export default function SettersPage() {
   const bookings = useQuery(api.settersPageQueries.getSettersBookings, args);
   const sets = useQuery(api.settersPageQueries.getSettersSets, args);
   const activity = useQuery(api.settersPageQueries.getSettersActivity, args);
+  const speed = useQuery(api.settersPageQueries.getSettersSpeed, args);
+  const cadence = useQuery(api.settersPageQueries.getSettersCadence, args);
 
   if (isLoading) {
     return (
@@ -80,6 +82,8 @@ export default function SettersPage() {
             bookings={bookings}
             sets={sets ?? null}
             activity={activity ?? null}
+            speed={speed}
+            cadence={cadence}
             clerkId={clerkId}
             rangeStart={range.start}
             rangeEnd={range.end}

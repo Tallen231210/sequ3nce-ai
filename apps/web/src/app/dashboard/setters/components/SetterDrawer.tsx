@@ -4,10 +4,11 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { BookingsData, CardVM } from "../lib/cards";
 import { BookingEvidenceList } from "./BookingEvidenceList";
+import { CadenceRows } from "./CadenceRows";
 import { EodRows } from "./EodRows";
 import { SpeedByDay } from "./SpeedByDay";
 
-type Tab = "bookings" | "speed" | "eod";
+type Tab = "bookings" | "speed" | "cadence" | "eod";
 
 /** One person: their bookings with evidence, their speed to lead by day, their EOD days. */
 export function SetterDrawer({
@@ -36,6 +37,7 @@ export function SetterDrawer({
   const tabs: Array<{ id: Tab; label: string; show: boolean }> = [
     { id: "bookings", label: `Bookings (${rows.length})`, show: true },
     { id: "speed", label: card?.team === "confirmation" ? "Response time" : "Speed to lead", show: !!card?.rosterId },
+    { id: "cadence", label: "Cadence", show: card?.team === "outbound" && !!card.linked },
     { id: "eod", label: "EOD days", show: !!card?.rosterId },
   ];
   const active = tabs.find((t) => t.id === tab && t.show)?.id ?? "bookings";
@@ -69,6 +71,7 @@ export function SetterDrawer({
         </div>
         {card && active === "bookings" && <BookingEvidenceList rows={rows} timezone={timezone} />}
         {card?.rosterId && active === "speed" && <SpeedByDay clerkId={clerkId} rosterId={card.rosterId} rangeStart={rangeStart} rangeEnd={rangeEnd} timezone={timezone} />}
+        {card?.rosterId && active === "cadence" && <CadenceRows clerkId={clerkId} rosterId={card.rosterId} rangeStart={rangeStart} rangeEnd={rangeEnd} timezone={timezone} />}
         {card?.rosterId && active === "eod" && <EodRows clerkId={clerkId} rosterId={card.rosterId} rangeStart={rangeStart} rangeEnd={rangeEnd} />}
       </DialogContent>
     </Dialog>

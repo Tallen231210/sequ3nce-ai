@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { dialAnswered } from "./lib/dialAnswered";
 
 // ============================================================================
 // Setter Data — daily rollup sidecar (setterDailyStats).
@@ -110,11 +111,8 @@ async function recountDayImpl(
 ): Promise<{ rows: number }> {
   const start = dayStartMs(dayKey);
   const end = start + DAY_MS;
-  // `answered` is a predicate on dial rows, not an event type: a live bump
-  // uses the threshold at event time, a recount the threshold at recount
-  // time. They only disagree if the team changes its threshold — then recount.
-  const team = await ctx.db.get(teamId);
-  const answeredSec: number = team?.setterConnectionThresholdSec ?? 60;
+  // `answered` is a predicate on dial rows (a person picked up), not an
+  // event type, so it rides the dial_outbound scan.
 
   const counts = new Map<string, DailyCounts>();
   const bump = (sid: string, kind: DailyStatKind) => {
@@ -132,10 +130,7 @@ async function recountDayImpl(
       .collect();
     for (const e of events) {
       bump(e.ghlUserId ?? "", kind);
-      if (type === "dial_outbound") {
-        const sec = (e.details as { callDurationSec?: unknown } | undefined)?.callDurationSec;
-        if (typeof sec === "number" && sec >= answeredSec) bump(e.ghlUserId ?? "", "answered");
-      }
+      if (type === "dial_outbound" && dialAnswered(e.details)) bump(e.ghlUserId ?? "", "answered");
     }
   }
 

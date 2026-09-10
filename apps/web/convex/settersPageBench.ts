@@ -8,6 +8,7 @@ import { internalQuery } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { moneyOf } from "./setterTeamBookingHelpers";
 import { isStubLead } from "./settersPageSpeed";
+import { dialAnswered } from "./lib/dialAnswered";
 import { dmRows, percentiles } from "./settersPageTeams";
 import { teamLabelsFor } from "./settersPageLabels";
 
@@ -63,6 +64,11 @@ export const rulesBench = internalQuery({
       { name: "percentiles: empty → nulls", pass: eq(percentiles([]), { median: null, p90: null }) },
       { name: "percentiles: nearest rank, odd", pass: eq(percentiles([5, 1, 3]), { median: 3, p90: 5 }) },
       { name: "percentiles: nearest rank, ten values", pass: eq(percentiles([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), { median: 5, p90: 9 }) },
+      { name: "answered: Close disposition answered, 3 seconds", pass: dialAnswered({ callDurationSec: 3, disposition: "answered" }) === true },
+      { name: "answered: Close no-answer", pass: dialAnswered({ callDurationSec: 0, disposition: "no-answer" }) === false },
+      { name: "answered: no disposition, time on the line", pass: dialAnswered({ callDurationSec: 5 }) === true },
+      { name: "answered: no disposition, zero", pass: dialAnswered({ callDurationSec: 0 }) === false },
+      { name: "answered: nothing known", pass: dialAnswered(undefined) === false },
       { name: "stub: inferred date", pass: isStubLead({ dateAdded: 1_000_000, dateAddedInferred: true }) === true },
       { name: "stub: dial created the lead (seconds apart)", pass: isStubLead({ dateAdded: 1_000_000, firstDialAt: 1_004_000 }) === true },
       { name: "stub: first text 4 minutes before creation", pass: isStubLead({ dateAdded: 1_000_000, firstSmsOutboundAt: 760_000 }) === true },

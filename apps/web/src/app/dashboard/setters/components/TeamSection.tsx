@@ -7,6 +7,8 @@ function show(m: MetricVM, v: number | null | undefined): string {
   if (m.format === "pct") return pct(v);
   if (m.format === "money") return money(v);
   if (m.format === "hours") return hours(v);
+  if (m.format === "ratio") return v === null || v === undefined ? "—" : v.toFixed(1);
+  if (m.format === "days") return v === null || v === undefined ? "—" : `${v}d`;
   return int(v);
 }
 

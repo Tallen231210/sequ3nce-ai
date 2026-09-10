@@ -13,6 +13,7 @@ import { dayKeyInTz } from "./closerPerformance";
 import { elapsedWorkingMs } from "./setterFunnelResolve";
 import type { BookingRecord } from "./setterTeamBookings";
 import { loadLeadTouches } from "./setterTeamTouches";
+import { guestEmailOf } from "./setterTeamBookingHelpers";
 import { percentiles, type Hours } from "./settersPageTeams";
 
 /** Leads read per call, newest first; a wider window than this is reported as partial. */
@@ -30,7 +31,7 @@ export function isStubLead(lead: { dateAdded: number; dateAddedInferred?: boolea
   return Number.isFinite(firstActivity) && Math.abs(firstActivity - lead.dateAdded) <= STUB_WINDOW_MS;
 }
 
-export type SpeedNote = "no arrival time" | "never contacted" | "touched before arrival" | "contacted, time unknown" | null;
+export type SpeedNote = "no arrival time" | "never contacted" | "touched before arrival" | "contacted, time unknown" | "self-booked" | null;
 
 export interface SpeedLeadRow {
   leadId: string;
@@ -42,6 +43,8 @@ export interface SpeedLeadRow {
   workingMs: number | null;
   elapsedMs: number | null;
   note: SpeedNote;
+  /** Dials this lead got from the setter who touched it first, in the range — cadence per lead. */
+  dials: number;
 }
 
 export interface SpeedSummary {
@@ -52,6 +55,8 @@ export interface SpeedSummary {
   neverContactedCount: number;
   /** Credited by the calendar tag alone — contacted, but Close holds no time for it. */
   untimedCount: number;
+  /** Leads that booked themselves in the range — the confirmation team's, not an outbound setter's to chase. */
+  selfBookedCount: number;
   clippedCount: number;
   unreadCount: number;
 }
@@ -77,6 +82,7 @@ function summarise(rows: SpeedLeadRow[], clipped: number, unread: number): Speed
     noArrivalCount: rows.filter((r) => r.note === "no arrival time" || r.note === "touched before arrival").length,
     neverContactedCount: rows.filter((r) => r.note === "never contacted").length,
     untimedCount: rows.filter((r) => r.note === "contacted, time unknown").length,
+    selfBookedCount: rows.filter((r) => r.note === "self-booked").length,
     clippedCount: clipped,
     unreadCount: unread,
   };
@@ -102,6 +108,22 @@ export interface OutboundSpeed {
   truncated: string[];
 }
 
+const BOOKED_TAKE = 8_000;
+
+/** Guests who booked themselves in [startMs, endMs) — by normalised email — so they leave the outbound cohort. */
+async function selfBookedEmails(ctx: QueryCtx, teamId: Id<"teams">, startMs: number, endMs: number): Promise<{ emails: Set<string>; truncated: boolean }> {
+  const rows = await ctx.db
+    .query("calendarEvents")
+    .withIndex("by_team_and_booked_at", (q) => q.eq("teamId", teamId).gte("bookedAt", startMs).lt("bookedAt", endMs))
+    .take(BOOKED_TAKE);
+  const emails = new Set<string>();
+  for (const e of rows) {
+    const g = guestEmailOf([e]);
+    if (g) emails.add(g);
+  }
+  return { emails, truncated: rows.length >= BOOKED_TAKE };
+}
+
 /**
  * Outbound leads created in [startMs, endMs): first touch by any of `setters`.
  * One range read on leads, one per-lead read on their Close activity.
@@ -123,14 +145,29 @@ export async function outboundSpeed(
     .take(LEAD_TAKE);
   if (leads.length >= LEAD_TAKE) truncated.push(`leads (newest ${LEAD_TAKE})`);
   const live = leads.filter((l) => l.isInternal !== true);
-  const touches = await loadLeadTouches(ctx, teamId, live.map((l) => l.ghlContactId), startMs, nowMs);
+  // A lead that booked itself is the confirmation team's: it never counts
+  // against an outbound setter's speed, whoever touched it first.
+  const selfBooked = await selfBookedEmails(ctx, teamId, startMs, endMs);
+  if (selfBooked.truncated) truncated.push("self-booked events");
+  const toRead = live.filter((l) => !(l.emailNorm && selfBooked.emails.has(l.emailNorm)));
+  const touches = await loadLeadTouches(ctx, teamId, toRead.map((l) => l.ghlContactId), startMs, nowMs);
   truncated.push(...touches.truncated);
   const byCrm = new Map(setters.map((s) => [s.crmUserId, s]));
 
   const rows: SpeedLeadRow[] = [];
   let clipped = 0;
   let unread = 0;
+  const none = { firstTouchAt: null, byRosterId: null, byName: null, workingMs: null, elapsedMs: null, dials: 0 };
   for (const lead of live) {
+    const base = {
+      leadId: lead.ghlContactId,
+      leadName: lead.name || lead.email || "lead",
+      arrivedAt: lead.dateAdded,
+    };
+    if (lead.emailNorm && selfBooked.emails.has(lead.emailNorm)) {
+      rows.push({ ...base, ...none, note: "self-booked" });
+      continue;
+    }
     if (touches.unread.has(lead.ghlContactId)) {
       unread += 1;
       continue;
@@ -139,25 +176,20 @@ export async function outboundSpeed(
       clipped += 1;
       continue;
     }
-    const base = {
-      leadId: lead.ghlContactId,
-      leadName: lead.name || lead.email || "lead",
-      arrivedAt: lead.dateAdded,
-    };
     if (isStubLead(lead)) {
-      rows.push({ ...base, firstTouchAt: null, byRosterId: null, byName: null, workingMs: null, elapsedMs: null, note: "no arrival time" });
+      rows.push({ ...base, ...none, note: "no arrival time" });
       continue;
     }
-    const first = (touches.byContact.get(lead.ghlContactId)?.touches ?? [])
-      .filter((t) => byCrm.has(t.crmUserId))
-      .sort((a, b) => a.at - b.at)[0];
+    const mine = (touches.byContact.get(lead.ghlContactId)?.touches ?? []).filter((t) => byCrm.has(t.crmUserId)).sort((a, b) => a.at - b.at);
+    const first = mine[0];
     if (!first) {
-      rows.push({ ...base, firstTouchAt: null, byRosterId: null, byName: null, workingMs: null, elapsedMs: null, note: "never contacted" });
+      rows.push({ ...base, ...none, note: "never contacted" });
       continue;
     }
     const by = byCrm.get(first.crmUserId)!;
+    const dials = mine.filter((t) => t.kind === "dial" && t.crmUserId === first.crmUserId).length;
     if (first.at < lead.dateAdded) {
-      rows.push({ ...base, firstTouchAt: first.at, byRosterId: by.rosterId, byName: by.name, workingMs: null, elapsedMs: null, note: "touched before arrival" });
+      rows.push({ ...base, firstTouchAt: first.at, byRosterId: by.rosterId, byName: by.name, workingMs: null, elapsedMs: null, dials, note: "touched before arrival" });
       continue;
     }
     rows.push({
@@ -167,6 +199,7 @@ export async function outboundSpeed(
       byName: by.name,
       workingMs: elapsedWorkingMs(lead.dateAdded, first.at, hours),
       elapsedMs: first.at - lead.dateAdded,
+      dials,
       note: null,
     });
   }
@@ -196,16 +229,18 @@ export function confirmationSpeedRows(records: BookingRecord[], rosterId: string
     if (r.isFollowUp || !r.classification.isFunnel || r.classification.lane === "outbound" || r.classification.lane === "dm") continue;
     const base = { leadId: r.key, leadName: r.displayTitle, arrivedAt: r.bookedAt ?? r.startTime };
     if (r.bookedAt === null || r.bookedAtInferred) {
-      rows.push({ ...base, firstTouchAt: null, byRosterId: null, byName: null, workingMs: null, elapsedMs: null, note: "no arrival time" });
+      rows.push({ ...base, firstTouchAt: null, byRosterId: null, byName: null, workingMs: null, elapsedMs: null, dials: 0, note: "no arrival time" });
       continue;
     }
-    const first = r.touches.filter((t) => t.rosterId === rosterId && t.afterBooking).sort((a, b) => a.at - b.at)[0];
+    const hers = r.touches.filter((t) => t.rosterId === rosterId && t.afterBooking).sort((a, b) => a.at - b.at);
+    const first = hers[0];
+    const dials = hers.filter((t) => t.kind === "dial").length;
     if (!first) {
       const taggedToHer = r.classification.attributedBy === "tag" && r.classification.creditRosterIds.includes(rosterId);
-      rows.push({ ...base, firstTouchAt: null, byRosterId: taggedToHer ? rosterId : null, byName: taggedToHer ? name : null, workingMs: null, elapsedMs: null, note: taggedToHer ? "contacted, time unknown" : "never contacted" });
+      rows.push({ ...base, firstTouchAt: null, byRosterId: taggedToHer ? rosterId : null, byName: taggedToHer ? name : null, workingMs: null, elapsedMs: null, dials: 0, note: taggedToHer ? "contacted, time unknown" : "never contacted" });
       continue;
     }
-    rows.push({ ...base, firstTouchAt: first.at, byRosterId: rosterId, byName: name, workingMs: elapsedWorkingMs(r.bookedAt, first.at, hours), elapsedMs: first.at - r.bookedAt, note: null });
+    rows.push({ ...base, firstTouchAt: first.at, byRosterId: rosterId, byName: name, workingMs: elapsedWorkingMs(r.bookedAt, first.at, hours), elapsedMs: first.at - r.bookedAt, dials, note: null });
   }
   return rows;
 }

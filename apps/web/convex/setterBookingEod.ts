@@ -16,6 +16,7 @@ import { resolveSetterSessionCtx } from "./setterAuth";
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
 import { collectTeamBookings, type BookingRecord } from "./setterTeamBookings";
 import { teamHasSetterTeams } from "./setterTeamQueries";
+import { dialAnswered } from "./lib/dialAnswered";
 
 const MEASURE_LOOKBACK_DAYS = 30;
 const COHORT_TAKE = 1_500;
@@ -79,12 +80,11 @@ export const getMeasuredForDay = query({
     const data = await collectTeamBookings(ctx, teamId, rangeStart, rangeEnd, nowMs, { eventRows });
     const bookings = measureBookingDay(data.records, String(me.rosterId), args.dayKey);
 
-    // Their own Close activity for the local day: every dial, and the ones
-    // at or over the team's connect threshold — what their EOD calls pick ups.
+    // Their own Close activity for the local day: every dial, and the ones a
+    // person picked up — what their EOD calls pick ups.
     let dials: number | null = null;
     let pickUps: number | null = null;
     if (me.crmUserId) {
-      const thresholdSec = team?.setterConnectionThresholdSec ?? 60;
       const rows = await ctx.db
         .query("setterLeadEvents")
         .withIndex("by_team_and_setter_and_time", (q) =>
@@ -98,8 +98,7 @@ export const getMeasuredForDay = query({
       for (const e of rows) {
         if (e.eventType !== "dial_outbound") continue;
         dials += 1;
-        const sec = (e.details as { callDurationSec?: unknown } | undefined)?.callDurationSec;
-        if (typeof sec === "number" && sec >= thresholdSec) pickUps += 1;
+        if (dialAnswered(e.details)) pickUps += 1;
       }
     }
     const measured: BookingMeasured = { ...bookings, dials, pickUps };

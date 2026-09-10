@@ -10,6 +10,7 @@
 
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { dialAnswered } from "./lib/dialAnswered";
 
 /** Lead-event rows one call may read in total; past it the remaining leads go unread and the result says so. */
 const TOUCH_BUDGET = 12_000;
@@ -22,6 +23,8 @@ export interface RawTouch {
   at: number;
   /** Seconds on the line for a dial; null for texts or when Close sent none. */
   durationSec: number | null;
+  /** A dial a person picked up (Close's disposition; duration > 0 where there is none). */
+  answered: boolean;
 }
 
 export interface LeadTouches {
@@ -82,6 +85,7 @@ export async function loadLeadTouches(
           kind: e.eventType === "dial_outbound" ? "dial" : "sms",
           at: e.occurredAt,
           durationSec,
+          answered: e.eventType === "dial_outbound" && dialAnswered(e.details),
         });
       } else if (e.eventType === "sms_inbound") {
         lead.inboundAt.push(e.occurredAt);

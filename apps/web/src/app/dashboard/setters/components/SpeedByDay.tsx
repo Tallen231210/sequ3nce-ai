@@ -18,6 +18,7 @@ export function SpeedByDay({ clerkId, rosterId, rangeStart, rangeEnd, timezone }
   if (s.noArrivalCount) excluded.push(`${s.noArrivalCount} with no arrival time (Close created the lead from the dial)`);
   if (s.neverContactedCount) excluded.push(`${s.neverContactedCount} never contacted`);
   if (s.untimedCount) excluded.push(`${s.untimedCount} contacted, no Close time (credited by the calendar tag)`);
+  if (s.selfBookedCount) excluded.push(`${s.selfBookedCount} booked themselves (the confirmation team's)`);
   if (s.clippedCount || s.unreadCount) excluded.push(`${s.clippedCount + s.unreadCount} not read (too much activity for one look)`);
   return (
     <div className="space-y-4 text-sm">
@@ -51,6 +52,7 @@ export function SpeedByDay({ clerkId, rosterId, rangeStart, rangeEnd, timezone }
                   arrived {time.format(l.arrivedAt)}
                   {l.firstTouchAt ? ` → ${l.byName ?? "setter"} ${time.format(l.firstTouchAt)}` : ""}
                   {l.note ? ` · ${l.note}` : ""}
+                  {l.dials > 0 ? ` · ${l.dials} dial${l.dials === 1 ? "" : "s"}` : ""}
                 </span>
                 <span className={`w-14 text-right tabular-nums ${l.workingMs === null ? "text-muted-foreground" : "font-medium"}`}>{hours(l.workingMs)}</span>
               </li>

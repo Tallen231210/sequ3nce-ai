@@ -10,6 +10,7 @@ import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { dayKeyInTz } from "./closerPerformance";
 import { DAY_MS, dayKeyOf, readDailyStatsRange } from "./setterRollups";
+import { dialAnswered } from "./lib/dialAnswered";
 
 const EDGE_TAKE = 4_000;
 const EOD_TAKE = 2_000;
@@ -52,7 +53,6 @@ async function rawEdge(
   teamId: Id<"teams">,
   fromMs: number,
   toMs: number,
-  thresholdSec: number,
   into: Map<string, ActivityCounts>,
   truncated: string[],
 ): Promise<void> {
@@ -68,8 +68,7 @@ async function rawEdge(
   for (const e of dials) {
     const c = into.get(e.ghlUserId ?? "") ?? zero();
     c.dials += 1;
-    const sec = (e.details as { callDurationSec?: unknown } | undefined)?.callDurationSec;
-    if (typeof sec === "number" && sec >= thresholdSec) c.answered += 1;
+    if (dialAnswered(e.details)) c.answered += 1;
     into.set(e.ghlUserId ?? "", c);
   }
   const texts = await ctx.db
@@ -95,7 +94,6 @@ export async function loadActivity(
   endMs: number,
 ): Promise<ActivityLoad> {
   const teamId = team._id;
-  const thresholdSec = team.setterConnectionThresholdSec ?? 60;
   const byUser = new Map<string, ActivityCounts>();
   const truncated: string[] = [];
   const rollupsReady = team.setterRollupsBackfilledAt !== undefined;
@@ -113,10 +111,10 @@ export async function loadActivity(
       c.texts += r.smsOutbound ?? 0;
       byUser.set(r.setterId, c);
     }
-    await rawEdge(ctx, teamId, startMs, firstFull, thresholdSec, byUser, truncated);
-    await rawEdge(ctx, teamId, lastFullEnd, endMs, thresholdSec, byUser, truncated);
+    await rawEdge(ctx, teamId, startMs, firstFull, byUser, truncated);
+    await rawEdge(ctx, teamId, lastFullEnd, endMs, byUser, truncated);
   } else {
-    await rawEdge(ctx, teamId, startMs, endMs, thresholdSec, byUser, truncated);
+    await rawEdge(ctx, teamId, startMs, endMs, byUser, truncated);
   }
   return { byUser, rollupsReady, truncated };
 }
@@ -172,7 +170,6 @@ export async function loadUserDays(
   startMs: number,
   endMs: number,
   tz: string,
-  thresholdSec: number,
 ): Promise<{ byDay: Map<string, ActivityCounts>; truncated: boolean }> {
   const rows = await ctx.db
     .query("setterLeadEvents")
@@ -189,8 +186,7 @@ export async function loadUserDays(
     if (e.eventType === "sms_outbound") c.texts += 1;
     else {
       c.dials += 1;
-      const sec = (e.details as { callDurationSec?: unknown } | undefined)?.callDurationSec;
-      if (typeof sec === "number" && sec >= thresholdSec) c.answered += 1;
+      if (dialAnswered(e.details)) c.answered += 1;
     }
     byDay.set(key, c);
   }

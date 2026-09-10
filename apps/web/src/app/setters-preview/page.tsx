@@ -7,7 +7,7 @@ import { useState } from "react";
 import { notFound } from "next/navigation";
 import { SettersView } from "../dashboard/setters/components/SettersView";
 import { SettingsDrawer } from "../dashboard/setters/components/SettingsDrawer";
-import { ACTIVITY, BOOKINGS, SETS } from "./fixture";
+import { ACTIVITY, BOOKINGS, CADENCE, SETS, SPEED } from "./fixture";
 
 export default function SettersPreviewPage() {
   const [settings, setSettings] = useState(false);
@@ -21,7 +21,7 @@ export default function SettersPreviewPage() {
       <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
         Preview · fictional team, fictional people · the drawer's Speed and EOD tabs need a live backend and stay empty here.
       </div>
-      <SettersView bookings={BOOKINGS} sets={SETS} activity={ACTIVITY} clerkId="preview" rangeStart={BOOKINGS.range.startMs} rangeEnd={BOOKINGS.range.endMs} />
+      <SettersView bookings={BOOKINGS} sets={SETS} activity={ACTIVITY} speed={SPEED} cadence={CADENCE} clerkId="preview" rangeStart={BOOKINGS.range.startMs} rangeEnd={BOOKINGS.range.endMs} />
     </div>
   );
 }

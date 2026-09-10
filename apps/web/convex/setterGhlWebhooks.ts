@@ -3,6 +3,7 @@ import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { bumpDailyStat, bumpDailyStats } from "./setterRollups";
+import { dialAnswered } from "./lib/dialAnswered";
 import {
   ATTENDANCE_BETA_FLAG,
   stampAttendanceFromStatus,
@@ -965,14 +966,16 @@ export async function recordCallEvent(
   // Daily rollup increment — same transaction as the event insert (and after
   // the dedup early-return above, so redeliveries can never double-count).
   // Wide-range scorecards read these instead of scanning event rows.
-  // `answered` counts every outbound call over the threshold (the Setters
-  // page's "connects"); `connects` below still fires once per lead.
+  // `answered` counts every outbound call a person picked up (the Setters
+  // page's "connects"); `connects` below still fires once per lead at the
+  // team's duration threshold.
+  const answered = ev.direction === "outbound" && dialAnswered({ callDurationSec: durationSec, ...(ev.extraDetails ?? {}) });
   await bumpDailyStats(
     ctx,
     args.teamId,
     ev.occurredAt,
     ev.ghlUserId,
-    ev.direction === "outbound" ? (isConnect ? ["dials", "answered"] : ["dials"]) : ["callsInbound"],
+    ev.direction === "outbound" ? (answered ? ["dials", "answered"] : ["dials"]) : ["callsInbound"],
   );
 
   // Outbound call → bump dial counters + maybe flip isConnected.
@@ -1121,9 +1124,12 @@ export const applyCallDuration = internalMutation({
     if (args.durationSec < thresholdSec) {
       return { applied: true, becameConnected: false };
     }
-    // A late duration over the threshold is an answered call whether or not
-    // the lead was already connected — so this bump sits before that check.
-    await bumpDailyStat(ctx, args.teamId, event.occurredAt, event.ghlUserId, "answered");
+    // A late duration means a person was on the line (no disposition on this
+    // path), whether or not the lead was already connected — so this bump
+    // sits before that check.
+    if (dialAnswered({ callDurationSec: args.durationSec })) {
+      await bumpDailyStat(ctx, args.teamId, event.occurredAt, event.ghlUserId, "answered");
+    }
 
     const lead = event.setterLeadId
       ? await ctx.db.get(event.setterLeadId)

@@ -1,7 +1,7 @@
 // Fictional team, fictional people. Typed against the real query returns so
 // the preview breaks the moment a shape drifts.
 
-import type { ActivityData, BookingsData, SetsData } from "../dashboard/setters/lib/cards";
+import type { ActivityData, BookingsData, CadenceData, SetsData, SpeedData } from "../dashboard/setters/lib/cards";
 
 const H = 60 * 60 * 1000;
 const D = 24 * H;
@@ -117,19 +117,40 @@ const filed = (o: Partial<NonNullable<ActivityData["byRoster"][number]["filed"]>
 });
 const speed = (medianH: number | null, count: number, noArrival: number) => ({
   count, medianWorkingMs: medianH === null ? null : medianH * H, p90WorkingMs: medianH === null ? null : medianH * 3 * H,
-  noArrivalCount: noArrival, neverContactedCount: 2, untimedCount: 0, clippedCount: 0, unreadCount: 0,
+  noArrivalCount: noArrival, neverContactedCount: 2, untimedCount: 0, selfBookedCount: 4, clippedCount: 0, unreadCount: 0,
 });
+
+export const SPEED: SpeedData = {
+  range: { startMs: NOW - 7 * D, endMs: NOW },
+  basis: "9:00–17:00, 5 days a week, America/New_York",
+  truncated: [],
+  bySetter: [
+    { rosterId: "r-ezra", ...speed(2.1, 41, 9) },
+    { rosterId: "r-ivan", ...speed(0.4, 12, 3) },
+    { rosterId: "r-miles", ...speed(null, 0, 1) },
+  ],
+  team: { leads: 180, selfBooked: 95, neverContacted: 22, noArrival: 13, unread: 0 },
+};
+
+export const CADENCE: CadenceData = {
+  range: { startMs: NOW - 7 * D, endMs: NOW },
+  truncated: [],
+  bySetter: [
+    { rosterId: "r-ezra", dials: 1_230, leadsDialled: 312, dialsPerLead: 3.9, threePlusPct: 56, medianPursuitDays: 2.1, leadsAnswered: 88, truncated: false },
+    { rosterId: "r-ivan", dials: 1_635, leadsDialled: 501, dialsPerLead: 3.3, threePlusPct: 41, medianPursuitDays: 0.8, leadsAnswered: 66, truncated: false },
+    { rosterId: "r-miles", dials: 337, leadsDialled: 190, dialsPerLead: 1.8, threePlusPct: 12, medianPursuitDays: 0.3, leadsAnswered: 11, truncated: false },
+  ],
+};
 
 export const ACTIVITY: ActivityData = {
   range: { startMs: NOW - 7 * D, endMs: NOW, timezone: "America/New_York" },
   rollupsReady: true,
-  basis: "9:00–17:00, 5 days a week, America/New_York",
   byRoster: [
-    { rosterId: "r-ezra", name: "Ezra", role: "booking", linked: true, dials: 1_230, answered: 98, texts: 310, filed: filed({ dials: 1_150, pickUps: 98, sets: 29, callsOnCalendar: 38, callsShown: 28, callsClosed: 4, cashCollected: 19_000, cashReported: true }), speed: speed(2.1, 41, 9) },
-    { rosterId: "r-ivan", name: "Ivan", role: "booking", linked: true, dials: 1_635, answered: 71, texts: 120, filed: filed({ dials: 1_604, pickUps: 92, sets: 13, callsOnCalendar: 13, callsShown: 5, callsClosed: 1, cashCollected: 6_000, cashReported: true }), speed: speed(0.4, 12, 3) },
-    { rosterId: "r-max", name: "Max", role: "booking", linked: false, dials: null, answered: null, texts: null, filed: filed({ days: 3, dials: 355, pickUps: 28, sets: 4, callsOnCalendar: 2, callsShown: 2 }), speed: null },
-    { rosterId: "r-miles", name: "Miles", role: "booking", linked: true, dials: 337, answered: 12, texts: 40, filed: filed({ days: 1, dials: 99, pickUps: 6, sets: 0 }), speed: speed(null, 0, 1) },
-    { rosterId: "r-sasha", name: "Sasha", role: "confirmation", linked: true, dials: 233, answered: 40, texts: 405, filed: filed({ days: 5, newSelfBooked: 95, contacted: 80, reached: 22, confirmed: 41, confirmedOnCalendar: 64, confirmedShowed: 29 }), speed: null },
+    { rosterId: "r-ezra", name: "Ezra", role: "booking", linked: true, dials: 1_230, answered: 98, texts: 310, filed: filed({ dials: 1_150, pickUps: 98, sets: 29, callsOnCalendar: 38, callsShown: 28, callsClosed: 4, cashCollected: 19_000, cashReported: true }) },
+    { rosterId: "r-ivan", name: "Ivan", role: "booking", linked: true, dials: 1_635, answered: 71, texts: 120, filed: filed({ dials: 1_604, pickUps: 92, sets: 13, callsOnCalendar: 13, callsShown: 5, callsClosed: 1, cashCollected: 6_000, cashReported: true }) },
+    { rosterId: "r-max", name: "Max", role: "booking", linked: false, dials: null, answered: null, texts: null, filed: filed({ days: 3, dials: 355, pickUps: 28, sets: 4, callsOnCalendar: 2, callsShown: 2 }) },
+    { rosterId: "r-miles", name: "Miles", role: "booking", linked: true, dials: 337, answered: 12, texts: 40, filed: filed({ days: 1, dials: 99, pickUps: 6, sets: 0 }) },
+    { rosterId: "r-sasha", name: "Sasha", role: "confirmation", linked: true, dials: 233, answered: 40, texts: 405, filed: filed({ days: 5, newSelfBooked: 95, contacted: 80, reached: 22, confirmed: 41, confirmedOnCalendar: 64, confirmedShowed: 29 }) },
   ],
   unattributedDials: 1_410,
   otherUsersDials: 81,

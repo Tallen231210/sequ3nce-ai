@@ -55,8 +55,8 @@ const TOUCH_HISTORY_MS = 30 * DAY_MS;
 const CALL_LOOKAHEAD_MS = 3 * 60 * 60 * 1000;
 /** Widest window a caller handing in its own rows may ask for (the confirmation prefill's far-out bookings). */
 const MAX_SPAN_MS = 60 * DAY_MS;
-/** A dial counts as reached at this many seconds on the line unless the team set its own threshold. */
-const DEFAULT_CONNECT_SEC = 60;
+/** Call rows are created when the bot is scheduled, days before the call; read them from well before the range. */
+const CALL_LOOKBACK_MS = 14 * DAY_MS;
 /** Row key for a booking with no copy on any connected closer's own calendar. */
 export const UNKNOWN_CLOSER = "no-calendar-owner";
 // Budget: 8k + 3k events/calls, ≤1.5k lead point reads, ≤12k lead-event rows,
@@ -165,7 +165,7 @@ export async function collectTeamBookings(
     : await ctx.db
         .query("calls")
         .withIndex("by_team_and_date", (q) =>
-          q.eq("teamId", teamId).gte("createdAt", startMs).lt("createdAt", endMs + CALL_LOOKAHEAD_MS),
+          q.eq("teamId", teamId).gte("createdAt", startMs - CALL_LOOKBACK_MS).lt("createdAt", endMs + CALL_LOOKAHEAD_MS),
         )
         .order("desc")
         .take(CALL_TAKE);
@@ -173,7 +173,6 @@ export async function collectTeamBookings(
 
   const tz = (team as { timezone?: string } | null)?.timezone || DEFAULT_TIMEZONE;
   const teamWords = team?.closerExcludedBookingTitles;
-  const connectSec = team?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
   const countAiContractValue = team?.closerCountAiContractValue ?? true;
   const rosters = rosterRefsOf(rosterRows);
   const rosterNames = rosterNamesOf(rosters);
@@ -259,10 +258,7 @@ export async function collectTeamBookings(
       const windowStart = Math.min(anchor.startTime - TOUCH_LOOKBACK_MS, bookedBasis);
       for (const t of leadTouches.touches) {
         if (t.at < windowStart || t.at >= anchor.startTime) continue;
-        const reached =
-          t.kind === "dial"
-            ? t.durationSec !== null && t.durationSec >= connectSec
-            : leadTouches.inboundAt.some((at) => at > t.at && at < anchor.startTime);
+        const reached = t.kind === "dial" ? t.answered : leadTouches.inboundAt.some((at) => at > t.at && at < anchor.startTime);
         touches.push({
           rosterId: rosterByCrm.get(t.crmUserId)?.rosterId ?? null,
           crmUserId: t.crmUserId,
