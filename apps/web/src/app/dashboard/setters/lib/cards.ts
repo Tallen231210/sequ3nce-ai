@@ -220,7 +220,7 @@ export function buildCards(
           "pct",
           undefined,
           s
-            ? `${s.contacted} of ${s.newSelfBooks}${s.workedByOutbound > 0 ? ` · ${s.workedByOutbound} worked by outbound setters` : ""}${s.nobody > 0 ? ` · ${s.nobody} by nobody` : ""}${s.unknown > 0 ? ` · ${s.unknown} no lead in Close or closer-only` : ""}`
+            ? `${s.contacted} of ${s.newSelfBooks}${s.workedByOutbound > 0 ? ` · ${s.workedByOutbound} worked by outbound setters` : ""}${s.contactedByOthers > 0 ? ` · ${s.contactedByOthers} confirmed by closers or the owner` : ""}${s.nobody > 0 ? ` · ${s.nobody} by nobody` : ""}${s.unknown > 0 ? ` · ${s.unknown} no lead in Close` : ""}`
             : null,
         ),
         metric("response", s ? s.responseMedianWorkingMs : null, "hours"),

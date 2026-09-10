@@ -137,9 +137,12 @@ export const getSettersSets = query({
         // the ones an outbound setter worked instead sit in Unlabeled and
         // are named here so the two numbers explain each other.
         const workedByOutbound = selfBooks.filter((b) => b.classification.lane === "unattributed" && b.touches.some((t) => t.rosterId !== null && t.rosterId !== r.rosterId)).length;
-        const nobody = selfBooks.filter((b) => b.classification.lane === "self_booked_uncontacted").length;
-        // Self-books with no lead in Close, or touched only by people off the roster: nobody's miss we can name.
-        const unknown = Math.max(0, selfBooks.length - contacted.length - workedByOutbound - nobody);
+        const missed = selfBooks.filter((b) => b.classification.lane === "self_booked_uncontacted");
+        // Her misses split two ways: a closer or the owner confirmed it themselves, or nobody did.
+        const contactedByOthers = missed.filter((b) => b.touches.length > 0).length;
+        const nobody = missed.length - contactedByOthers;
+        // Self-books with no lead in Close: nothing to read.
+        const unknown = Math.max(0, selfBooks.length - contacted.length - workedByOutbound - missed.length);
         return {
           rosterId: r.rosterId,
           newSelfBooks: selfBooks.length,
@@ -147,6 +150,7 @@ export const getSettersSets = query({
           reached: contacted.filter((b) => hers(b).some((t) => t.reached)).length,
           coveragePct: selfBooks.length > 0 ? Math.round((contacted.length / selfBooks.length) * 100) : null,
           workedByOutbound,
+          contactedByOthers,
           nobody,
           unknown,
           responseMedianWorkingMs: median,

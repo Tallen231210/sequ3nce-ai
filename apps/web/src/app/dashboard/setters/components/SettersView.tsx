@@ -56,7 +56,7 @@ export function SettersView({
   const unlabeledTotal = live.filter((r) => r.lane === "unattributed").length;
   const stripNotes = [
     ...(unlabeledSelfBooked > 0
-      ? [`${bookings.labels.confirmation}: self-booked calls the confirmation setter handled, or nobody did. ${unlabeledSelfBooked} self-booked ${unlabeledSelfBooked === 1 ? "call" : "calls"} worked only by an outbound setter ${unlabeledSelfBooked === 1 ? "sits" : "sit"} in ${bookings.labels.unlabeled}.`]
+      ? [`${bookings.labels.confirmation}: self-booked calls the confirmation setter handled, a closer or the owner confirmed, or nobody did. ${unlabeledSelfBooked} self-booked ${unlabeledSelfBooked === 1 ? "call" : "calls"} worked only by an outbound setter ${unlabeledSelfBooked === 1 ? "sits" : "sit"} in ${bookings.labels.unlabeled}.`]
       : []),
     ...(unlabeledTotal > 0 ? [`${bookings.labels.unlabeled}: ${unlabeledTotal} ${unlabeledTotal === 1 ? "booking" : "bookings"} with no setter named (${unlabeledSelfBooked} self-booked, ${unlabeledTotal - unlabeledSelfBooked} hand-made or off-list). Listed below the sections.`] : []),
   ];

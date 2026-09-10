@@ -174,7 +174,10 @@ export function classifyBooking(i: ClassifyInput): Classification {
     // It sits in Unlabeled under that setter's name until someone claims it.
     return { ...base, lane: "unattributed", creditRosterIds: [], attributedBy: "none" };
   }
-  if (isFunnel && i.leadInClose && i.anyoneTouchedBefore === false) {
+  if (isFunnel && i.leadInClose) {
+    // A self-book nobody on the roster worked: the confirmation setter's
+    // miss, whether a closer or the owner confirmed it themselves or nobody
+    // did. (Roster touches were handled above.) Contact is known either way.
     return { ...base, lane: "self_booked_uncontacted", creditRosterIds: [], attributedBy: "event_name" };
   }
   return { ...base, lane: "unattributed", creditRosterIds: [], attributedBy: "none" };
