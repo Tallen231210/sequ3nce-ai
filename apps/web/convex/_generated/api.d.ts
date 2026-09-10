@@ -84,6 +84,7 @@ import type * as b2cWeeklyContest from "../b2cWeeklyContest.js";
 import type * as b2cWeeklyRoles from "../b2cWeeklyRoles.js";
 import type * as billing from "../billing.js";
 import type * as botAvatar from "../botAvatar.js";
+import type * as botOutcomeProbe from "../botOutcomeProbe.js";
 import type * as calendar from "../calendar.js";
 import type * as calendarBookings from "../calendarBookings.js";
 import type * as calendarCalls from "../calendarCalls.js";
@@ -401,6 +402,7 @@ declare const fullApi: ApiFromModules<{
   b2cWeeklyRoles: typeof b2cWeeklyRoles;
   billing: typeof billing;
   botAvatar: typeof botAvatar;
+  botOutcomeProbe: typeof botOutcomeProbe;
   calendar: typeof calendar;
   calendarBookings: typeof calendarBookings;
   calendarCalls: typeof calendarCalls;
