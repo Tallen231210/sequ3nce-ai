@@ -12,20 +12,13 @@ import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
-import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
+import { DEFAULT_CONNECT_SEC, answeredDurationSec } from "./lib/dialAnswered";
 
 const DEFAULT_THRESHOLDS = [0, 15, 30, 45, 60, 90, 120, 180];
 const BUCKETS: Array<[string, number, number]> = [
   ["0-9s", 0, 10], ["10-29s", 10, 30], ["30-44s", 30, 45], ["45-59s", 45, 60], ["60-89s", 60, 90], ["90-119s", 90, 120], ["120-179s", 120, 180], ["180s+", 180, Infinity],
 ];
 const EVENTS_TAKE = 8_000;
-
-/** Same reading of Close's disposition as lib/dialAnswered: anything but an explicit non-"answered" counts as answered. */
-function answeredSec(details: unknown): number | null {
-  const d = details as { disposition?: unknown; callDurationSec?: unknown } | undefined;
-  if (typeof d?.disposition === "string" && d.disposition.toLowerCase() !== "answered") return null;
-  return typeof d?.callDurationSec === "number" ? d.callDurationSec : 0;
-}
 
 export const sweep = internalQuery({
   args: { teamId: v.id("teams"), startDayKey: v.string(), endDayKey: v.string(), thresholds: v.optional(v.array(v.number())) },
@@ -60,7 +53,7 @@ export const sweep = internalQuery({
         const key = dayKeyInTz(e.occurredAt, tz);
         const d = byDay.get(key) ?? { dials: 0, answered: [] };
         d.dials += 1;
-        const sec = answeredSec(e.details);
+        const sec = answeredDurationSec(e.details);
         if (sec !== null) {
           d.answered.push(sec);
           const b = BUCKETS.find(([, lo, hi]) => sec >= lo && sec < hi);

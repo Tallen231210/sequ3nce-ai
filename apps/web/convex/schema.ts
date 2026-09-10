@@ -605,6 +605,8 @@ export default defineSchema({
         minGap: v.optional(v.number()),
       }),
     ),
+    /** When the Setters settings last kicked a rollup recount (after a connect-threshold change) — one chain at a time. */
+    setterRollupsRecountRequestedAt: v.optional(v.number()),
 
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.

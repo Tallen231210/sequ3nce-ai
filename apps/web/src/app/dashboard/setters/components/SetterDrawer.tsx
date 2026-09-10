@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { BookingsData, CardVM } from "../lib/cards";
+import type { BookingsData, CardVM, CrossCheckData } from "../lib/cards";
 import { BookingEvidenceList } from "./BookingEvidenceList";
 import { CadenceRows } from "./CadenceRows";
 import { EodRows } from "./EodRows";
@@ -18,6 +18,7 @@ export function SetterDrawer({
   clerkId,
   rangeStart,
   rangeEnd,
+  checks,
   onClose,
 }: {
   card: CardVM | null;
@@ -26,6 +27,7 @@ export function SetterDrawer({
   clerkId: string;
   rangeStart: number;
   rangeEnd: number;
+  checks?: CrossCheckData | null;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("bookings");
@@ -72,7 +74,7 @@ export function SetterDrawer({
         {card && active === "bookings" && <BookingEvidenceList rows={rows} timezone={timezone} />}
         {card?.rosterId && active === "speed" && <SpeedByDay clerkId={clerkId} rosterId={card.rosterId} rangeStart={rangeStart} rangeEnd={rangeEnd} timezone={timezone} />}
         {card?.rosterId && active === "cadence" && <CadenceRows clerkId={clerkId} rosterId={card.rosterId} rangeStart={rangeStart} rangeEnd={rangeEnd} timezone={timezone} />}
-        {card?.rosterId && active === "eod" && <EodRows clerkId={clerkId} rosterId={card.rosterId} rangeStart={rangeStart} rangeEnd={rangeEnd} />}
+        {card?.rosterId && active === "eod" && <EodRows rosterId={card.rosterId} checks={checks} />}
       </DialogContent>
     </Dialog>
   );

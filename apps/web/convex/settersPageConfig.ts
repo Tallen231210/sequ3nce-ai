@@ -6,6 +6,10 @@
 
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
+import { addDaysKey } from "./dataHealthCore";
+import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { teamHasSetterTeams } from "./setterTeamQueries";
@@ -77,6 +81,8 @@ export const getConfig = query({
       funnelPatterns: team.setterFunnelEventNamePatterns ?? [],
       tolerances: tolerancesFor(team.setterEodTolerances),
       toleranceDefaults: DEFAULT_TOLERANCES,
+      connectSec: team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC,
+      recountRequestedAt: team.setterRollupsRecountRequestedAt ?? null,
     };
   },
 });
@@ -128,6 +134,42 @@ export const setTolerances = mutation({
     const teamId = await manager(ctx, args.clerkId);
     await ctx.db.patch(teamId, { setterEodTolerances: cleanTolerances(args.tolerances) });
     return { ok: true };
+  },
+});
+
+const RECOUNT_DAYS = 14;
+const RECOUNT_COOLDOWN_MS = 10 * 60 * 1000;
+
+/**
+ * The team's connect threshold, from the Setters page. The ladder, the
+ * drawer and the flags read raw Close events and move at once; the cards'
+ * Connects for whole past days come from the daily rollups, so one recount
+ * of the last two weeks is kicked here — never a second chain while one may
+ * still be running (recountRange reschedules itself a day at a time).
+ */
+export const setConnectThreshold = mutation({
+  args: { clerkId: v.string(), thresholdSec: v.number() },
+  handler: async (ctx, args) => {
+    const teamId = await manager(ctx, args.clerkId);
+    if (!Number.isInteger(args.thresholdSec) || args.thresholdSec < 10 || args.thresholdSec > 600) {
+      throw new ConvexError("The threshold must be a whole number of seconds between 10 and 600");
+    }
+    const team = await ctx.db.get(teamId);
+    if (!team) throw new ConvexError("Team not found");
+    const nowMs = Date.now();
+    const unchanged = (team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC) === args.thresholdSec;
+    await ctx.db.patch(teamId, { setterConnectionThresholdSec: args.thresholdSec });
+    if (unchanged) return { ok: true, recount: "none" as const };
+    // One chain at a time. A recount reads the threshold when it runs, so a
+    // change made while one is running just needs another run after it.
+    const requestedAt = team.setterRollupsRecountRequestedAt ?? 0;
+    if (requestedAt > nowMs) return { ok: true, recount: "queued" as const }; // a deferred run is already waiting
+    const tz = (team as { timezone?: string }).timezone || DEFAULT_TIMEZONE;
+    const runAt = requestedAt > nowMs - RECOUNT_COOLDOWN_MS ? requestedAt + RECOUNT_COOLDOWN_MS : nowMs;
+    const endDayKey = dayKeyInTz(runAt, tz);
+    await ctx.db.patch(teamId, { setterRollupsRecountRequestedAt: runAt });
+    await ctx.scheduler.runAfter(Math.max(0, runAt - nowMs), internal.setterRollups.recountRange, { teamId, startDayKey: addDaysKey(endDayKey, -RECOUNT_DAYS), endDayKey });
+    return { ok: true, recount: runAt > nowMs ? ("queued" as const) : ("started" as const) };
   },
 });
 

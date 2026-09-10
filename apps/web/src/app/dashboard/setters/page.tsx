@@ -71,7 +71,7 @@ export default function SettersPage() {
             </button>
           </div>
         </div>
-        {clerkId && <SettingsDrawer clerkId={clerkId} open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+        {clerkId && <SettingsDrawer clerkId={clerkId} open={settingsOpen} onClose={() => setSettingsOpen(false)} checks={checks} />}
         {bookings === undefined && (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

@@ -49,7 +49,7 @@ export function SettersView({
         <TeamSection key={s.team} label={bookings.labels[s.team]} description={s.description} cards={cards[s.team]} onOpen={setOpen} />
       ))}
       <CoveragePanel lines={coverage} />
-      <SetterDrawer card={open} records={bookings.records} timezone={bookings.range.timezone} clerkId={clerkId} rangeStart={rangeStart} rangeEnd={rangeEnd} onClose={() => setOpen(null)} />
+      <SetterDrawer card={open} records={bookings.records} timezone={bookings.range.timezone} clerkId={clerkId} rangeStart={rangeStart} rangeEnd={rangeEnd} checks={checks} onClose={() => setOpen(null)} />
     </>
   );
 }

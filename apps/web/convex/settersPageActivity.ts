@@ -10,7 +10,7 @@ import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { dayKeyInTz } from "./closerPerformance";
 import { DAY_MS, dayKeyOf, readDailyStatsRange } from "./setterRollups";
-import { DEFAULT_CONNECT_SEC, dialConnected } from "./lib/dialAnswered";
+import { DEFAULT_CONNECT_SEC, answeredDurationSec, dialConnected } from "./lib/dialAnswered";
 
 const EDGE_TAKE = 4_000;
 const EOD_TAKE = 2_000;
@@ -19,6 +19,8 @@ export interface ActivityCounts {
   dials: number;
   answered: number;
   texts: number;
+  /** Answered dials lasting at least each ladder threshold, aligned with the ladder passed to loadUserDays. */
+  answeredAt?: number[];
 }
 
 export interface FiledSums {
@@ -174,6 +176,7 @@ export async function loadUserDays(
   endMs: number,
   tz: string,
   connectSec: number,
+  ladder?: number[],
 ): Promise<{ byDay: Map<string, ActivityCounts>; truncated: boolean }> {
   const rows = await ctx.db
     .query("setterLeadEvents")
@@ -186,11 +189,15 @@ export async function loadUserDays(
   for (const e of rows) {
     if (e.eventType !== "dial_outbound" && e.eventType !== "sms_outbound") continue;
     const key = dayKeyInTz(e.occurredAt, tz);
-    const c = byDay.get(key) ?? zero();
+    const c = byDay.get(key) ?? (ladder ? { ...zero(), answeredAt: ladder.map(() => 0) } : zero());
     if (e.eventType === "sms_outbound") c.texts += 1;
     else {
       c.dials += 1;
       if (dialConnected(e.details, connectSec)) c.answered += 1;
+      if (ladder && c.answeredAt) {
+        const sec = answeredDurationSec(e.details);
+        if (sec !== null) ladder.forEach((t, i) => { if (sec >= t) c.answeredAt![i] += 1; });
+      }
     }
     byDay.set(key, c);
   }

@@ -225,6 +225,7 @@ import type * as metaAdsConfig from "../metaAdsConfig.js";
 import type * as metaAdsInternal from "../metaAdsInternal.js";
 import type * as metaCapi from "../metaCapi.js";
 import type * as onboarding from "../onboarding.js";
+import type * as pickupThresholdSweep from "../pickupThresholdSweep.js";
 import type * as pipelineRepair from "../pipelineRepair.js";
 import type * as polar from "../polar.js";
 import type * as recallApi from "../recallApi.js";
@@ -540,6 +541,7 @@ declare const fullApi: ApiFromModules<{
   metaAdsInternal: typeof metaAdsInternal;
   metaCapi: typeof metaCapi;
   onboarding: typeof onboarding;
+  pickupThresholdSweep: typeof pickupThresholdSweep;
   pipelineRepair: typeof pipelineRepair;
   polar: typeof polar;
   recallApi: typeof recallApi;

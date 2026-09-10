@@ -17,7 +17,7 @@ import { resolveAuthUser } from "./setterGhlOauth";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 import { loadUserDays } from "./settersPageActivity";
 import { resolveSettersPageAccess } from "./settersPageGate";
-import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
+import { DEFAULT_CONNECT_SEC, ladderFor } from "./lib/dialAnswered";
 import { crossCheckDay, tolerancesFor, type CrossCheckFlag, type CrossCheckTolerances, type FiledDay, type MeasuredDay } from "./lib/eodCrossCheck";
 
 const ENTRIES_TAKE = 4_000;
@@ -30,6 +30,12 @@ export interface DayCheck {
   filed: FiledDay | null;
   measured: MeasuredDay;
   flags: CrossCheckFlag[];
+  /**
+   * Answered dials in Close lasting at least each threshold (seconds) — what
+   * each connect definition would count as pick-ups that day. Null when the
+   * setter has no Close user or files the confirmation form.
+   */
+  ladder: { thresholds: number[]; counts: number[] } | null;
 }
 
 export interface RosterCheck {
@@ -51,7 +57,9 @@ export interface CrossCheckRange {
   endKey: string;
   timezone: string;
   tolerances: CrossCheckTolerances;
+  /** The team's connect threshold — the ladder step the cards and flags count. */
   connectSec: number;
+  ladderThresholds: number[];
   byRoster: RosterCheck[];
   truncated: string[];
 }
@@ -81,6 +89,7 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
   const tz = (team as { timezone?: string }).timezone || DEFAULT_TIMEZONE;
   const tolerances = tolerancesFor((team as { setterEodTolerances?: Partial<CrossCheckTolerances> }).setterEodTolerances);
   const connectSec = team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
+  const ladderThresholds = ladderFor(connectSec);
   const startKey = dayKeyInTz(startMs, tz);
   const todayKey = dayKeyInTz(nowMs, tz);
   const yesterdayKey = addDaysKey(todayKey, -1);
@@ -107,7 +116,7 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
     const active = row.active !== false;
     let activity: Map<string, DayActivity> | null = null;
     if (linked && role === "booking") {
-      const days = await loadUserDays(ctx, teamId, row.crmUserId as string, startMs, endMs, tz, connectSec);
+      const days = await loadUserDays(ctx, teamId, row.crmUserId as string, startMs, endMs, tz, connectSec, ladderThresholds);
       if (days.truncated) truncated.push(`${row.name}'s Close events`);
       activity = days.byDay;
     }
@@ -117,13 +126,15 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
       // The form they filed decides which numbers are compared; the roster's
       // role only fills in for a day they haven't filed yet.
       const dayRole: "booking" | "confirmation" = entry?.formShape ?? role;
-      const measured = measuredDayFor(cohorts.records, { rosterId, role: dayRole, linked }, key, activity?.get(key) ?? (activity ? { dials: 0, answered: 0 } : null));
+      const dayActivity = activity?.get(key) ?? (activity ? { dials: 0, answered: 0, answeredAt: ladderThresholds.map(() => 0) } : null);
+      const measured = measuredDayFor(cohorts.records, { rosterId, role: dayRole, linked }, key, dayActivity);
       const filed = entry ? filedOf(entry, dayRole) : null;
       const flags = filed ? crossCheckDay(filed, measured, tolerances) : [];
       // A filed day always counts as due (a Sunday they worked is still a
       // day they reported); an unfiled one only once it is over, Mon–Sat.
       const due = active && (entry !== null || (!isSunday(key) && key <= yesterdayKey));
-      days.push({ dayKey: key, due, filed, measured, flags });
+      const ladder = dayRole === "booking" && dayActivity?.answeredAt ? { thresholds: ladderThresholds, counts: dayActivity.answeredAt } : null;
+      days.push({ dayKey: key, due, filed, measured, flags, ladder });
     }
     const filedDays = days.filter((d) => d.filed !== null);
     if (filedDays.length === 0 && !active) continue; // gone, and nothing to check
@@ -141,7 +152,7 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
     });
   }
   byRoster.sort((a, b) => b.daysFlagged - a.daysFlagged || a.name.localeCompare(b.name));
-  return { startKey, endKey, timezone: tz, tolerances, connectSec, byRoster, truncated };
+  return { startKey, endKey, timezone: tz, tolerances, connectSec, ladderThresholds, byRoster, truncated };
 }
 
 /** One team-local day, for the daily post: roster id → that day's check. */

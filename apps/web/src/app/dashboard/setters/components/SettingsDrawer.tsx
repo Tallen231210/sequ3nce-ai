@@ -9,19 +9,19 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CloseConnectionCard } from "../../setter-data/components/settings/CloseConnectionCard";
-import { ConnectionThresholdConfig } from "../../setter-data/components/settings/ConnectionThresholdConfig";
-import { useTeam } from "@/hooks/useTeam";
 import { NotificationsCard } from "../../setter-eods/NotificationsCard";
 import { RosterEditor } from "./RosterEditor";
 import { TeamConfigForm } from "./TeamConfigForm";
 import { ToleranceForm } from "./ToleranceForm";
+import { ConnectLadder } from "./ConnectLadder";
+import { ConnectThresholdForm } from "./ConnectThresholdForm";
+import type { CrossCheckData } from "../lib/cards";
 
 type Tab = "roster" | "team" | "posts" | "crm";
 
-export function SettingsDrawer({ clerkId, open, onClose }: { clerkId: string; open: boolean; onClose: () => void }) {
+export function SettingsDrawer({ clerkId, open, onClose, checks }: { clerkId: string; open: boolean; onClose: () => void; checks?: CrossCheckData | null }) {
   const [tab, setTab] = useState<Tab>("roster");
   const [flash, setFlash] = useState<string | null>(null);
-  const { team } = useTeam();
   const installation = useQuery(api.setterGhlOauth.getMyInstallationStatus, clerkId ? { clerkId } : "skip");
   // The Close OAuth callback lands on the old route with ?connected=1 or
   // ?ghl_error=…; the bounce forwards the query string here.
@@ -62,9 +62,10 @@ export function SettingsDrawer({ clerkId, open, onClose }: { clerkId: string; op
               <h3 className="text-sm font-semibold">What counts as a connect</h3>
               <p className="mb-3 text-xs text-muted-foreground">
                 Close marks a dial "answered" whenever the line picked up, voicemail included, so a connect here is an answered call at or over this many
-                seconds. Tune it until the connects on the cards agree with the pick ups your setters file.
+                seconds. It can't tell a short human hang-up from a machine. Tune it until the connects on the cards agree with the pick ups your setters file.
               </p>
-              <ConnectionThresholdConfig thresholdSec={(team as { setterConnectionThresholdSec?: number } | null | undefined)?.setterConnectionThresholdSec ?? 60} />
+              <ConnectLadder checks={checks} />
+              <ConnectThresholdForm clerkId={clerkId} />
             </section>
             <ToleranceForm clerkId={clerkId} />
           </div>

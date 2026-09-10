@@ -174,9 +174,13 @@ const noMeasure: MeasuredDay = {
   dials: null, pickUps: null, sets: null, callsOnCalendar: null, callsShown: null, callsUnknown: null,
   newSelfBooked: null, contacted: null, reached: null, confirmedOnCalendar: null, confirmedShowed: null, confirmedUnknown: null,
 };
+const LADDER = [30, 45, 60, 90];
+/** A plausible ladder around the measured 60s+ count: many short answers, a few long ones. */
+const ladderAround = (at60: number | null) =>
+  at60 === null ? null : { thresholds: LADDER, counts: [Math.round(at60 * 4.2) + 3, Math.round(at60 * 2.1) + 1, at60, Math.max(0, Math.round(at60 * 0.6))] };
 const day = (daysAgo: number, filed: FiledDay | null, measured: Partial<MeasuredDay>, due = true): CrossCheckData["byRoster"][number]["days"][number] => {
   const m = { ...noMeasure, ...measured };
-  return { dayKey: dayKey(daysAgo), due, filed, measured: m, flags: filed ? crossCheckDay(filed, m, DEFAULT_TOLERANCES) : [] };
+  return { dayKey: dayKey(daysAgo), due, filed, measured: m, flags: filed ? crossCheckDay(filed, m, DEFAULT_TOLERANCES) : [], ladder: ladderAround(m.pickUps) };
 };
 const roster = (rosterId: string, name: string, role: "booking" | "confirmation", linked: boolean, days: CrossCheckData["byRoster"][number]["days"]): CrossCheckData["byRoster"][number] => {
   const filedDays = days.filter((d) => d.filed !== null);
@@ -196,6 +200,7 @@ export const CHECKS: CrossCheckData = {
   timezone: "America/New_York",
   tolerances: DEFAULT_TOLERANCES,
   connectSec: 60,
+  ladderThresholds: LADDER,
   truncated: [],
   byRoster: [
     roster("r-ezra", "Ezra", "booking", true, [

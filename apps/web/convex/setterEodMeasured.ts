@@ -142,6 +142,7 @@ export function measureConfirmationDay(records: BookingRecord[], rosterId: strin
 export interface DayActivity {
   dials: number;
   answered: number;
+  answeredAt?: number[];
 }
 
 export function measuredDayFor(

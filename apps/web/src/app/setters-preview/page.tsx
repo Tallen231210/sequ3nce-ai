@@ -17,9 +17,9 @@ export default function SettersPreviewPage() {
       <button type="button" onClick={() => setSettings(true)} className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm">
         Settings (drawer shell only — its lists need a live login)
       </button>
-      <SettingsDrawer clerkId="preview" open={settings} onClose={() => setSettings(false)} />
+      <SettingsDrawer clerkId="preview" open={settings} onClose={() => setSettings(false)} checks={CHECKS} />
       <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-        Preview · fictional team, fictional people · the drawer's Speed and EOD tabs need a live backend and stay empty here; the EOD cross-check on the cards is fixture data run through the real rule.
+        Preview · fictional team, fictional people · the drawer's Speed and Cadence tabs need a live backend and stay empty here; the EOD tab, the cards' EOD line and the connect ladder in settings are fixture data run through the real rule.
       </div>
       <SettersView bookings={BOOKINGS} sets={SETS} activity={ACTIVITY} speed={SPEED} cadence={CADENCE} checks={CHECKS} clerkId="preview" rangeStart={BOOKINGS.range.startMs} rangeEnd={BOOKINGS.range.endMs} />
     </div>
