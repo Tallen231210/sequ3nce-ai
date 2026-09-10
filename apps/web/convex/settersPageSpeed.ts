@@ -53,6 +53,8 @@ export interface SpeedSummary {
   count: number;
   medianWorkingMs: number | null;
   p90WorkingMs: number | null;
+  /** The same leads on the wall clock — a lead that lands at 9pm and is called at 9:05am is 0 working hours and 12 clock hours. */
+  medianElapsedMs: number | null;
   noArrivalCount: number;
   neverContactedCount: number;
   /** Credited by the calendar tag alone — contacted, but Close holds no time for it. */
@@ -75,12 +77,14 @@ export interface SetterRef {
 }
 
 function summarise(rows: SpeedLeadRow[], clipped: number, unread: number): SpeedSummary {
-  const timed = rows.filter((r) => r.workingMs !== null).map((r) => r.workingMs as number);
-  const { median, p90 } = percentiles(timed);
+  const timedRows = rows.filter((r) => r.workingMs !== null);
+  const { median, p90 } = percentiles(timedRows.map((r) => r.workingMs as number));
+  const elapsed = percentiles(timedRows.map((r) => r.elapsedMs as number)).median;
   return {
-    count: timed.length,
+    count: timedRows.length,
     medianWorkingMs: median,
     p90WorkingMs: p90,
+    medianElapsedMs: elapsed,
     noArrivalCount: rows.filter((r) => r.note === "no arrival time" || r.note === "touched before arrival").length,
     neverContactedCount: rows.filter((r) => r.note === "never contacted").length,
     untimedCount: rows.filter((r) => r.note === "contacted, time unknown").length,

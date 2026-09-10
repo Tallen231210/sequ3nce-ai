@@ -116,7 +116,7 @@ const filed = (o: Partial<NonNullable<ActivityData["byRoster"][number]["filed"]>
   newSelfBooked: 0, contacted: 0, reached: 0, confirmed: 0, confirmedOnCalendar: 0, confirmedShowed: 0, ...o,
 });
 const speed = (medianH: number | null, count: number, noArrival: number) => ({
-  count, medianWorkingMs: medianH === null ? null : medianH * H, p90WorkingMs: medianH === null ? null : medianH * 3 * H,
+  count, medianWorkingMs: medianH === null ? null : medianH * H, p90WorkingMs: medianH === null ? null : medianH * 3 * H, medianElapsedMs: medianH === null ? null : medianH * 4 * H,
   noArrivalCount: noArrival, neverContactedCount: 2, untimedCount: 0, selfBookedCount: 4, clippedCount: 0, unreadCount: 0,
 });
 

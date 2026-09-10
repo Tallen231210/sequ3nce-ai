@@ -25,7 +25,7 @@ export function SpeedByDay({ clerkId, rosterId, rangeStart, rangeEnd, timezone }
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <span className="text-2xl font-semibold tabular-nums">{hours(s.medianWorkingMs)}</span>
-          <span className="ml-2 text-muted-foreground">median · slowest 10% over {hours(s.p90WorkingMs)} · {int(s.count)} leads timed</span>
+          <span className="ml-2 text-muted-foreground">working hours · {hours(s.medianElapsedMs)} on the clock · slowest 10% over {hours(s.p90WorkingMs)} · {int(s.count)} leads timed</span>
           <div className="text-xs text-muted-foreground">Working hours {data.basis}. {data.kind === "confirmation" ? "Clock starts at the self-booking." : "Clock starts when the lead lands in Close."}</div>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
