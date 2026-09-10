@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CloserStatsView } from "../closer-stats/CloserStatsView";
 import { PendingOutcomesNotice } from "./components/PendingOutcomesNotice";
 import { GeistMono } from "geist/font/mono";
 import { useQuery } from "convex/react";
@@ -17,12 +18,13 @@ import { CloserScorecardSection } from "@/components/closer-scorecard/CloserScor
 import { useTeam } from "@/hooks/useTeam";
 
 const HEADER = {
- title: "Team Performance",
- description: "Daily sales scoreboard — funnel, rates and cash by closer",
+ title: "Closer Performance",
+ description: "Daily sales scoreboard — funnel, rates and cash by closer, and each closer's stats",
 };
 
 const TABS = [
  ["team", "Team"],
+ ["closers", "Closer stats"],
  ["daily", "Daily numbers"],
  ["year", "Year"],
  ["settings", "Settings"],
@@ -77,8 +79,17 @@ export default function TeamPerformancePage() {
     (team as { betaFeatures?: string[] } | null | undefined)?.betaFeatures ?? []
   ).includes("closer_scorecard");
   const tabs: ReadonlyArray<readonly [Tab, string]> = hasCloserScorecard
-    ? [TABS[0], TABS[1], SCORECARD_TAB, TABS[2], TABS[3]]
+    ? [TABS[0], TABS[1], TABS[2], SCORECARD_TAB, TABS[3], TABS[4]]
     : TABS;
+  // A link can land on a tab (?tab=closers, from the old Closer Stats route).
+  const [closerSubTab, setCloserSubTab] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wanted = params.get("tab");
+    if (wanted && (TABS.some(([id]) => id === wanted) || wanted === "scorecard")) setTab(wanted as Tab);
+    setCloserSubTab(params.get("sub"));
+    if (wanted) window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
  const data = useQuery(
     api.closerPerformanceQueries.getTeamPerformance,
@@ -135,13 +146,13 @@ export default function TeamPerformancePage() {
         </nav>
 
         {/* Sits above the board, because the board is what looks wrong. */}
-        {tab !== "settings" && tab !== "scorecard" && (
+        {tab !== "settings" && tab !== "scorecard" && tab !== "closers" && (
           <PendingOutcomesNotice teamId={data.teamId} />
         )}
 
         {/* The scorecard has its own RangeControl; PeriodNav would be a
             second, disagreeing range picker. */}
-        {tab !== "settings" && tab !== "year" && tab !== "scorecard" && (
+        {tab !== "settings" && tab !== "year" && tab !== "scorecard" && tab !== "closers" && (
  <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey={thisMonth}
@@ -163,6 +174,7 @@ export default function TeamPerformancePage() {
             onWeekChange={setWeekIndex}
           />
         )}
+        {tab === "closers" && <CloserStatsView embedded initialSubTab={closerSubTab} />}
         {tab === "daily" && <DailyGrid monthKey={data.monthKey} />}
         {tab === "scorecard" && <CloserScorecardSection />}
  {tab === "year" && (

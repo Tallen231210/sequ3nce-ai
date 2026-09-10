@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
-import { LayoutDashboard, Radio, Calendar, Phone, Users, CreditCard, Settings, BarChart3, BookMarked, TrendingUp, FileText, MessageSquareText, Briefcase, UserCheck, UserCog, Sparkles, Trophy, Wallet, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Radio, Calendar, Phone, Users, CreditCard, Settings, BookMarked, TrendingUp, FileText, MessageSquareText, UserCheck, UserCog, Sparkles, Trophy, Wallet, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
 import { Logo } from "@/components/ui/logo";
@@ -37,8 +37,9 @@ const baseNavigation = [
   // Team-level daily scoreboard (funnel, rates, cash by closer). Sits above
   // Closer Stats deliberately: this is the floor-wide view, Closer Stats is
   // the per-rep drilldown.
-  { name: "Team Performance", href: "/dashboard/team-performance", icon: Trophy },
-  { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
+  { name: "Closer Performance", href: "/dashboard/team-performance", icon: Trophy },
+  // Closer Stats lives inside Closer Performance now (its "Closer stats" tab);
+  // /dashboard/closer-stats redirects there so old links still land.
   // Manager Mode — the manager's OWN meetings, not their team's calls. Sits
   // here rather than with the call views because nothing in it is a sales
   // call, and nothing in it is visible to anyone but the manager who owns it.
@@ -57,7 +58,7 @@ const baseNavigation = [
   { name: "Setter EODs", href: "/dashboard/setter-eods", icon: ClipboardList },
   { name: "Playbook", href: "/dashboard/playbook", icon: BookMarked },
   { name: "Resources", href: "/dashboard/resources", icon: FileText },
-  { name: "Recruiting", href: "/dashboard/recruiting", icon: Briefcase },
+  // Recruiting is a "coming soon" placeholder — not in a paying manager's menu.
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
@@ -126,6 +127,10 @@ export function Sidebar() {
     ? eodFiltered.filter((item) => item.href !== "/dashboard/setter-data" && item.href !== "/dashboard/setter-eods")
     : eodFiltered.filter((item) => item.href !== "/dashboard/setters");
 
+  // Then whatever this team chose to hide (Settings → per-team; CLI today).
+  const hidden = new Set((team as { hiddenDashboardTabs?: string[] } | null | undefined)?.hiddenDashboardTabs ?? []);
+  const teamFiltered = settersFiltered.filter((item) => !hidden.has(item.href));
+
   // Then by what this team's plan actually includes.
   //
   // Live Calls, Playbook and Recordings all exist because our meeting bot is
@@ -133,8 +138,8 @@ export function Sidebar() {
   // empty — showing them advertises something the customer didn't buy and
   // makes the product look broken rather than smaller.
   const withoutBotPages = tierHas(team?.productTier, "meetingBot")
-    ? settersFiltered
-    : settersFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
+    ? teamFiltered
+    : teamFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
   const filteredBase = tierHas(team?.productTier, "callIntelligence")
     ? withoutBotPages
     : withoutBotPages.filter((item) => !RECORDING_ONLY_ROUTES.has(item.href));

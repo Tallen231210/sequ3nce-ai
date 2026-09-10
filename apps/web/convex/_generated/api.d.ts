@@ -145,6 +145,7 @@ import type * as complianceNotifications from "../complianceNotifications.js";
 import type * as complianceReview from "../complianceReview.js";
 import type * as complianceSettings from "../complianceSettings.js";
 import type * as crons from "../crons.js";
+import type * as dashboardConfig from "../dashboardConfig.js";
 import type * as dataHealthBench from "../dataHealthBench.js";
 import type * as dataHealthCore from "../dataHealthCore.js";
 import type * as dataHealthNotifications from "../dataHealthNotifications.js";
@@ -463,6 +464,7 @@ declare const fullApi: ApiFromModules<{
   complianceReview: typeof complianceReview;
   complianceSettings: typeof complianceSettings;
   crons: typeof crons;
+  dashboardConfig: typeof dashboardConfig;
   dataHealthBench: typeof dataHealthBench;
   dataHealthCore: typeof dataHealthCore;
   dataHealthNotifications: typeof dataHealthNotifications;

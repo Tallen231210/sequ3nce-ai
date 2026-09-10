@@ -616,6 +616,8 @@ export default defineSchema({
     setterCreditTouchAfterBooking: v.optional(v.boolean()),
     /** Attribution rule: a set needs the setter's initials (or a DM link name, or a claim); a Close touch alone never credits. */
     setterSetsNeedInitials: v.optional(v.boolean()),
+    /** Dashboard sidebar entries hidden for this team, by href ("/dashboard/playbook"). The routes keep working. */
+    hiddenDashboardTabs: v.optional(v.array(v.string())),
 
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.

@@ -393,7 +393,7 @@ export default function OnboardingPage() {
             caption="AI-scored recordings, chapter-strip navigation, coaching playlists"
           />
           <DiscoveryLink
-            href="/dashboard/closer-stats"
+            href="/dashboard/team-performance?tab=closers"
             label="Closer Stats"
             caption="Close rate, cash collected, avg deal size, talk ratio, ROI per closer"
           />
