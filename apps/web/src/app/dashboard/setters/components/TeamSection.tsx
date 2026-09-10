@@ -14,15 +14,13 @@ function Metric({ m }: { m: MetricVM }) {
   const hasFiled = m.filed !== undefined;
   return (
     <div className="min-w-0" title={m.hint}>
-      <div className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">{m.label}</div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-base font-semibold tabular-nums">{show(m, m.measured)}</span>
-        {hasFiled && (
-          <span className={`text-[11px] tabular-nums ${m.drift ? "font-medium text-amber-700" : "text-muted-foreground"}`}>
-            filed {show(m, m.filed)}
-          </span>
-        )}
-      </div>
+      <div className="text-[11px] uppercase leading-tight tracking-wide text-muted-foreground">{m.label}</div>
+      <div className="text-base font-semibold tabular-nums">{show(m, m.measured)}</div>
+      {hasFiled && (
+        <div className={`text-[11px] tabular-nums ${m.drift ? "font-medium text-amber-700" : "text-muted-foreground"}`} title="What they typed on their EOD for the same days">
+          filed {show(m, m.filed)}
+        </div>
+      )}
     </div>
   );
 }
@@ -47,7 +45,7 @@ function SetterCard({ card, onOpen }: { card: CardVM; onOpen: (card: CardVM) => 
         )}
         {card.note && <span className="text-xs text-muted-foreground">{card.note}</span>}
       </div>
-      <div className="grid grid-cols-3 gap-x-4 gap-y-3 sm:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-3 gap-x-3 gap-y-3 sm:grid-cols-4 xl:grid-cols-6">
         {card.metrics.map((m) => (
           <Metric key={m.key} m={m} />
         ))}

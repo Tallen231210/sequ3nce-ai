@@ -291,6 +291,7 @@ import type * as setterTeamRealDataTeardown from "../setterTeamRealDataTeardown.
 import type * as setterTeamTouches from "../setterTeamTouches.js";
 import type * as settersPageActivity from "../settersPageActivity.js";
 import type * as settersPageBench from "../settersPageBench.js";
+import type * as settersPageConfig from "../settersPageConfig.js";
 import type * as settersPageGate from "../settersPageGate.js";
 import type * as settersPageLabels from "../settersPageLabels.js";
 import type * as settersPageQueries from "../settersPageQueries.js";
@@ -598,6 +599,7 @@ declare const fullApi: ApiFromModules<{
   setterTeamTouches: typeof setterTeamTouches;
   settersPageActivity: typeof settersPageActivity;
   settersPageBench: typeof settersPageBench;
+  settersPageConfig: typeof settersPageConfig;
   settersPageGate: typeof settersPageGate;
   settersPageLabels: typeof settersPageLabels;
   settersPageQueries: typeof settersPageQueries;

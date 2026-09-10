@@ -51,6 +51,7 @@ const baseNavigation = [
   // handles the not-yet-installed state. Hidden only when an admin
   // explicitly sets team.setterDataEnabled = false (kill switch).
   { name: "Setter Data", href: "/dashboard/setter-data", icon: UserCheck },
+  { name: "Setters", href: "/dashboard/setters", icon: UserCheck },
   // Setter EODs — beta-gated: only teams whose setters file end-of-day forms
   // see it (filtered below). Roster + links + the board live here.
   { name: "Setter EODs", href: "/dashboard/setter-eods", icon: ClipboardList },
@@ -117,6 +118,14 @@ export function Sidebar() {
     ? setterFiltered
     : setterFiltered.filter((item) => item.href !== "/dashboard/setter-eods");
 
+  // Setters (one page on the attribution engine) replaces Setter Data and
+  // Setter EODs for teams with the setter_teams flag; everyone else keeps
+  // the two old entries and never sees the new one.
+  const flags = (team as { betaFeatures?: string[] } | null | undefined)?.betaFeatures ?? [];
+  const settersFiltered = flags.includes("setter_teams")
+    ? eodFiltered.filter((item) => item.href !== "/dashboard/setter-data" && item.href !== "/dashboard/setter-eods")
+    : eodFiltered.filter((item) => item.href !== "/dashboard/setters");
+
   // Then by what this team's plan actually includes.
   //
   // Live Calls, Playbook and Recordings all exist because our meeting bot is
@@ -124,8 +133,8 @@ export function Sidebar() {
   // empty — showing them advertises something the customer didn't buy and
   // makes the product look broken rather than smaller.
   const withoutBotPages = tierHas(team?.productTier, "meetingBot")
-    ? eodFiltered
-    : eodFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
+    ? settersFiltered
+    : settersFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
   const filteredBase = tierHas(team?.productTier, "callIntelligence")
     ? withoutBotPages
     : withoutBotPages.filter((item) => !RECORDING_ONLY_ROUTES.has(item.href));

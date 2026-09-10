@@ -9,13 +9,14 @@
 
 import { useState } from "react";
 import { useQuery } from "convex/react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Settings2 } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../setter-data/components/DateRangeSelect";
 import { DataHealthCard } from "../setter-eods/DataHealthCard";
 import { SettersView } from "./components/SettersView";
+import { SettingsDrawer } from "./components/SettingsDrawer";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -24,6 +25,7 @@ export default function SettersPage() {
   const flags = (team as { betaFeatures?: string[] } | null | undefined)?.betaFeatures ?? [];
   const flagged = flags.includes("setter_teams");
   const [range, setRange] = useState(() => ({ start: Date.now() - 7 * DAY_MS, end: Date.now() }));
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const args = clerkId && flagged ? { clerkId, rangeStart: range.start, rangeEnd: range.end } : "skip";
   const bookings = useQuery(api.settersPageQueries.getSettersBookings, args);
   const sets = useQuery(api.settersPageQueries.getSettersSets, args);
@@ -58,8 +60,15 @@ export default function SettersPage() {
       <div className="space-y-5 px-6 py-6 pb-16">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">Last 7 days by default; up to 14 in one look.</p>
-          <DateRangeSelect rangeStart={range.start} rangeEnd={range.end} onChange={(start, end) => setRange({ start, end })} />
+          <div className="flex items-center gap-2">
+            <DateRangeSelect rangeStart={range.start} rangeEnd={range.end} onChange={(start, end) => setRange({ start, end })} />
+            <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm hover:border-foreground/40">
+              <Settings2 className="h-4 w-4" />
+              Settings
+            </button>
+          </div>
         </div>
+        {clerkId && <SettingsDrawer clerkId={clerkId} open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
         {bookings === undefined && (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
