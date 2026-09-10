@@ -1,0 +1,85 @@
+"use client";
+
+import type { CardVM, MetricVM } from "../lib/cards";
+import { hours, int, money, pct } from "../lib/format";
+
+function show(m: MetricVM, v: number | null | undefined): string {
+  if (m.format === "pct") return pct(v);
+  if (m.format === "money") return money(v);
+  if (m.format === "hours") return hours(v);
+  return int(v);
+}
+
+function Metric({ m }: { m: MetricVM }) {
+  const hasFiled = m.filed !== undefined;
+  return (
+    <div className="min-w-0" title={m.hint}>
+      <div className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">{m.label}</div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-base font-semibold tabular-nums">{show(m, m.measured)}</span>
+        {hasFiled && (
+          <span className={`text-[11px] tabular-nums ${m.drift ? "font-medium text-amber-700" : "text-muted-foreground"}`}>
+            filed {show(m, m.filed)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SetterCard({ card, onOpen }: { card: CardVM; onOpen: (card: CardVM) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(card)}
+      className="w-full rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="mb-3 flex flex-wrap items-baseline gap-2">
+        <span className="font-medium">{card.name}</span>
+        {!card.active && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">inactive</span>}
+        {card.team !== "dm" && !card.linked && (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800" title="No Close user linked on the roster, so dials and texts can't be counted">
+            not linked
+          </span>
+        )}
+        {!card.configured && (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">not in roster</span>
+        )}
+        {card.note && <span className="text-xs text-muted-foreground">{card.note}</span>}
+      </div>
+      <div className="grid grid-cols-3 gap-x-4 gap-y-3 sm:grid-cols-4 lg:grid-cols-6">
+        {card.metrics.map((m) => (
+          <Metric key={m.key} m={m} />
+        ))}
+      </div>
+    </button>
+  );
+}
+
+/** One team type: a card per person, measured beside filed. */
+export function TeamSection({
+  label,
+  description,
+  cards,
+  onOpen,
+}: {
+  label: string;
+  description: string;
+  cards: CardVM[];
+  onOpen: (card: CardVM) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-5 py-3.5">
+        <h2 className="text-sm font-semibold">{label}</h2>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="grid gap-3 p-4 md:grid-cols-2">
+        {cards.length === 0 && <p className="text-sm text-muted-foreground">Nobody on this team yet — add them in settings.</p>}
+        {cards.map((c) => (
+          <SetterCard key={c.key} card={c} onOpen={onOpen} />
+        ))}
+      </div>
+    </section>
+  );
+}

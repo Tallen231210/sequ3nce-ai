@@ -1,0 +1,83 @@
+"use client";
+
+// ============================================================================
+// Setters — one page per team on the attribution engine. Three subscriptions
+// (bookings by call date, sets by booked date, Close activity) merged per
+// person on the client; a drawer per setter. Only teams with the
+// setter_teams flag see it; the sidebar hides it for everyone else.
+// ============================================================================
+
+import { useState } from "react";
+import { useQuery } from "convex/react";
+import { Loader2 } from "lucide-react";
+import { api } from "../../../../convex/_generated/api";
+import { Header } from "@/components/dashboard/header";
+import { useTeam } from "@/hooks/useTeam";
+import { DateRangeSelect } from "../setter-data/components/DateRangeSelect";
+import { DataHealthCard } from "../setter-eods/DataHealthCard";
+import { SettersView } from "./components/SettersView";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export default function SettersPage() {
+  const { team, clerkId, isLoading } = useTeam();
+  const flags = (team as { betaFeatures?: string[] } | null | undefined)?.betaFeatures ?? [];
+  const flagged = flags.includes("setter_teams");
+  const [range, setRange] = useState(() => ({ start: Date.now() - 7 * DAY_MS, end: Date.now() }));
+  const args = clerkId && flagged ? { clerkId, rangeStart: range.start, rangeEnd: range.end } : "skip";
+  const bookings = useQuery(api.settersPageQueries.getSettersBookings, args);
+  const sets = useQuery(api.settersPageQueries.getSettersSets, args);
+  const activity = useQuery(api.settersPageQueries.getSettersActivity, args);
+
+  if (isLoading) {
+    return (
+      <>
+        <Header title="Setters" />
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      </>
+    );
+  }
+  if (!flagged) {
+    return (
+      <>
+        <Header title="Setters" />
+        <div className="px-6 py-12">
+          <div className="mx-auto max-w-xl rounded-lg border border-border bg-card p-8 text-center">
+            <h2 className="text-lg font-semibold">Not switched on for this team</h2>
+            <p className="mt-2 text-sm text-muted-foreground">The Setters page is enabled per team. Setter Data and Setter EODs are still in the sidebar.</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      <Header title="Setters" description="Every setter, by team — what the calendar and Close measured, beside what they filed." />
+      <div className="space-y-5 px-6 py-6 pb-16">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">Last 7 days by default; up to 14 in one look.</p>
+          <DateRangeSelect rangeStart={range.start} rangeEnd={range.end} onChange={(start, end) => setRange({ start, end })} />
+        </div>
+        {bookings === undefined && (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {bookings === null && <p className="text-sm text-muted-foreground">Nothing to show for this range.</p>}
+        {bookings && (
+          <SettersView
+            bookings={bookings}
+            sets={sets ?? null}
+            activity={activity ?? null}
+            clerkId={clerkId}
+            rangeStart={range.start}
+            rangeEnd={range.end}
+            health={<DataHealthCard />}
+          />
+        )}
+      </div>
+    </>
+  );
+}
