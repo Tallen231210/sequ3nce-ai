@@ -93,3 +93,46 @@ export const rulesBench = internalQuery({
     return { allPass: cases.every((c) => c.pass), results: cases };
   },
 });
+
+/**
+ * Diagnostic: where do a team's leads' arrival times come from, and how fast
+ * is the first touch by anyone? Read-only; run on production for one team.
+ *   npx convex run settersPageBench:arrivalAudit '{"teamId":"…","days":7}' --prod
+ */
+export const arrivalAudit = internalQuery({
+  args: { teamId: v.id("teams"), days: v.number() },
+  handler: async (ctx, args) => {
+    const endMs = Date.now();
+    const startMs = endMs - args.days * 24 * 60 * 60 * 1000;
+    const leads = await ctx.db
+      .query("setterLeads")
+      .withIndex("by_team_and_date_added", (q) => q.eq("teamId", args.teamId).gte("dateAdded", startMs).lt("dateAdded", endMs))
+      .order("desc")
+      .take(2_000);
+    const FIVE = 5 * 60 * 1000;
+    const buckets = { total: 0, inferredDate: 0, dialByPersonWithin5m: 0, dialNoUserWithin5m: 0, smsWithin5m: 0, noDialYet: 0, dialLater: 0 };
+    const delaysMin: number[] = [];
+    const sample: Array<Record<string, unknown>> = [];
+    for (const l of leads) {
+      if (l.isInternal === true) continue;
+      buckets.total += 1;
+      if (l.dateAddedInferred === true) buckets.inferredDate += 1;
+      const d = l.firstDialAt;
+      if (d === undefined) buckets.noDialYet += 1;
+      else if (Math.abs(d - l.dateAdded) <= FIVE) {
+        if (l.firstDialByUserId) buckets.dialByPersonWithin5m += 1;
+        else buckets.dialNoUserWithin5m += 1;
+      } else {
+        buckets.dialLater += 1;
+        delaysMin.push(Math.round((d - l.dateAdded) / 60000));
+      }
+      if (l.firstSmsOutboundAt !== undefined && Math.abs(l.firstSmsOutboundAt - l.dateAdded) <= FIVE) buckets.smsWithin5m += 1;
+      if (sample.length < 8 && d !== undefined) {
+        sample.push({ name: l.name ?? l.email ?? "?", created: new Date(l.dateAdded).toISOString(), inferred: l.dateAddedInferred ?? false, firstDial: new Date(d).toISOString(), byUser: l.firstDialByUserId ?? null, firstSms: l.firstSmsOutboundAt ? new Date(l.firstSmsOutboundAt).toISOString() : null, source: l.source ?? null });
+      }
+    }
+    delaysMin.sort((a, b) => a - b);
+    const at = (p: number) => (delaysMin.length ? delaysMin[Math.max(0, Math.ceil(p * delaysMin.length) - 1)] : null);
+    return { ...buckets, dialLaterDelayMin: { median: at(0.5), p25: at(0.25), p75: at(0.75) }, sample };
+  },
+});
