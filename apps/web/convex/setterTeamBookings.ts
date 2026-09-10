@@ -340,7 +340,7 @@ export async function collectTeamBookings(
     // manager marked "not a sales call" never is.
     const evidence: CallEvidence | null =
       recorded && recorded.countsTowardStats !== false && carriesEvidence(recorded) ? recorded : null;
-    const verdict = showVerdictFor({ call: evidence, recolor, colorId, endTime: anchor.endTime, nowMs });
+    const verdict = showVerdictFor({ call: evidence, recolor, colorId, endTime: anchor.endTime, nowMs, botGotIn: recorded !== null });
 
     records.push({
       key,

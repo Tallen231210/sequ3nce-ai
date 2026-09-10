@@ -226,6 +226,15 @@ export function showVerdictFor(i: {
   colorId?: string | null;
   endTime: number;
   nowMs: number;
+  /**
+   * A bot got into the meeting (a call row exists), even if what it saw
+   * couldn't be classified. When the bot got in, red is NOT a no-show: on
+   * E2 in September 2026 the closers coloured 40 of 69 recorded calls red,
+   * and the recordings show the prospect on nearly all of them ("didn't
+   * close"). When the bot knocked and nobody let it in, 108 of 171 were red
+   * and one was green — red then means what it says.
+   */
+  botGotIn?: boolean;
 }): Verdict {
   const due = i.nowMs >= i.endTime + RECOLOR_GRACE_MS;
   if (i.call) {
@@ -240,13 +249,13 @@ export function showVerdictFor(i: {
   // A post-call colour we watched change after the call, or one we first
   // found after the call with nothing saying it was there before: the
   // closer's word. A colour that provably predates the call stays unknown.
-  // RED IS NOT READ: in September 2026, 26 of E2's 28 red calls with a
-  // recording had the prospect on the call — red is used for "didn't
-  // close", not no-show. A red booking stays unknown until the recording
-  // says otherwise; see the no-outcome list. Revisit when the habit changes.
   if (i.recolor === "done" || i.recolor === "unverified") {
     if (i.colorId === COLOR.DARK_GREEN) return { result: "showed", source: "calendar_color", due };
     if (i.colorId === COLOR.YELLOW) return { result: "rescheduled", source: "calendar_color", due };
+    // Red counts as a no-show only when no bot ever got into the meeting.
+    // With a bot in the room, red means "didn't close" to this team and the
+    // recording decides (above); an unclassifiable recording stays unknown.
+    if (i.colorId === COLOR.RED && !i.botGotIn) return { result: "no_show", source: "calendar_color", due };
   }
   return { result: "unknown", source: null, due };
 }

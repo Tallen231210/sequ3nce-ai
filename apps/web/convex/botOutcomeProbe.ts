@@ -9,6 +9,8 @@
 import { v } from "convex/values";
 import { internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { collectTeamBookings } from "./setterTeamBookings";
+import { recolorState } from "./lib/calendarColorRules";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -116,5 +118,47 @@ export const recallHistory = internalAction({
     }
     const rows = (m: Record<string, number>) => Object.entries(m).map(([k, count]) => ({ key: k, count })).sort((a, b) => b.count - a.count);
     return { sampled: bots.length, ending: rows(ending), sawWaitingRoom, platform: rows(platform), detail: detail.slice(0, 12) };
+  },
+});
+
+/**
+ * For every finished booking in the range: did a bot get in, knock and get
+ * left out, or never exist — crossed with the colour the closer put on the
+ * call. Tests "no admission ≈ the prospect didn't show".
+ *   … npx convex run botOutcomeProbe:colourVsLobby '{"teamId":"…","startMs":…,"endMs":…}' --prod
+ */
+export const colourVsLobby = internalQuery({
+  args: { teamId: v.id("teams"), startMs: v.number(), endMs: v.number() },
+  handler: async (ctx, args) => {
+    const nowMs = Date.now();
+    const data = await collectTeamBookings(ctx, args.teamId, args.startMs, args.endMs, nowMs);
+    const finished = data.records.filter((r) => !r.isFollowUp && r.verdict.due);
+    const colourOf = (r: (typeof finished)[number]) => {
+      const state = recolorState({ eventColorId: r.colorId ?? undefined, colorChangedAt: undefined, colorFirstObservedAt: undefined, googleUpdatedAt: undefined, startTime: r.startTime, endTime: r.endTime } as never, nowMs);
+      void state;
+      const c = r.colorId;
+      const after = r.recolor === "done" || r.recolor === "unverified";
+      if (c === "10") return after ? "dark green after the call" : "dark green before the call";
+      if (c === "11") return after ? "red after the call" : "red before the call";
+      if (c === "5") return after ? "yellow after the call" : "yellow before the call";
+      if (!c) return "uncoloured";
+      return "other colour";
+    };
+    const matrix: Record<string, Record<string, number>> = {};
+    const samples: Array<{ title: string; closer: string; day: string; bot: string; colour: string }> = [];
+    for (const r of finished) {
+      const uid = r.key.split("|")[0];
+      const bots = await ctx.db.query("meetingBots").withIndex("by_calendar_event", (q) => q.eq("calendarEventId", uid)).take(20);
+      let bot: string;
+      if (bots.some((b) => b.joinedAt)) bot = "bot got in";
+      else if (bots.some((b) => b.status === "completed" && !b.joinedAt)) bot = "bot knocked, never let in";
+      else if (bots.length > 0) bot = "bot cancelled / pending";
+      else bot = "no bot booked";
+      const colour = colourOf(r);
+      (matrix[bot] ??= {})[colour] = (matrix[bot][colour] ?? 0) + 1;
+      if (bot === "bot knocked, never let in" && colour.startsWith("dark green") && samples.length < 12) samples.push({ title: r.displayTitle.slice(0, 40), closer: r.closerName, day: r.dayKey, bot, colour });
+    }
+    const rows = Object.entries(matrix).map(([bot, cols]) => ({ bot, total: Object.values(cols).reduce((a, b) => a + b, 0), colours: Object.entries(cols).map(([colour, count]) => ({ colour, count })).sort((a, b) => b.count - a.count) }));
+    return { finished: finished.length, rows, samples };
   },
 });
