@@ -125,7 +125,7 @@ export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInpu
       key: "eod-missing",
       label: "End-of-day forms not filed",
       count: plural(missedDays.reduce((n, e) => n + e.days.length, 0), "day", "days"),
-      detail: missedDays.map((e) => `${e.name}: ${e.days.map(humanDay).join(", ")}`),
+      detail: missedDays.map((e) => `${e.name}: ${e.days.map(humanDay).join(" · ")}`),
     });
   }
   const mismatch = eodMismatchRow(checks);

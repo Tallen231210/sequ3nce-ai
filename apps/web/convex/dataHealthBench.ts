@@ -60,6 +60,11 @@ export const rowsBench = internalQuery({
       { name: "the count is the number alone", got: rows[0].count, expect: "28" },
       { name: "people are named beside it", got: rows[0].detail.join(""), expect: "Not coloured by Joseph 15 · Karl 13" },
       { name: "unfiled EODs count days", got: rows.find((r) => r.key === "eod-missing")?.count ?? "", expect: "1 day" },
+      {
+        name: "two unfiled days don't run into each other",
+        got: missingRows({ drags: { ...NO_DRAGS, eodMissed: [{ name: "Sophie", days: ["2026-09-01", "2026-09-05"] }] } })[0].detail[0],
+        expect: "Sophie: Tue, Sep 1 · Sat, Sep 5",
+      },
       { name: "mismatches count setters", got: rows.find((r) => r.key === "eod-mismatch")?.count ?? "", expect: "1 setter" },
       { name: "a mismatch line names the day", got: rows.find((r) => r.key === "eod-mismatch")?.detail[0] ?? "", expect: "Erten Mon, Sep 7: said 32 pick-ups, Close saw 7" },
       {
