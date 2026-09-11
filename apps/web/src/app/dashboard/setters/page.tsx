@@ -15,7 +15,7 @@ import { Header } from "@/components/dashboard/header";
 import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../setter-data/components/DateRangeSelect";
 import { DataHealthCard } from "../setter-eods/DataHealthCard";
-import { SettersView } from "./components/SettersView";
+import { SettersView, type SettersTab } from "./components/SettersView";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { EodBoard } from "./components/EodBoard";
 
@@ -29,7 +29,15 @@ export default function SettersPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"roster" | "team" | "posts" | "crm">("roster");
   const [flash, setFlash] = useState<string | null>(null);
-  const [view, setView] = useState<"overview" | "eods">("overview");
+  const [tab, setTabState] = useState<SettersTab>("setters");
+  const setTab = (next: SettersTab) => {
+    setTabState(next);
+    const params = new URLSearchParams(window.location.search);
+    if (next === "setters") params.delete("view");
+    else params.set("view", next);
+    const qs = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  };
   // The CRM OAuth callback lands on the old route with ?connected=1 or
   // ?ghl_error=…, and the bounce forwards the query string here. Open the
   // drawer on the CRM tab so the result is actually seen.
@@ -37,6 +45,8 @@ export default function SettersPage() {
     const params = new URLSearchParams(window.location.search);
     const connected = params.get("connected") === "1";
     const error = params.get("ghl_error");
+    const view = params.get("view");
+    if (view === "eods" || view === "attention") setTabState(view);
     if (!connected && !error) return;
     setFlash(connected ? "CRM connected." : `CRM connection failed: ${error}`);
     setSettingsTab("crm");
@@ -84,18 +94,6 @@ export default function SettersPage() {
             {bookings?.rangeClampedToDays ? ` Showing the last ${bookings.rangeClampedToDays} days of the range you picked.` : ""}
           </p>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-border bg-background p-0.5 text-sm" role="tablist" aria-label="View">
-              {(
-                [
-                  ["overview", "Overview"],
-                  ["eods", "EODs"],
-                ] as const
-              ).map(([id, label]) => (
-                <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`rounded-md px-3 py-1.5 ${view === id ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
             <DateRangeSelect rangeStart={range.start} rangeEnd={range.end} onChange={(start, end) => setRange({ start, end })} maxDays={14} />
             <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm hover:border-foreground/40">
               <Settings2 className="h-4 w-4" />
@@ -122,8 +120,7 @@ export default function SettersPage() {
           </div>
         )}
         {bookings === null && <p className="text-sm text-muted-foreground">Nothing to show for this range.</p>}
-        {bookings && view === "eods" && clerkId && <EodBoard clerkId={clerkId} rangeStart={range.start} rangeEnd={range.end} checks={checks} />}
-        {bookings && view === "overview" && (
+        {bookings && (
           <SettersView
             bookings={bookings}
             sets={sets ?? null}
@@ -135,6 +132,9 @@ export default function SettersPage() {
             rangeStart={range.start}
             rangeEnd={range.end}
             health={<DataHealthCard />}
+            tab={tab}
+            onTab={setTab}
+            eodBoard={clerkId ? <EodBoard clerkId={clerkId} rangeStart={range.start} rangeEnd={range.end} checks={checks} /> : null}
           />
         )}
       </div>

@@ -94,19 +94,6 @@ export function TeamSection({
       <div className="border-b border-border px-5 py-3.5">
         <h2 className="text-sm font-semibold">{label}</h2>
         <p className="text-xs text-muted-foreground">{description}</p>
-        {cards.length > 0 && (
-          <details className="mt-1 text-xs text-muted-foreground">
-            <summary className="cursor-pointer select-none hover:text-foreground">What each number means</summary>
-            <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
-              {cards[0].metrics.map((m) => (
-                <div key={m.key} className="flex gap-2">
-                  <dt className="shrink-0 font-medium text-foreground">{m.label}</dt>
-                  <dd>{m.hint}</dd>
-                </div>
-              ))}
-            </dl>
-          </details>
-        )}
       </div>
       <div className="grid gap-3 p-4 md:grid-cols-2">
         {cards.length === 0 && <p className="text-sm text-muted-foreground">Nobody on this team yet — add them in settings.</p>}
