@@ -15,33 +15,22 @@ type Column = {
   field: CheckField;
   label: string;
   measuredKey: keyof Day["measured"];
+  hint: string;
 };
 
 const BOOKING_COLUMNS: Column[] = [
-  { field: "dials", label: "Dials", measuredKey: "dials" },
-  { field: "pickUps", label: "Pick-ups", measuredKey: "pickUps" },
-  { field: "sets", label: "Sets", measuredKey: "sets" },
-  {
-    field: "callsOnCalendar",
-    label: "On calendar",
-    measuredKey: "callsOnCalendar",
-  },
-  { field: "callsShown", label: "Shown", measuredKey: "callsShown" },
+  { field: "dials", label: "Dials", measuredKey: "dials", hint: "Every outbound call they made in Close that day, answered or not." },
+  { field: "pickUps", label: "Pick-ups", measuredKey: "pickUps", hint: "Calls somebody answered and stayed on for at least the team's minimum length." },
+  { field: "sets", label: "Sets", measuredKey: "sets", hint: "Calls booked that day and credited to them." },
+  { field: "callsOnCalendar", label: "On calendar", measuredKey: "callsOnCalendar", hint: "Their booked calls that were due to happen that day." },
+  { field: "callsShown", label: "Shown", measuredKey: "callsShown", hint: "Of those, the ones the prospect turned up to." },
 ];
 const CONFIRMATION_COLUMNS: Column[] = [
-  {
-    field: "newSelfBooked",
-    label: "New self-books",
-    measuredKey: "newSelfBooked",
-  },
-  { field: "contacted", label: "Contacted", measuredKey: "contacted" },
-  { field: "reached", label: "Reached", measuredKey: "reached" },
-  {
-    field: "confirmedOnCalendar",
-    label: "Confirmed",
-    measuredKey: "confirmedOnCalendar",
-  },
-  { field: "confirmedShowed", label: "Shown", measuredKey: "confirmedShowed" },
+  { field: "newSelfBooked", label: "New self-books", measuredKey: "newSelfBooked", hint: "People who booked themselves through the funnel that day." },
+  { field: "contacted", label: "Contacted", measuredKey: "contacted", hint: "Of those, the ones they called or texted after the booking." },
+  { field: "reached", label: "Reached", measuredKey: "reached", hint: "Of those, the ones who actually answered or replied." },
+  { field: "confirmedOnCalendar", label: "Confirmed", measuredKey: "confirmedOnCalendar", hint: "Self-booked calls due that day that they had contacted." },
+  { field: "confirmedShowed", label: "Shown", measuredKey: "confirmedShowed", hint: "Of those, the ones the prospect turned up to." },
 ];
 
 const cell = "whitespace-nowrap py-1.5 pr-3 text-right align-top tabular-nums";
@@ -127,7 +116,7 @@ export function EodRows({
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th className="w-full py-2 pr-3 font-medium">Day</th>
             {columns.map((c) => (
-              <th key={c.field} className="whitespace-nowrap py-2 pr-3 text-right font-medium">
+              <th key={c.field} className="whitespace-nowrap py-2 pr-3 text-right font-medium" title={c.hint}>
                 {c.label}
               </th>
             ))}

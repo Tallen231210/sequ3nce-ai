@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { NoticeLine } from "@/components/dashboard/notice";
 import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Loader2, PencilLine } from "lucide-react";
@@ -167,17 +168,12 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
       </div>
 
       {editedCount > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-2.5">
-          <PencilLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">
- {editedCount} {editedCount === 1 ? "day has" : "days have"}{" "}
- a manager correction
-            </span>{" "}
- that don&apos;t match what Sequ3nce recorded. Totals and rates below
-            use the entered values.
-          </p>
-        </div>
+        <NoticeLine icon={PencilLine}>
+          <span className="font-semibold text-foreground">
+            {editedCount} {editedCount === 1 ? "day has" : "days have"} a correction
+          </span>{" "}
+          that differs from what we recorded. The totals and rates below use the corrected numbers.
+        </NoticeLine>
       )}
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">

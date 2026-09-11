@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NoticeLine } from "@/components/dashboard/notice";
 import { useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import {
@@ -162,14 +163,9 @@ export function YearView({
       </div>
 
       {data.truncated && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">
- This year has more daily records than a single read can return, so
-            the figures below are incomplete. Use the month view for accurate
-            numbers.
-          </p>
-        </div>
+        <NoticeLine icon={AlertTriangle}>
+          This year holds more days than we can read in one go, so the figures below are incomplete. Step through the months for exact numbers.
+        </NoticeLine>
       )}
 
       {!hasAnything ? (
