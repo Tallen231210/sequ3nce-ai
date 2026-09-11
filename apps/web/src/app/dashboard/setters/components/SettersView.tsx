@@ -133,7 +133,7 @@ export function SettersView({
       {tab === "eods" && eodBoard}
       {tab === "attention" && (
         <>
-          <UnlabeledPanel records={bookings.records} notASet={bookings.notASet} rosters={rosterOptions} clerkId={clerkId} label={bookings.labels.unlabeled} timezone={bookings.range.timezone} />
+          <UnlabeledPanel records={bookings.records} notASet={bookings.notASet} rosters={rosterOptions} clerkId={clerkId} timezone={bookings.range.timezone} />
           <NoOutcomePanel records={bookings.records} timezone={bookings.range.timezone} />
           {health}
           {attentionCount === 0 && <p className="text-sm text-muted-foreground">Nothing needs attention in this range.</p>}

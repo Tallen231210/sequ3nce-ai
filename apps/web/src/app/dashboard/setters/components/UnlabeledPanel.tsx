@@ -55,7 +55,6 @@ export function UnlabeledPanel({
   notASet,
   rosters,
   clerkId,
-  label,
   timezone,
 }: {
   records: Rec[];
@@ -63,7 +62,6 @@ export function UnlabeledPanel({
   /** Every roster row, active or not — names for the groups; only active ones are offered for assignment. */
   rosters: RosterOption[];
   clerkId: string;
-  label: string;
   timezone: string;
 }) {
   const assign = useMutation(api.settersPageClaims.assign);
