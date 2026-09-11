@@ -64,6 +64,11 @@ export const rowsBench = internalQuery({
       { name: "a mismatch line names the day", got: rows.find((r) => r.key === "eod-mismatch")?.detail[0] ?? "", expect: "Erten Mon, Sep 7: said 32 pick-ups, Close saw 7" },
       { name: "nothing missing means no rows", got: String(missingRows({ drags: NO_DRAGS }).length), expect: "0" },
       { name: "a long list folds its tail", got: namedTop([1, 2, 3, 4, 5, 6, 7].map((n) => ({ name: `S${n}`, count: n })))[0], expect: "S1 1 · S2 2 · S3 3 · S4 4 · S5 5 · and 2 more" },
+      {
+        name: "a detail line says whose names these are",
+        got: missingRows({ drags: { ...NO_DRAGS, unlabeledTouched: { total: 3, bySetter: [{ name: "Erten", count: 3 }] } } })[0].detail[0],
+        expect: "Worked by Erten 3",
+      },
     ];
     const results = cases.map((c) => ({ ...c, pass: c.got === c.expect }));
     return { allPass: results.every((r) => r.pass), results };

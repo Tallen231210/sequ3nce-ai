@@ -27,12 +27,16 @@ export interface ChecksInput {
   byRoster: ReadonlyArray<{ name: string; days: ReadonlyArray<{ dayKey: string; flags: readonly CrossCheckFlag[] }> }>;
 }
 
-/** "Joseph 15 · Karl 13 · Ryleigh 13" with the tail folded in. */
-export function namedTop(rows: ReadonlyArray<{ name: string; count: number }>, max = 5): string[] {
+/**
+ * "Joseph 15 · Karl 13 · Ryleigh 13" with the tail folded in. The prefix says
+ * whose names these are — some rows list the closer whose calendar it is,
+ * others the setter who worked the lead, and the count alone can't tell you.
+ */
+export function namedTop(rows: ReadonlyArray<{ name: string; count: number }>, prefix = "", max = 5): string[] {
   if (rows.length === 0) return [];
   const head = rows.slice(0, max).map((r) => `${r.name} ${r.count}`).join(" · ");
   const rest = rows.length - max;
-  return [rest > 0 ? `${head} · and ${rest} more` : head];
+  return [`${prefix}${rest > 0 ? `${head} · and ${rest} more` : head}`];
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -80,7 +84,7 @@ export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInpu
       key: "untagged-self-books",
       label: "Calls the lead booked themselves, with no initials on them",
       count: String(d.untaggedSelfBooks.total),
-      detail: namedTop(d.untaggedSelfBooks.byCloser),
+      detail: namedTop(d.untaggedSelfBooks.byCloser, "Taken by "),
     });
   }
   if (d.unlabeledTouched.total > 0) {
@@ -88,7 +92,7 @@ export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInpu
       key: "unlabeled-touched",
       label: "Bookings with no setter named, though a setter worked the lead",
       count: String(d.unlabeledTouched.total),
-      detail: namedTop(d.unlabeledTouched.bySetter),
+      detail: namedTop(d.unlabeledTouched.bySetter, "Worked by "),
     });
   }
   if (d.missingInitials.total > 0) {
@@ -96,7 +100,7 @@ export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInpu
       key: "missing-initials",
       label: "Sets counted from Close activity, with no initials written",
       count: String(d.missingInitials.total),
-      detail: namedTop(d.missingInitials.bySetter),
+      detail: namedTop(d.missingInitials.bySetter, "Credited to "),
     });
   }
   if (d.handMadeUntagged > 0) {
