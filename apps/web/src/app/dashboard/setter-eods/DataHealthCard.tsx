@@ -12,8 +12,10 @@ import { missingRows } from "../../../../convex/lib/dataHealthRows";
 
 // ============================================================================
 // "Is the data complete?" — one question, one number, and a list of what is
-// missing with the people who can fix it. The same facts the Monday post
-// carries. Hidden for teams without the setter_teams flag (query returns null).
+// missing with the people who can fix it, from the same rows the Monday post
+// renders. The post adds the three parts the score is made of; the card keeps
+// the question and the fixes. Hidden for teams without the setter_teams flag
+// (the query returns null).
 // ============================================================================
 
 export type DataHealthWeekView = NonNullable<FunctionReturnType<typeof api.dataHealthQueries.getDataHealthWeek>>;

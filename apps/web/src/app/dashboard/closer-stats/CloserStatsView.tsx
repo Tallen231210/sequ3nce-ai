@@ -127,7 +127,6 @@ interface CloserCardProps {
     showRate: number;
     avgDealValue: number;
     followUpConversionRate: number;
-    avgAmmoPerCall: number;
     talkToListenRatio: number | null;
     revenuePerCallCash: number;
     revenuePerCallContract: number;
@@ -310,7 +309,7 @@ function CloserCard({ closer, liveStatus, rangeLabel }: CloserCardProps) {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">Deal size per call taken</span>
+                  <span className="text-zinc-500">Contract value per call taken</span>
                   <span className="font-medium">{closer.revenuePerCallContract > 0 ? formatCurrency(closer.revenuePerCallContract) : "—"}</span>
                 </div>
                 {closer.talkToListenRatio !== null && (

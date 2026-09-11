@@ -10,8 +10,6 @@ import { flagPlain } from "./lib/eodCrossCheck";
 import { humanDay } from "./lib/dayLabel";
 import { missingRows } from "./lib/dataHealthRows";
 
-export { humanDay };
-
 const pct = (v: number | null) => (v === null ? "—" : `${v}%`);
 /**
  * The EOD cross-check as lines: per setter, the days whose filed numbers sat
@@ -60,7 +58,12 @@ export function dataHealthLines(d: DataHealthWeek): string[] {
   const a = d.accuracy;
   const lines: string[] = [];
   lines.push(`${pct(a.score)} of finished calls have everything we need — ${a.allKnown} of ${a.due}.`);
-  lines.push(`Where it came from ${pct(a.sourcePct)} · who contacted them ${pct(a.contactPct)} · whether they showed ${pct(a.showPct)}.`);
+  // Source and contact are shares of every booking; the show verdict is a
+  // share of the ones that have finished. Saying so keeps them from reading
+  // as three slices of the same number.
+  lines.push(
+    `Of all ${a.bookings} bookings we know where ${pct(a.sourcePct)} came from and who contacted ${pct(a.contactPct)}. Of the ${a.due} that have finished, we know whether ${pct(a.showPct)} showed up.`,
+  );
   lines.push(
     `Bookings ${d.bookings}: DM ${d.lanes.dm} · outbound ${d.lanes.outbound} · confirmation ${d.lanes.confirmation} · booked themselves and nobody contacted them ${d.lanes.selfBookedUncontacted} · no setter named ${d.lanes.unattributed}` +
       (d.followUps > 0 ? ` · ${d.followUps} follow-ups not counted as sets` : "") +

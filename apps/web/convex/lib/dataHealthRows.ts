@@ -10,8 +10,6 @@ import type { DataHealth } from "../dataHealthCore";
 import { humanDay } from "./dayLabel";
 import { flagPlain, type CrossCheckFlag } from "./eodCrossCheck";
 
-export { humanDay };
-
 export interface MissingRow {
   key: string;
   /** What's missing, said the way a person would say it. */
@@ -52,7 +50,7 @@ function eodMismatchRow(checks: ChecksInput | null | undefined): MissingRow | nu
   for (const r of off) {
     for (const d of r.days.slice(0, 2)) detail.push(`${r.name} ${humanDay(d.dayKey)}: ${d.flags.map(flagPlain).join("; ")}`);
     const rest = r.days.length - 2;
-    if (rest > 0) detail.push(`${r.name}: ${plural(rest, "more day", "more days")} don't match`);
+    if (rest > 0) detail.push(`${r.name}: ${rest} more ${rest === 1 ? "day doesn't" : "days don't"} match`);
   }
   return {
     key: "eod-mismatch",
@@ -63,9 +61,11 @@ function eodMismatchRow(checks: ChecksInput | null | undefined): MissingRow | nu
 }
 
 /**
- * Every drag on the score, biggest first, in the words a manager would use.
- * Counts stay separate rather than being summed — one booking can be short of
- * two different things, and a total would count it twice.
+ * Every drag on the score, in the words a manager would use. The order is
+ * fixed rather than by size: the things a person can go and fix today come
+ * first, and the paperwork checks last. Counts stay separate rather than
+ * being summed — one booking can be short of two different things, and a
+ * total would count it twice.
  */
 export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInput | null): MissingRow[] {
   const d = data.drags;
@@ -76,7 +76,7 @@ export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInpu
       key: "not-recolored",
       label: "Calls the closer never coloured after the call",
       count: String(d.notRecolored.total),
-      detail: namedTop(d.notRecolored.byCloser),
+      detail: namedTop(d.notRecolored.byCloser, "Not coloured by "),
     });
   }
   if (d.untaggedSelfBooks.total > 0) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { buildCards, type ActivityData, type BookingsData, type CadenceData, type CardVM, type CrossCheckData, type SetsData, type SpeedData } from "../lib/cards";
+import { buildCards, readsCameUpShort, type ActivityData, type BookingsData, type CadenceData, type CardVM, type CrossCheckData, type SetsData, type SpeedData } from "../lib/cards";
 import { UnlabeledPanel, type RosterOption } from "./UnlabeledPanel";
 import { NoOutcomePanel } from "./NoOutcomePanel";
 import { SetterDrawer } from "./SetterDrawer";
@@ -47,6 +47,7 @@ export function SettersView({
   const [teamFilter, setTeamFilter] = useState<TeamFilter>("all");
   const cards = useMemo(() => buildCards(bookings, sets, activity, speed, cadence, checks), [bookings, sets, activity, speed, cadence, checks]);
   const stillLoading = !sets || !activity || speed === undefined || cadence === undefined || checks === undefined;
+  const cameUpShort = readsCameUpShort(bookings, activity, sets, speed, cadence, checks);
   const sections: Array<{ team: "dm" | "outbound" | "confirmation"; description: string }> = [
     { team: "dm", description: "Book from the DM link. No dials to count — bookings and shows only." },
     { team: "outbound", description: "Work leads in Close. Dials, connects and texts are theirs; sets are credited by the initials on the booking, a claim, or — where the team allows it — a Close touch." },
@@ -123,6 +124,9 @@ export function SettersView({
             )}
           </div>
           {stillLoading && <p className="text-xs text-muted-foreground">Still loading the rest of the numbers…</p>}
+          {!stillLoading && cameUpShort && (
+            <p className="text-xs text-muted-foreground">Some days in this range were too busy to read in one go, so a few of these counts may be low.</p>
+          )}
           {sections
             .filter((s) => teamFilter === "all" || s.team === teamFilter)
             .map((s) => (

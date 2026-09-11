@@ -12,6 +12,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { flagText, type CrossCheckFlag } from "./lib/eodCrossCheck";
+// One date label for the product, so this post and the Monday one agree.
+import { humanDay } from "./lib/dayLabel";
+export { humanDay };
 
 export interface SetterDayRow {
   rosterId: string;
@@ -66,16 +69,7 @@ const perSet = (cash: number, sets: number, reported: boolean) =>
 const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
 
-/** "Mon 1 Sep" from a YYYY-MM-DD key. */
-export function humanDay(dayKey: string): string {
-  const [y, m, d] = dayKey.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
+
 
 /** Slack renders at most 50 blocks; two per setter keeps a 20-seat roster inside that. */
 const MAX_SETTERS_SHOWN = 20;

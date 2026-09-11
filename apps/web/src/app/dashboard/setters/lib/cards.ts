@@ -27,10 +27,20 @@ export function coverageLines(
   activity: ActivityData | null | undefined,
   ...partials: Array<{ truncated: string[] } | null | undefined>
 ): string[] {
-  const lines = [...bookings.coverage, ...(activity?.coverage ?? [])];
-  const short = partials.some((p) => (p?.truncated.length ?? 0) > 0) || bookings.truncated.length > 0;
-  if (short) lines.push("Some days in this range were too busy to read in one go, so a few counts may come up short.");
-  return Array.from(new Set(lines));
+  return Array.from(new Set([...bookings.coverage, ...(activity?.coverage ?? [])]));
+}
+
+/**
+ * True when any read in this range hit its cap. This is not a footnote about
+ * what we can't measure — it says the numbers on screen are low — so it
+ * belongs on the board, not in settings.
+ */
+export function readsCameUpShort(
+  bookings: BookingsData,
+  activity: ActivityData | null | undefined,
+  ...partials: Array<{ truncated: string[] } | null | undefined>
+): boolean {
+  return bookings.truncated.length > 0 || (activity?.truncated.length ?? 0) > 0 || partials.some((p) => (p?.truncated.length ?? 0) > 0);
 }
 
 export interface MetricVM {

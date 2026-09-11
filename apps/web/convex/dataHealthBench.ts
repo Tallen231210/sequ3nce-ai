@@ -56,12 +56,20 @@ export const rowsBench = internalQuery({
     }, { byRoster: [{ name: "Erten", days: [{ dayKey: "2026-09-07", flags: [flag] }] }] });
     const cases = [
       { name: "a flag reads as a sentence", got: flagPlain(flag), expect: "said 32 pick-ups, Close saw 7" },
-      { name: "biggest drag first", got: rows[0].label, expect: "Calls the closer never coloured after the call" },
+      { name: "recolouring leads the list", got: rows[0].label, expect: "Calls the closer never coloured after the call" },
       { name: "the count is the number alone", got: rows[0].count, expect: "28" },
-      { name: "people are named beside it", got: rows[0].detail.join(""), expect: "Joseph 15 · Karl 13" },
+      { name: "people are named beside it", got: rows[0].detail.join(""), expect: "Not coloured by Joseph 15 · Karl 13" },
       { name: "unfiled EODs count days", got: rows.find((r) => r.key === "eod-missing")?.count ?? "", expect: "1 day" },
       { name: "mismatches count setters", got: rows.find((r) => r.key === "eod-mismatch")?.count ?? "", expect: "1 setter" },
       { name: "a mismatch line names the day", got: rows.find((r) => r.key === "eod-mismatch")?.detail[0] ?? "", expect: "Erten Mon, Sep 7: said 32 pick-ups, Close saw 7" },
+      {
+        name: "one extra mismatched day reads as one",
+        got:
+          missingRows({ drags: NO_DRAGS }, {
+            byRoster: [{ name: "Erten", days: ["2026-09-07", "2026-09-08", "2026-09-09"].map((dayKey) => ({ dayKey, flags: [flag] })) }],
+          })[0].detail[2] ?? "",
+        expect: "Erten: 1 more day doesn't match",
+      },
       { name: "nothing missing means no rows", got: String(missingRows({ drags: NO_DRAGS }).length), expect: "0" },
       { name: "a long list folds its tail", got: namedTop([1, 2, 3, 4, 5, 6, 7].map((n) => ({ name: `S${n}`, count: n })))[0], expect: "S1 1 · S2 2 · S3 3 · S4 4 · S5 5 · and 2 more" },
       {

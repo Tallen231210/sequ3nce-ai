@@ -428,6 +428,10 @@ export const getCloserStats = query({
 
     // Determine the filter date based on dateRange
     let filterDate: number;
+    // The end of the period. Only a custom range has one — every other range
+    // runs up to now — and without it "August" silently meant "August
+    // onwards", pulling September's calls into an August board.
+    let filterEnd = Number.POSITIVE_INFINITY;
     let previousPeriodStart: number;
     let previousPeriodEnd: number;
 
@@ -435,6 +439,7 @@ export const getCloserStats = query({
       case "custom":
         if (args.customStart != null && args.customEnd != null) {
           filterDate = args.customStart;
+          filterEnd = args.customEnd;
           const customDuration = args.customEnd - args.customStart;
           previousPeriodStart = args.customStart - customDuration;
           previousPeriodEnd = args.customStart;
@@ -522,7 +527,7 @@ export const getCloserStats = query({
 
       // Current period calls
       const periodCalls = closerCalls.filter(
-        (c) => c.createdAt >= filterDate
+        (c) => c.createdAt >= filterDate && c.createdAt <= filterEnd
       );
 
       // Previous period calls (for trends)
@@ -821,6 +826,10 @@ export const getTeamStats = query({
 
     // Determine the filter date based on dateRange
     let filterDate: number;
+    // The end of the period. Only a custom range has one — every other range
+    // runs up to now — and without it "August" silently meant "August
+    // onwards", pulling September's calls into an August board.
+    let filterEnd = Number.POSITIVE_INFINITY;
     let previousPeriodStart: number;
     let previousPeriodEnd: number;
 
@@ -828,6 +837,7 @@ export const getTeamStats = query({
       case "custom":
         if (args.customStart != null && args.customEnd != null) {
           filterDate = args.customStart;
+          filterEnd = args.customEnd;
           const customDuration = args.customEnd - args.customStart;
           previousPeriodStart = args.customStart - customDuration;
           previousPeriodEnd = args.customStart;
@@ -887,7 +897,7 @@ export const getTeamStats = query({
       .collect();
 
     // Current period calls
-    const periodCalls = allCalls.filter((c) => c.createdAt >= filterDate);
+    const periodCalls = allCalls.filter((c) => c.createdAt >= filterDate && c.createdAt <= filterEnd);
 
     // Previous period calls (for trends)
     const prevPeriodCalls = args.dateRange !== "all_time"

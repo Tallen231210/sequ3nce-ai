@@ -183,11 +183,6 @@ export function flagText(f: CrossCheckFlag): string {
   return `${f.label}: filed ${f.filed} · ${f.source} ${f.measured} (${gap})`;
 }
 
-/** The short form for a badge: "filed 89 · Close 100". */
-export function flagPair(f: CrossCheckFlag): string {
-  return `filed ${f.filed} · ${f.source} ${f.measured}`;
-}
-
 /**
  * The same facts as a sentence a manager can read without a key:
  * "said 32 pick-ups, Close saw 7". The dashboard and the posts use this;
