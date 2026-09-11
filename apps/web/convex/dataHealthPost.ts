@@ -89,7 +89,10 @@ export function buildDataHealthSlackBlocks(d: DataHealthWeek, checks?: CrossChec
     { type: "header", text: { type: "plain_text", text: `Is the data complete? · week of ${humanDay(d.weekStartKey)}`, emoji: false } },
     { type: "section", text: { type: "mrkdwn", text: `*${score}*\n${parts}` } },
     { type: "context", elements: [{ type: "mrkdwn", text: lanes }] },
-    { type: "section", text: { type: "mrkdwn", text: `*What\u2019s missing, and who can fix it*\n${rest.join("\n")}` } },
+    // Every row carries a line of names under it now, so this can run long on
+    // a bad week. Slack rejects a section over 3,000 characters and the whole
+    // post fails with it, so clip it like the per-setter blocks below.
+    { type: "section", text: { type: "mrkdwn", text: clip(`*What\u2019s missing, and who can fix it*\n${rest.join("\n")}`, SLACK_SECTION_MAX) } },
     ...eodCheckBlocks(checks),
     {
       type: "context",
