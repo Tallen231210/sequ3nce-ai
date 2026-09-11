@@ -15,7 +15,7 @@ const input = "w-24 rounded-md border border-border bg-background px-2 py-1.5 te
 type Draft = { dialsPct: string; pickUpsPct: string; confirmationPct: string; minGap: string };
 
 const ROWS: Array<{ key: keyof Draft; label: string; hint: string; unit: "%" | "" }> = [
-  { key: "dialsPct", label: "Dials", hint: "Close counts every attempt, so this one can be tight.", unit: "%" },
+  { key: "dialsPct", label: "Dials", hint: "The CRM counts every attempt, so this one can be tight.", unit: "%" },
   { key: "pickUpsPct", label: "Pick-ups", hint: "Looser: a call length is only a guess at whether a person answered.", unit: "%" },
   { key: "confirmationPct", label: "The confirmation setter's numbers", hint: "Self-books, people contacted, people reached.", unit: "%" },
   { key: "minGap", label: "Never flag a gap this small", hint: "On a quiet day a percentage would flag a single call. This stops that.", unit: "" },
@@ -58,7 +58,7 @@ export function ToleranceForm({ clerkId }: { clerkId: string }) {
       <details className="mb-3 mt-1 text-xs text-muted-foreground">
         <summary className="cursor-pointer select-none hover:text-foreground">Why this matters</summary>
         <p className="mt-1 max-w-3xl">
-          A number is flagged when it sits further than this from what Close or the calendar saw that day, as a share of what we saw. A flag never blocks anything and always
+          A number is flagged when it sits further than this from what the CRM or the calendar saw that day, as a share of what we saw. A flag never blocks anything and always
           shows both numbers, on the cards, in the setter&apos;s card, in the daily post and in the Monday post. Sets only count against a setter when they claim more than the
           calendar credits, and calls on the calendar can be {CALENDAR_GAP} out either way — a booking made near midnight lands on a different day for the two of us.
         </p>

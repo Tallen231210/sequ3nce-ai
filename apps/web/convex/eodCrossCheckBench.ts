@@ -37,8 +37,8 @@ export const rules = internalQuery({
       { name: "blank filed is never checked", got: fields(crossCheckDay({ dials: undefined, pickUps: null }, measured({ dials: 100, pickUps: 50 }), t)), expect: [] },
       { name: "unmeasurable (unlinked) is never checked", got: fields(crossCheckDay({ dials: 100 }, measured({ dials: null }), t)), expect: [] },
       { name: "confirmation: contacted 10 vs 14 = 29% > 15% → flagged", got: fields(crossCheckDay({ contacted: 10 }, measured({ contacted: 14 }), t)), expect: ["contacted"] },
-      { name: "flag carries both numbers and the gap", got: flagText(crossCheckDay({ dials: 89 }, measured({ dials: 100 }), t)[0]), expect: "dials: filed 89 · Close 100 (−11%)" },
-      { name: "measured 0 shows an absolute gap", got: flagText(crossCheckDay({ dials: 3 }, measured({ dials: 0 }), t)[0]), expect: "dials: filed 3 · Close 0 (+3)" },
+      { name: "flag carries both numbers and the gap", got: flagText(crossCheckDay({ dials: 89 }, measured({ dials: 100 }), t)[0]), expect: "dials: filed 89 · CRM 100 (−11%)" },
+      { name: "measured 0 shows an absolute gap", got: flagText(crossCheckDay({ dials: 3 }, measured({ dials: 0 }), t)[0]), expect: "dials: filed 3 · CRM 0 (+3)" },
       { name: "team tolerance overrides, clamped", got: tolerancesFor({ dialsPct: 5, minGap: 99 }), expect: { dialsPct: 5, pickUpsPct: 25, confirmationPct: 15, minGap: 20 } },
       { name: "a 5% team flags 94 vs 100", got: fields(crossCheckDay({ dials: 94 }, measured({ dials: 100 }), tolerancesFor({ dialsPct: 5 }))), expect: ["dials"] },
     ];

@@ -114,11 +114,11 @@ export function RosterIdentityInputs({
       <select
         value={crmUserId ?? ""}
         onChange={(e) => void saveLink({ crmUserId: e.target.value })}
-        title="Which Close user this person is — how their calls and texts get counted"
+        title="Which CRM user this person is — how their calls and texts get counted"
         className={`max-w-[11rem] ${input}`}
       >
-        <option value="">Close user: not linked</option>
-        {linkedUnknown && <option value={crmUserId as string}>someone no longer in Close</option>}
+        <option value="">CRM user: not linked</option>
+        {linkedUnknown && <option value={crmUserId as string}>someone no longer in the CRM</option>}
         {(crmUsers ?? []).map((u) => (
           <option key={u.crmUserId} value={u.crmUserId}>
             {u.name}

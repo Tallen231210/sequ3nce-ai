@@ -54,7 +54,7 @@ function eodMismatchRow(checks: ChecksInput | null | undefined): MissingRow | nu
   }
   return {
     key: "eod-mismatch",
-    label: "End-of-day numbers that don't match Close",
+    label: "End-of-day numbers that don't match the CRM",
     count: plural(off.length, "setter", "setters"),
     detail: detail.slice(0, 8),
   };
@@ -98,7 +98,7 @@ export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInpu
   if (d.missingInitials.total > 0) {
     rows.push({
       key: "missing-initials",
-      label: "Sets counted from Close activity, with no initials written",
+      label: "Sets counted from CRM activity, with no initials written",
       count: String(d.missingInitials.total),
       detail: namedTop(d.missingInitials.bySetter, "Credited to "),
     });
@@ -114,7 +114,7 @@ export function missingRows(data: Pick<DataHealth, "drags">, checks?: ChecksInpu
   if (d.leadMissing > 0) {
     rows.push({
       key: "lead-missing",
-      label: "Calls the lead booked themselves who aren't in Close at all",
+      label: "Calls the lead booked themselves who aren't in the CRM at all",
       count: String(d.leadMissing),
       detail: [],
     });

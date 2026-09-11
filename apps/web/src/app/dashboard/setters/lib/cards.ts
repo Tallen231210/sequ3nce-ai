@@ -73,10 +73,10 @@ export interface CardVM {
 }
 
 const G = {
-  dials: { label: "Dials", hint: "Outbound calls in Close, every attempt. Filed: dials." },
+  dials: { label: "Dials", hint: "Outbound calls in the CRM, every attempt. Filed: dials." },
   connects: { label: "Connects", hint: "Answered calls at or over the team's connect threshold (settings). Filed: pick ups." },
   held90: { label: "Held 90s+", hint: "Of their connects, the share that ran past 90 seconds — a sign they can keep someone talking once they have them. Counts every day in the range, filed or not." },
-  texts: { label: "Texts", hint: "Outbound texts sent in Close." },
+  texts: { label: "Texts", hint: "Outbound texts sent in the CRM." },
   sets: { label: "Sets", hint: "Bookings made in the range credited to the setter. Filed: sets." },
   onCal: { label: "On calendar", hint: "Credited bookings whose call falls in the range. Filed: calls on the calendar." },
   shown: { label: "Shown", hint: "Of those, showed — a closer's form, a recording with the prospect, or a colour change we watched. Filed: calls shown." },
@@ -171,7 +171,7 @@ export function buildCards(
       linked: row.linked,
       configured: true,
       note: s
-        ? [`${s.tagged} by initials`, s.claimed > 0 ? `${s.claimed} claimed` : null, s.crmOnly > 0 ? `${s.crmOnly} from Close only` : null, unlabeledTouched.get(row.rosterId) ? `${unlabeledTouched.get(row.rosterId)} unlabeled they touched (calls in range)` : null]
+        ? [`${s.tagged} by initials`, s.claimed > 0 ? `${s.claimed} claimed` : null, s.crmOnly > 0 ? `${s.crmOnly} from the CRM only` : null, unlabeledTouched.get(row.rosterId) ? `${unlabeledTouched.get(row.rosterId)} unlabeled they touched (calls in range)` : null]
             .filter((x): x is string => x !== null)
             .join(" · ")
         : null,
@@ -239,7 +239,7 @@ export function buildCards(
             s.workedByOutbound > 0 ? `${s.workedByOutbound} self-books worked by outbound setters` : null,
             s.contactedByOthers > 0 ? `${s.contactedByOthers} confirmed by closers or the owner` : null,
             s.nobody > 0 ? `${s.nobody} contacted by nobody` : null,
-            s.leadMissing > 0 ? `${s.leadMissing} with no lead in Close` : null,
+            s.leadMissing > 0 ? `${s.leadMissing} with no lead in the CRM` : null,
             s.other > 0 ? `${s.other} other` : null,
           ]
             .filter((x): x is string => x !== null)

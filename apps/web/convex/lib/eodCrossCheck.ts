@@ -76,7 +76,10 @@ export interface MeasuredDay {
 }
 
 export type CheckField = keyof FiledDay;
+/** Where a measured number came from. Rendered as "the CRM": the product name reads as "closed" beside a Closes column. */
 export type CheckSource = "Close" | "calendar";
+
+const SOURCE_WORD: Record<CheckSource, string> = { Close: "the CRM", calendar: "the calendar" };
 
 export interface CrossCheckFlag {
   field: CheckField;
@@ -176,16 +179,16 @@ export function crossCheckDay(filed: FiledDay, measured: MeasuredDay, tol: Cross
   return out;
 }
 
-/** "dials: filed 89 · Close 100 (−11%)" — the numbers, always, never a bare flag. */
+/** "dials: filed 89 · CRM 100 (−11%)" — the numbers, always, never a bare flag. */
 export function flagText(f: CrossCheckFlag): string {
   const sign = f.gap > 0 ? "+" : "−";
   const gap = f.gapPct === null ? `${sign}${Math.abs(f.gap)}` : `${sign}${Math.abs(f.gapPct)}%`;
-  return `${f.label}: filed ${f.filed} · ${f.source} ${f.measured} (${gap})`;
+  return `${f.label}: filed ${f.filed} · ${f.source === "Close" ? "CRM" : "calendar"} ${f.measured} (${gap})`;
 }
 
 /**
  * The same facts as a sentence a manager can read without a key:
- * "said 32 pick-ups, Close saw 7". The dashboard and the posts use this;
+ * "said 32 pick-ups, the CRM saw 7". The dashboard and the posts use this;
  * flagText keeps the percentage for anyone who wants the magnitude.
  */
 const PLAIN_FIELD_LABELS: Record<CheckField, string> = {
@@ -202,5 +205,5 @@ const PLAIN_FIELD_LABELS: Record<CheckField, string> = {
 };
 
 export function flagPlain(f: CrossCheckFlag): string {
-  return `said ${f.filed} ${PLAIN_FIELD_LABELS[f.field]}, ${f.source === "Close" ? "Close" : "the calendar"} saw ${f.measured}`;
+  return `said ${f.filed} ${PLAIN_FIELD_LABELS[f.field]}, ${SOURCE_WORD[f.source]} saw ${f.measured}`;
 }

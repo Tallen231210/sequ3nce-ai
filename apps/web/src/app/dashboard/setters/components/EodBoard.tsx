@@ -22,7 +22,7 @@ export function EodBoard({ clerkId, rangeStart, rangeEnd, checks }: { clerkId: s
       <div className="border-b border-border px-5 py-3.5">
         <h2 className="text-sm font-semibold">Filed EODs</h2>
         <p className="text-xs text-muted-foreground">
-          What each setter typed on their end-of-day, by day. Hover a cell for every number and any note. An amber mark means that day disagrees with Close or the calendar beyond the team&apos;s tolerance; the setter&apos;s card (EOD tab) shows both numbers. Rosters and EOD links are under Settings → Roster.
+          What each setter typed on their end-of-day, by day. Hover a cell for every number and any note. An amber mark means that day disagrees with the CRM or the calendar beyond the team&apos;s tolerance; the setter&apos;s card (EOD tab) shows both numbers. Rosters and EOD links are under Settings → Roster.
         </p>
       </div>
       <div className="overflow-x-auto">

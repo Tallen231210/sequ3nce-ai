@@ -15,9 +15,9 @@ export function SpeedByDay({ clerkId, rosterId, rangeStart, rangeEnd, timezone }
   if (data === null) return <p className="py-6 text-sm text-muted-foreground">Nothing to show.</p>;
   const s = data.summary;
   const excluded: string[] = [];
-  if (s.noArrivalCount) excluded.push(`${s.noArrivalCount} we can't time — the lead first appeared in Close when it was called`);
+  if (s.noArrivalCount) excluded.push(`${s.noArrivalCount} we can't time — the lead first appeared in the CRM when it was called`);
   if (s.neverContactedCount) excluded.push(`${s.neverContactedCount} never contacted`);
-  if (s.untimedCount) excluded.push(`${s.untimedCount} contacted with no time recorded in Close`);
+  if (s.untimedCount) excluded.push(`${s.untimedCount} contacted with no time recorded in the CRM`);
   if (s.selfBookedCount) excluded.push(`${s.selfBookedCount} booked themselves, so they belong to the confirmation team`);
   if (s.clippedCount || s.unreadCount) excluded.push(`${s.clippedCount + s.unreadCount} with too much activity to read in one go`);
   return (
@@ -26,7 +26,7 @@ export function SpeedByDay({ clerkId, rosterId, rangeStart, rangeEnd, timezone }
         <div>
           <span className="text-2xl font-semibold tabular-nums">{hours(s.medianWorkingMs)}</span>
           <span className="ml-2 text-muted-foreground">median in working hours · {hours(s.medianElapsedMs)} including nights &amp; weekends · slowest 10% over {hours(s.p90WorkingMs)} · {int(s.count)} leads timed</span>
-          <div className="text-xs text-muted-foreground">Working hours {data.basis}. {data.kind === "confirmation" ? "Clock starts at the self-booking." : "Clock starts when the lead lands in Close."}</div>
+          <div className="text-xs text-muted-foreground">Working hours {data.basis}. {data.kind === "confirmation" ? "Clock starts at the self-booking." : "Clock starts when the lead lands in the CRM."}</div>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input type="checkbox" checked={slowestFirst} onChange={(e) => setSlowestFirst(e.target.checked)} />

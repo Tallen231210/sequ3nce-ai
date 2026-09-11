@@ -25,7 +25,7 @@ export function ConnectLadder({ checks }: { checks: CrossCheckData | null | unde
     <div className="mb-4">
       <p className="mb-2 text-xs text-muted-foreground">
         What each threshold would count, beside what the setters filed, over the days they filed between {humanDay(checks.startKey)} and {humanDay(checks.endKey)} (the range on the page).
-        Each step is answered calls in Close from that setter lasting at least that many seconds. The bold step is the threshold in use — the number on the cards and in the flags.
+        Each step is answered calls in the CRM from that setter lasting at least that many seconds. The bold step is the threshold in use — the number on the cards and in the flags.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm tabular-nums">
@@ -35,7 +35,7 @@ export function ConnectLadder({ checks }: { checks: CrossCheckData | null | unde
               <th className={th} title="Days with an EOD in the range">Days</th>
               <th className={th} title="Pick-ups they typed on those EODs, added up">Filed pick-ups</th>
               {thresholds.map((t) => (
-                <th key={t} className={`${th} ${t === checks.connectSec ? "text-foreground" : ""}`} title={`Answered calls in Close lasting ${t} seconds or more, on those same days`}>
+                <th key={t} className={`${th} ${t === checks.connectSec ? "text-foreground" : ""}`} title={`Answered calls in the CRM lasting ${t} seconds or more, on those same days`}>
                   {t}s+{t === checks.connectSec ? " (in use)" : ""}
                 </th>
               ))}

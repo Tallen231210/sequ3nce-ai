@@ -11,7 +11,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { flagText, type CrossCheckFlag } from "./lib/eodCrossCheck";
+import { flagPlain, type CrossCheckFlag } from "./lib/eodCrossCheck";
 // One date label for the product, so this post and the Monday one agree.
 import { humanDay } from "./lib/dayLabel";
 export { humanDay };
@@ -149,7 +149,7 @@ export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[
       if (r.flags && r.flags.length > 0) {
         blocks.push({
           type: "context",
-          elements: [{ type: "mrkdwn", text: `⚠ Off vs measured — ${r.flags.map(flagText).join(" · ")}` }],
+          elements: [{ type: "mrkdwn", text: `⚠ Doesn't match the CRM — ${r.flags.map(flagPlain).join("; ")}` }],
         });
       }
     }
@@ -197,7 +197,7 @@ export function buildSetterScorecardDiscordEmbed(data: SetterScorecardData): any
       `**${i + 1}. ${r.name}** — ${r.cashReported ? money(r.cash) + " · " : ""}${plural(r.sets, "set", "sets")} · ` +
       `dials ${r.dials} · pick-ups ${r.pickUps} · on cal ${r.onCal} · shown ${r.shown} · closed ${r.closed} · ` +
       `$/set ${perSet(r.cash, r.sets, r.cashReported)} · week ${perSet(r.week.cash, r.week.sets, r.week.cashReported)}/set` +
-      (r.flags && r.flags.length > 0 ? `\n⚠ Off vs measured — ${r.flags.map(flagText).join(" · ")}` : ""),
+      (r.flags && r.flags.length > 0 ? `\n⚠ Doesn't match the CRM — ${r.flags.map(flagPlain).join("; ")}` : ""),
   );
   return {
     title: `📋 Setter scorecard — ${humanDay(data.reportDayKey)}`,

@@ -50,7 +50,7 @@ export function SettersView({
   const cameUpShort = readsCameUpShort(bookings, activity, sets, speed, cadence, checks);
   const sections: Array<{ team: "dm" | "outbound" | "confirmation"; description: string }> = [
     { team: "dm", description: "Book from the DM link. No dials to count — bookings and shows only." },
-    { team: "outbound", description: "Work leads in Close. Dials, connects and texts are theirs; sets are credited by the initials on the booking, a claim, or — where the team allows it — a Close touch." },
+    { team: "outbound", description: "Work leads in the CRM. Dials, connects and texts are theirs; sets are credited by the initials on the booking, a claim, or — where the team allows it — a call or text in the CRM." },
     { team: "confirmation", description: "Call people who booked themselves. Coverage and response time are the job; shows are the result." },
   ];
   const rosterOptions: RosterOption[] = [
@@ -68,7 +68,7 @@ export function SettersView({
       ? [`${bookings.labels.confirmation}: self-booked calls the confirmation setter handled, a closer or the owner confirmed, or nobody did. ${plural(unlabeledWorkedByOutbound, "self-booked call", "self-booked calls")} worked only by an outbound setter ${unlabeledWorkedByOutbound === 1 ? "sits" : "sit"} in ${bookings.labels.unlabeled}.`]
       : []),
     ...(unlabeled.length > 0
-      ? [`${bookings.labels.unlabeled}: ${plural(unlabeled.length, "booking", "bookings")} with no setter named — ${unlabeledSelfBooked} self-booked${unlabeledWorkedByOutbound > 0 ? ` (${unlabeledWorkedByOutbound} worked by an outbound setter, the rest with no lead in Close or touched only by closers)` : ""}, ${unlabeled.length - unlabeledSelfBooked} hand-made or off-list. Listed under Needs attention.`]
+      ? [`${bookings.labels.unlabeled}: ${plural(unlabeled.length, "booking", "bookings")} with no setter named — ${unlabeledSelfBooked} self-booked${unlabeledWorkedByOutbound > 0 ? ` (${unlabeledWorkedByOutbound} worked by an outbound setter, the rest with no lead in the CRM or touched only by closers)` : ""}, ${unlabeled.length - unlabeledSelfBooked} hand-made or off-list. Listed under Needs attention.`]
       : []),
   ];
   const attentionCount = unlabeled.length + noOutcome;

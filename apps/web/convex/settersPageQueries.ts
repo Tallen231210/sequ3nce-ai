@@ -79,7 +79,7 @@ export const getSettersBookings = query({
       return { ...row, responseMedianWorkingMs: median };
     });
     const coverage = [
-      "Leads per setter, and sets per lead: Close doesn't tell us who owns a lead, so we can't split leads by setter.",
+      "Leads per setter, and sets per lead: the CRM doesn't tell us who owns a lead, so we can't split leads by setter.",
       "Where a lead came from, pipeline stages, ad spend and pre-call questionnaires: this CRM doesn't give us any of them.",
       "Replies to texts: the cards count answered calls only. Replies are listed per lead inside a setter's card.",
     ];
@@ -224,7 +224,7 @@ export const getSettersActivity = query({
       const n = activity.uncountedDays.length;
       coverage.push(`Pick-ups and texts on ${n} ${n === 1 ? "day" : "days"} in this range (${activity.uncountedDays[0]} to ${activity.uncountedDays[n - 1]}): those days are older than the counters, so they show as blank rather than zero.`);
     }
-    if (unattributedDials > 0) coverage.push(`${unattributedDials} dials in this range have nobody's name on them in Close, so they aren't counted for any setter.`);
+    if (unattributedDials > 0) coverage.push(`${unattributedDials} dials in this range have nobody's name on them in the CRM, so they aren't counted for any setter.`);
     if (otherUsersDials > 0) coverage.push(`${otherUsersDials} dials in this range were made by people who aren't on the setter roster — closers, admins, or people who have left.`);
     const truncated = [...activity.truncated, ...filed.truncated];
     return {

@@ -78,7 +78,7 @@ export function SettingsDrawer({
               <details className="mt-3 text-xs text-muted-foreground">
                 <summary className="cursor-pointer select-none hover:text-foreground">Why this matters</summary>
                 <p className="mt-1 max-w-3xl">
-                  Close says a call was &quot;answered&quot; the moment the line picks up, voicemail included, and it can&apos;t tell a machine from a person who hung up
+                  The CRM says a call was &quot;answered&quot; the moment the line picks up, voicemail included, and it can&apos;t tell a machine from a person who hung up
                   straight away. Setting a length is how we tell them apart. Move it until the pick-ups on the cards agree with what your setters report.
                 </p>
               </details>

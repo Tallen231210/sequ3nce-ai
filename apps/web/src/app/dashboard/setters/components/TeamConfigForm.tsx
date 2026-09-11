@@ -76,7 +76,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
       <section className="rounded-lg border border-border p-4">
         <h3 className="text-sm font-semibold">Who books calls from DMs?</h3>
         <p className="text-xs text-muted-foreground">
-          They don&apos;t work in Close and don&apos;t file an end-of-day form, so we recognise them by the name inside their booking link. A link called &quot;Instagram
+          They don&apos;t work in the CRM and don&apos;t file an end-of-day form, so we recognise them by the name inside their booking link. A link called &quot;Instagram
           (Davud)&quot; means the link name is davud.
         </p>
         <div className="mt-3 space-y-2">
@@ -126,7 +126,7 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
           <summary className="cursor-pointer select-none hover:text-foreground">Why this matters</summary>
           <p className="mt-1 max-w-3xl">
             Initials on the booking, a name in the DM link, or a claim always credit the setter. This only decides what happens when a booking has none of those and the only
-            sign is that the setter called or texted the lead in Close.
+            sign is that the setter called or texted the lead in the CRM.
           </p>
         </details>
         <label className="mt-3 flex items-start gap-2 text-sm">
@@ -141,10 +141,10 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
             }}
           />
           <span>
-            Yes — a call or text in Close is never enough on its own.
+            Yes — a call or text in the CRM is never enough on its own.
             <span className="block text-xs text-muted-foreground">
               On: a booking with nobody&apos;s name on it waits under &quot;Who booked these?&quot;, listed beside whoever called the lead, for someone to say whose it is. Off: a
-              setter who worked the lead in Close gets the credit without initials.
+              setter who worked the lead in the CRM gets the credit without initials.
             </span>
           </span>
         </label>

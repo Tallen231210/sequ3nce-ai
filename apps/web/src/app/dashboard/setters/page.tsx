@@ -87,7 +87,7 @@ export default function SettersPage() {
   }
   return (
     <>
-      <Header title="Setters" description="Every setter, by team — what the calendar and Close measured, beside what they filed." />
+      <Header title="Setters" description="Every setter, by team — what the calendar and the CRM measured, beside what they filed." />
       <div className="space-y-5 px-6 py-6 pb-16">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">

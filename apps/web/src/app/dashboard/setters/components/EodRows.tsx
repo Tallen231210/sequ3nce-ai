@@ -6,7 +6,7 @@ import { humanDay, int } from "../lib/format";
 
 // ============================================================================
 // One setter's days: what they typed on their end-of-day form on one row, what
-// Close and the calendar saw on the next. Two rows beat a slash — nobody has
+// the CRM and the calendar saw on the next. Two rows beat a slash — nobody
 // to remember which side of "180 / 176" is which.
 // ============================================================================
 
@@ -19,7 +19,7 @@ type Column = {
 };
 
 const BOOKING_COLUMNS: Column[] = [
-  { field: "dials", label: "Dials", measuredKey: "dials", hint: "Every outbound call they made in Close that day, answered or not." },
+  { field: "dials", label: "Dials", measuredKey: "dials", hint: "Every outbound call they made in the CRM that day, answered or not." },
   { field: "pickUps", label: "Pick-ups", measuredKey: "pickUps", hint: "Calls somebody answered and stayed on for at least the team's minimum length." },
   { field: "sets", label: "Sets", measuredKey: "sets", hint: "Calls booked that day and credited to them." },
   { field: "callsOnCalendar", label: "On calendar", measuredKey: "callsOnCalendar", hint: "Their booked calls that were due to happen that day." },
@@ -77,11 +77,11 @@ export function EodRows({
     <div className="overflow-x-auto text-sm">
       <p className="mb-1 text-xs text-muted-foreground">
         The top line of each day is what {me.name} typed on their end-of-day
-        form. The line under it is what Close and the calendar saw for the same
+        form. The line under it is what the CRM and the calendar saw for the same
         day.
         {!confirmation &&
           !me.linked &&
-          " No Close user is linked to them, so dials and pick-ups can't be counted."}
+          " No CRM user is linked to them, so dials and pick-ups can't be counted."}
       </p>
       <details className="mb-3 text-xs text-muted-foreground">
         <summary className="cursor-pointer select-none hover:text-foreground">
@@ -90,13 +90,13 @@ export function EodRows({
         <div className="mt-1 max-w-3xl space-y-1">
           <p>
             {confirmation
-              ? "Self-books and calls come from the calendar. Contacted and reached come from their own calls and texts in Close."
-              : "Dials and pick-ups come from their own calls in Close. Sets, calls on the calendar and shows come from the calendar."}
+              ? "Self-books and calls come from the calendar. Contacted and reached come from their own calls and texts in the CRM."
+              : "Dials and pick-ups come from their own calls in the CRM. Sets, calls on the calendar and shows come from the calendar."}
           </p>
           {!confirmation && me.linked && (
             <p>
               A pick-up is an answered call lasting at least {checks.connectSec}{" "}
-              seconds. Close marks a call &quot;answered&quot; the moment the
+              seconds. The CRM marks a call &quot;answered&quot; the moment the
               line picks up, voicemail included, so a day that doesn&apos;t
               match shows what each call length would have counted.
             </p>

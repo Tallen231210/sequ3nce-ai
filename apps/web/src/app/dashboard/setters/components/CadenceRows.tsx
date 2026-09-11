@@ -10,7 +10,7 @@ export function CadenceRows({ clerkId, rosterId, rangeStart, rangeEnd, timezone 
   const data = useQuery(api.settersPageQueries.getCadenceRows, { clerkId, rosterId, rangeStart, rangeEnd });
   const when = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   if (data === undefined) return <Loader2 className="my-6 h-4 w-4 animate-spin text-muted-foreground" />;
-  if (data === null) return <p className="py-6 text-sm text-muted-foreground">Nobody has linked them to a Close user, so their dials can't be counted. You can link them under Settings → Roster.</p>;
+  if (data === null) return <p className="py-6 text-sm text-muted-foreground">Nobody has linked them to a CRM user, so their dials can't be counted. You can link them under Settings → Roster.</p>;
   const s = data.summary;
   return (
     <div className="space-y-3 text-sm">

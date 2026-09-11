@@ -65,7 +65,7 @@ export function RosterEditor({ clerkId }: { clerkId: string }) {
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold">Roster</span>
         <span className="max-w-md text-xs text-muted-foreground">
-          Each row: their login email, the initials closers write on a booking, an optional pod, which end-of-day form they get, and which Close user they are.
+          Each row: their login email, the initials closers write on a booking, an optional pod, which end-of-day form they get, and which CRM user they are.
         </span>
       </div>
       <form

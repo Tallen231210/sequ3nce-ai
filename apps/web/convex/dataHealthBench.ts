@@ -55,7 +55,7 @@ export const rowsBench = internalQuery({
       },
     }, { byRoster: [{ name: "Erten", days: [{ dayKey: "2026-09-07", flags: [flag] }] }] });
     const cases = [
-      { name: "a flag reads as a sentence", got: flagPlain(flag), expect: "said 32 pick-ups, Close saw 7" },
+      { name: "a flag reads as a sentence", got: flagPlain(flag), expect: "said 32 pick-ups, the CRM saw 7" },
       { name: "recolouring leads the list", got: rows[0].label, expect: "Calls the closer never coloured after the call" },
       { name: "the count is the number alone", got: rows[0].count, expect: "28" },
       { name: "people are named beside it", got: rows[0].detail.join(""), expect: "Not coloured by Joseph 15 · Karl 13" },
@@ -66,7 +66,7 @@ export const rowsBench = internalQuery({
         expect: "Sophie: Tue, Sep 1 · Sat, Sep 5",
       },
       { name: "mismatches count setters", got: rows.find((r) => r.key === "eod-mismatch")?.count ?? "", expect: "1 setter" },
-      { name: "a mismatch line names the day", got: rows.find((r) => r.key === "eod-mismatch")?.detail[0] ?? "", expect: "Erten Mon, Sep 7: said 32 pick-ups, Close saw 7" },
+      { name: "a mismatch line names the day", got: rows.find((r) => r.key === "eod-mismatch")?.detail[0] ?? "", expect: "Erten Mon, Sep 7: said 32 pick-ups, the CRM saw 7" },
       {
         name: "one extra mismatched day reads as one",
         got:

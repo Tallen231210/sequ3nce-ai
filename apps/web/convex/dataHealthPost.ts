@@ -29,7 +29,7 @@ export function eodCheckLinesFor(r: CrossCheckRange["byRoster"][number]): string
   const flagged = r.days.filter((d) => d.flags.length > 0);
   const head =
     `${r.name}: filed ${r.daysFiled} of ${r.daysDue} days` +
-    (flagged.length === 0 ? ", every day matches Close and the calendar." : `, ${flagged.length} ${flagged.length === 1 ? "day doesn't" : "days don't"} match:`);
+    (flagged.length === 0 ? ", every day matches the CRM and the calendar." : `, ${flagged.length} ${flagged.length === 1 ? "day doesn't" : "days don't"} match:`);
   const lines = [head];
   for (const d of flagged.slice(0, MAX_FLAGGED_DAYS_SHOWN)) lines.push(`  ${humanDay(d.dayKey)} — ${d.flags.map(flagPlain).join("; ")}`);
   if (flagged.length > MAX_FLAGGED_DAYS_SHOWN) lines.push(`  …and ${flagged.length - MAX_FLAGGED_DAYS_SHOWN} more ${flagged.length - MAX_FLAGGED_DAYS_SHOWN === 1 ? "day" : "days"} — the Setters page has them all.`);
@@ -51,7 +51,7 @@ export function eodCheckBlocks(c: CrossCheckRange | null | undefined): any[] {
   const head = perSetter.slice(0, MAX_SECTIONS).map((lines) => ({ type: "section", text: { type: "mrkdwn", text: clip(lines.join("\n"), SLACK_SECTION_MAX) } }));
   const tail = perSetter.slice(MAX_SECTIONS);
   const folded = tail.length > 0 ? [{ type: "section", text: { type: "mrkdwn", text: clip(tail.map((l) => l[0]).join("\n"), SLACK_SECTION_MAX) } }] : [];
-  return [{ type: "section", text: { type: "mrkdwn", text: "*End-of-day forms vs Close and the calendar*" } }, ...head, ...folded];
+  return [{ type: "section", text: { type: "mrkdwn", text: "*End-of-day forms vs the CRM and the calendar*" } }, ...head, ...folded];
 }
 
 export function dataHealthLines(d: DataHealthWeek): string[] {
@@ -82,7 +82,7 @@ export function dataHealthLines(d: DataHealthWeek): string[] {
 
 export function dataHealthFallbackText(d: DataHealthWeek, checks?: CrossCheckRange | null): string {
   const eod = eodCheckLines(checks);
-  return `Is the data complete? · week of ${humanDay(d.weekStartKey)}\n${dataHealthLines(d).join("\n")}` + (eod.length ? `\nEnd-of-day forms vs Close and the calendar\n${eod.join("\n")}` : "");
+  return `Is the data complete? · week of ${humanDay(d.weekStartKey)}\n${dataHealthLines(d).join("\n")}` + (eod.length ? `\nEnd-of-day forms vs the CRM and the calendar\n${eod.join("\n")}` : "");
 }
 
 export function buildDataHealthSlackBlocks(d: DataHealthWeek, checks?: CrossCheckRange | null): any[] {
@@ -113,7 +113,7 @@ export function buildDataHealthDiscordEmbed(d: DataHealthWeek, checks?: CrossChe
   const eod = eodCheckLines(checks);
   return {
     title: `Is the data complete? · week of ${humanDay(d.weekStartKey)}`,
-    description: clip(dataHealthLines(d).join("\n") + (eod.length ? `\n\n**End-of-day forms vs Close and the calendar**\n${eod.join("\n")}` : ""), DISCORD_DESCRIPTION_MAX),
+    description: clip(dataHealthLines(d).join("\n") + (eod.length ? `\n\n**End-of-day forms vs the CRM and the calendar**\n${eod.join("\n")}` : ""), DISCORD_DESCRIPTION_MAX),
     color: 0x0d9488,
   };
 }
