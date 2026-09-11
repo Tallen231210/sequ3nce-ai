@@ -910,15 +910,18 @@ export const getTeamStats = query({
     const completedCalls = periodCalls.filter((c) => c.status === "completed" && c.outcome != null);
     const closedCalls = completedCalls.filter((c) => c.outcome === "closed");
 
-    // Legacy metrics (uses dealValue)
-    const totalCashCollected = closedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+    // Cash on closed calls. This used to sum `dealValue`, a field the product
+    // stopped writing years ago — 0 of E2's 100 September calls carry it — so
+    // the team's cash card read $0 beside real closes.
+    const totalCashCollected = closedCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
     const totalClosedDeals = closedCalls.length;
     const totalCallsTaken = completedCalls.length;
     const teamCloseRate = completedCalls.length > 0
       ? (closedCalls.length / completedCalls.length) * 100
       : 0;
+    // The size of the deals signed, not the cash taken against them.
     const averageDealValue = closedCalls.length > 0
-      ? totalCashCollected / closedCalls.length
+      ? closedCalls.reduce((sum, c) => sum + (c.contractValue ?? c.cashCollected ?? 0), 0) / closedCalls.length
       : 0;
 
     // NEW: Split metrics (only from calls with new fields)
@@ -942,7 +945,7 @@ export const getTeamStats = query({
     const prevCompletedCalls = prevPeriodCalls.filter((c) => c.status === "completed" && c.outcome != null);
     const prevClosedCalls = prevCompletedCalls.filter((c) => c.outcome === "closed");
 
-    const previousCashCollected = prevClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+    const previousCashCollected = prevClosedCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
     const previousClosedDeals = prevClosedCalls.length;
     const previousCallsTaken = prevCompletedCalls.length;
     const previousCloseRate = prevCompletedCalls.length > 0

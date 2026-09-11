@@ -124,7 +124,13 @@ export const SETS: SetsData = {
 
 const filed = (o: Partial<NonNullable<ActivityData["byRoster"][number]["filed"]>>): NonNullable<ActivityData["byRoster"][number]["filed"]> => ({
   days: 7, dials: 0, pickUps: 0, sets: 0, callsOnCalendar: 0, callsShown: 0, callsClosed: 0, cashCollected: 0, cashReported: false,
-  newSelfBooked: 0, contacted: 0, reached: 0, confirmed: 0, confirmedOnCalendar: 0, confirmedShowed: 0, ...o,
+  newSelfBooked: 0, contacted: 0, reached: 0, confirmed: 0, confirmedOnCalendar: 0, confirmedShowed: 0,
+  // The preview's setters filed every field their form carries.
+  reported: {
+    callsOnCalendar: true, callsShown: true, callsClosed: true, cashCollected: true, newSelfBooked: true,
+    contacted: true, reached: true, confirmed: true, confirmedOnCalendar: true, confirmedShowed: true,
+  },
+  ...o,
 });
 const speed = (medianH: number | null, count: number, noArrival: number) => ({
   count, medianWorkingMs: medianH === null ? null : medianH * H, p90WorkingMs: medianH === null ? null : medianH * 3 * H, medianElapsedMs: medianH === null ? null : medianH * 4 * H,

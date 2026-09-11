@@ -40,7 +40,41 @@ export interface FiledSums {
   confirmed: number;
   confirmedOnCalendar: number;
   confirmedShowed: number;
+  /**
+   * Which fields any entry in this range actually carried. A field the
+   * setter's form never had is absent, not zero — without this a
+   * confirmation setter who files on the booking form shows "filed 0"
+   * against every confirmation number, which reads as "she reported
+   * nothing" when she reported a different set of things.
+   */
+  reported: Record<OptionalFiledField, boolean>;
 }
+
+/** The EOD fields that are optional on the row, i.e. depend on which form the setter files. */
+export type OptionalFiledField =
+  | "callsOnCalendar"
+  | "callsShown"
+  | "callsClosed"
+  | "cashCollected"
+  | "newSelfBooked"
+  | "contacted"
+  | "reached"
+  | "confirmed"
+  | "confirmedOnCalendar"
+  | "confirmedShowed";
+
+const OPTIONAL_FILED_FIELDS: OptionalFiledField[] = [
+  "callsOnCalendar",
+  "callsShown",
+  "callsClosed",
+  "cashCollected",
+  "newSelfBooked",
+  "contacted",
+  "reached",
+  "confirmed",
+  "confirmedOnCalendar",
+  "confirmedShowed",
+];
 
 export interface ActivityLoad {
   /** Close user id → counts. "" is the blank user (automation / unattributed). */
@@ -190,6 +224,7 @@ export async function loadActivity(
 const zeroFiled = (): FiledSums => ({
   days: 0, dials: 0, pickUps: 0, sets: 0, callsOnCalendar: 0, callsShown: 0, callsClosed: 0, cashCollected: 0, cashReported: false,
   newSelfBooked: 0, contacted: 0, reached: 0, confirmed: 0, confirmedOnCalendar: 0, confirmedShowed: 0,
+  reported: Object.fromEntries(OPTIONAL_FILED_FIELDS.map((f) => [f, false])) as Record<OptionalFiledField, boolean>,
 });
 
 /** Filed EOD numbers per roster row over the team-local days the range covers. */
@@ -219,6 +254,9 @@ export async function loadFiled(
     f.callsClosed += e.callsClosed ?? 0;
     f.cashCollected += e.cashCollected ?? 0;
     f.cashReported = f.cashReported || e.cashCollected !== undefined;
+    for (const field of OPTIONAL_FILED_FIELDS) {
+      if (e[field] !== undefined) f.reported[field] = true;
+    }
     f.newSelfBooked += e.newSelfBooked ?? 0;
     f.contacted += e.contacted ?? 0;
     f.reached += e.reached ?? 0;

@@ -44,6 +44,9 @@ export type { CalendarEvent, Interval } from "./closerPerformanceAttribution";
 //             and asks for none on No Show, so this is enforced at entry)
 //   Closes  = outcome === "closed"
 //   Cash    = sum of cashCollected
+//   Contract value = sum of contractValue ON CLOSED CALLS ONLY. The same
+//             field on a follow-up is the price quoted, which counts toward
+//             Offers but is not money anyone has committed.
 //   Booked  = calendar events classified as sales calls (see classifyEvent)
 //   Slots   = booked + time the closer left unblocked / typical call length
 //
@@ -181,12 +184,17 @@ async function recountDayImpl(
     const contractValue = countsContractValue(call, countAiContractValue)
       ? (call.contractValue ?? 0)
       : 0;
+    // A price was pitched: that is what makes this call an offer, whatever
+    // came of it.
     if (contractValue > 0) row.offers += 1;
     if (call.outcome === "closed") {
       row.closes += 1;
       row.cash += call.cashCollected ?? 0;
+      // Only a signed deal adds to the contract total. Pitched value on a
+      // follow-up is a quote, not a commitment, and summing it made "avg
+      // deal" report a closer's open pipeline as deals they had won.
+      row.contractValue += contractValue;
     }
-    row.contractValue += contractValue;
   }
 
   // --- Calendar: booked calls + remaining capacity -------------------------

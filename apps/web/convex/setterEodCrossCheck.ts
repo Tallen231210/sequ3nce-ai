@@ -79,6 +79,25 @@ function filedOf(e: Entry, role: "booking" | "confirmation"): FiledDay {
   return { dials: e.dials, pickUps: e.pickUps, sets: e.sets, callsOnCalendar: e.callsOnCalendar, callsShown: e.callsShown };
 }
 
+/**
+ * Which form this entry came from. Rows written before the confirmation form
+ * existed (2026-09-09) carry no formShape, and falling back to the setter's
+ * CURRENT role then reads five fields their form never had — which is how a
+ * setter who filed properly showed up with nothing compared and zero flags.
+ */
+function shapeOf(e: Entry, role: "booking" | "confirmation"): "booking" | "confirmation" {
+  if (e.formShape === "booking" || e.formShape === "confirmation") return e.formShape;
+  const carriesConfirmationFields =
+    e.newSelfBooked !== undefined ||
+    e.contacted !== undefined ||
+    e.reached !== undefined ||
+    e.confirmedOnCalendar !== undefined ||
+    e.confirmedShowed !== undefined;
+  if (carriesConfirmationFields) return "confirmation";
+  // Booking fields are required on that form, so their presence identifies it.
+  return e.dials !== undefined || e.pickUps !== undefined || e.sets !== undefined ? "booking" : role;
+}
+
 const isSunday = (dayKey: string) => {
   const [y, m, d] = dayKey.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0;
@@ -131,7 +150,7 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
       const entry = entryByRosterDay.get(`${rosterId}|${key}`) ?? null;
       // The form they filed decides which numbers are compared; the roster's
       // role only fills in for a day they haven't filed yet.
-      const dayRole: "booking" | "confirmation" = entry?.formShape ?? role;
+      const dayRole: "booking" | "confirmation" = entry ? shapeOf(entry, role) : role;
       // A day we could read but that has no events is a real zero; a day
       // that hit the read cap is unknown — null, so it is never flagged.
       const dayActivity = activity && !unreadDays.has(key) ? activity.get(key) ?? { dials: 0, answered: 0, answeredAt: ladderThresholds.map(() => 0) } : null;

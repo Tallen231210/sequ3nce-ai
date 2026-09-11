@@ -125,8 +125,19 @@ function heldOf(checks: CrossCheckData | null | undefined, rosterId: string): { 
   return { pct: Math.round((held / connects) * 100), detail: `${held} of ${connects}` };
 }
 
-const filedOr = (f: ActivityData["byRoster"][number]["filed"], pick: (f: NonNullable<ActivityData["byRoster"][number]["filed"]>) => number, reported = true): number | null =>
+type Filed = NonNullable<ActivityData["byRoster"][number]["filed"]>;
+
+/**
+ * A filed number, or null when the setter's form never carried that field.
+ * Null renders as nothing; zero renders as "filed 0" and marks drift. A
+ * confirmation setter filing on the booking form has no confirmation fields
+ * at all, and reporting those as zeros invents five gaps that don't exist.
+ */
+const filedOr = (f: ActivityData["byRoster"][number]["filed"], pick: (f: Filed) => number, reported = true): number | null =>
   f && reported ? pick(f) : null;
+
+/** Did any entry in the range actually carry this field? */
+const has = (f: ActivityData["byRoster"][number]["filed"], field: keyof Filed["reported"]): boolean => !!f?.reported?.[field];
 
 export function buildCards(
   bookings: BookingsData,
@@ -182,12 +193,12 @@ export function buildCards(
         metric("held90", held.pct, "pct", undefined, held.detail),
         metric("texts", a?.texts ?? null, "int"),
         metric("sets", s ? s.sets : null, "int", filedOr(f, (x) => x.sets)),
-        metric("onCal", row.bookings, "int", filedOr(f, (x) => x.callsOnCalendar)),
-        metric("shown", row.showed, "int", filedOr(f, (x) => x.callsShown)),
+        metric("onCal", row.bookings, "int", filedOr(f, (x) => x.callsOnCalendar, has(f, "callsOnCalendar"))),
+        metric("shown", row.showed, "int", filedOr(f, (x) => x.callsShown, has(f, "callsShown"))),
         metric("noShow", row.noShow, "int"),
         metric("unknown", row.unknown, "int"),
         metric("showRate", row.showRatePct, "pct", undefined, row.due > 0 ? `${row.showed + row.noShow} of ${row.due} known` : null),
-        metric("closes", row.closes, "int", filedOr(f, (x) => x.callsClosed)),
+        metric("closes", row.closes, "int", filedOr(f, (x) => x.callsClosed, has(f, "callsClosed"))),
         metric("cash", row.cash, "money", filedOr(f, (x) => x.cashCollected, f?.cashReported ?? false)),
         metric("speed", sp?.medianWorkingMs ?? null, "hours"),
         metric("speedClock", sp?.medianElapsedMs ?? null, "hours"),
@@ -247,9 +258,9 @@ export function buildCards(
         : null,
       consistency: consistencyOf(row.rosterId),
       metrics: [
-        metric("newSelfBooks", s ? s.newSelfBooks : null, "int", filedOr(f, (x) => x.newSelfBooked)),
-        metric("contacted", s ? s.contacted : null, "int", filedOr(f, (x) => x.contacted)),
-        metric("reached", s ? s.reached : null, "int", filedOr(f, (x) => x.reached)),
+        metric("newSelfBooks", s ? s.newSelfBooks : null, "int", filedOr(f, (x) => x.newSelfBooked, has(f, "newSelfBooked"))),
+        metric("contacted", s ? s.contacted : null, "int", filedOr(f, (x) => x.contacted, has(f, "contacted"))),
+        metric("reached", s ? s.reached : null, "int", filedOr(f, (x) => x.reached, has(f, "reached"))),
         metric(
           "coverage",
           s ? s.coveragePct : null,
@@ -258,9 +269,9 @@ export function buildCards(
           s ? `${s.contacted} of ${s.newSelfBooks}` : null,
         ),
         metric("response", s ? s.responseMedianWorkingMs : null, "hours"),
-        metric("confirmed", null, "int", filedOr(f, (x) => x.confirmed)),
-        metric("onCal", row.bookings, "int", filedOr(f, (x) => x.confirmedOnCalendar)),
-        metric("shown", row.showed, "int", filedOr(f, (x) => x.confirmedShowed)),
+        metric("confirmed", null, "int", filedOr(f, (x) => x.confirmed, has(f, "confirmed"))),
+        metric("onCal", row.bookings, "int", filedOr(f, (x) => x.confirmedOnCalendar, has(f, "confirmedOnCalendar"))),
+        metric("shown", row.showed, "int", filedOr(f, (x) => x.confirmedShowed, has(f, "confirmedShowed"))),
         metric("noShow", row.noShow, "int"),
         metric("unknown", row.unknown, "int"),
         metric("showRate", row.showRatePct, "pct", undefined, row.due > 0 ? `${row.showed + row.noShow} of ${row.due} known` : null),
