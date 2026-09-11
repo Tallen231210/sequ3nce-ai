@@ -139,10 +139,12 @@ interface CloserCardProps {
     revenueThisMonth: number;
     callsThisWeek: number;
     callsThisMonth: number;
-    cashThisWeek: number;
-    cashThisMonth: number;
-    takenThisWeek: number;
-    takenThisMonth: number;
+    // Optional so a web deploy that lands before the Convex one renders the
+    // old numbers rather than "$NaN".
+    cashThisWeek?: number;
+    cashThisMonth?: number;
+    takenThisWeek?: number;
+    takenThisMonth?: number;
     closeRateTrend: number | null;
     cashCollectedTrend: number | null;
     callsTakenTrend: number | null;
@@ -327,16 +329,16 @@ function CloserCard({ closer, liveStatus, rangeLabel }: CloserCardProps) {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="mb-1 text-xs text-muted-foreground">Cash this week</p>
-                  <p className="text-sm font-medium">{formatCurrency(closer.cashThisWeek)}</p>
+                  <p className="text-sm font-medium">{formatCurrency(closer.cashThisWeek ?? closer.revenueThisWeek)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {closer.takenThisWeek} {closer.takenThisWeek === 1 ? "call" : "calls"}
+                    {closer.takenThisWeek ?? closer.callsThisWeek} {(closer.takenThisWeek ?? closer.callsThisWeek) === 1 ? "call" : "calls"}
                   </p>
                 </div>
                 <div>
                   <p className="mb-1 text-xs text-muted-foreground">Cash this month</p>
-                  <p className="text-sm font-medium">{formatCurrency(closer.cashThisMonth)}</p>
+                  <p className="text-sm font-medium">{formatCurrency(closer.cashThisMonth ?? closer.revenueThisMonth)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {closer.takenThisMonth} {closer.takenThisMonth === 1 ? "call" : "calls"}
+                    {closer.takenThisMonth ?? closer.callsThisMonth} {(closer.takenThisMonth ?? closer.callsThisMonth) === 1 ? "call" : "calls"}
                   </p>
                 </div>
               </div>
