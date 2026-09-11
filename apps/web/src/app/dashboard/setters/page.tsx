@@ -16,6 +16,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../setter-data/components/DateRangeSelect";
 import { DataHealthCard } from "../setter-eods/DataHealthCard";
 import { SettersView, type SettersTab } from "./components/SettersView";
+import { coverageLines } from "./lib/cards";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { EodBoard } from "./components/EodBoard";
 
@@ -48,7 +49,7 @@ export default function SettersPage() {
     const view = params.get("view");
     if (view === "eods" || view === "attention") setTabState(view);
     if (!connected && !error) return;
-    setFlash(connected ? "CRM connected." : `CRM connection failed: ${error}`);
+    setFlash(connected ? "Close is connected." : `Couldn't connect to Close — try again. If it keeps failing, send us this: ${error}`);
     setSettingsTab("crm");
     setSettingsOpen(true);
     window.history.replaceState(null, "", window.location.pathname);
@@ -90,7 +91,7 @@ export default function SettersPage() {
       <div className="space-y-5 px-6 py-6 pb-16">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            Whole days, from the first day of the range through today so far. Up to 14 days in one look.
+            Whole days, from the first day you pick through today. Up to 14 days at a time.
             {bookings?.rangeClampedToDays ? ` Showing the last ${bookings.rangeClampedToDays} days of the range you picked.` : ""}
           </p>
           <div className="flex items-center gap-2">
@@ -112,6 +113,7 @@ export default function SettersPage() {
             checks={checks}
             initialTab={settingsTab}
             flash={flash}
+            coverage={bookings ? coverageLines(bookings, activity, sets, speed, cadence, checks) : []}
           />
         )}
         {bookings === undefined && (

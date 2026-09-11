@@ -10,18 +10,19 @@ import { humanDay } from "../lib/format";
 
 type Rec = BookingsData["records"][number];
 
+/** What we looked at, and what it failed to tell us — one plain sentence. */
 function why(r: Rec): string {
-  const rec = r.recorded ? "recording found but it couldn't tell" : "no recording";
+  const rec = r.recorded ? "There is a recording, but it can't tell us who joined." : "Nothing recorded the call.";
   const colour = r.colour.startsWith("uncolored")
-    ? "calendar not coloured"
+    ? "The calendar was never coloured after it."
     : r.colour.startsWith("no-show")
-      ? `calendar red${r.colour.includes("set before the call") ? ", set before the call" : ""} — red isn't read as a no-show while it also means "didn't close"; a recording would settle it`
+      ? `The calendar is red${r.colour.includes("set before the call") ? ", and it was red before the call started" : ""}, and this team also uses red for "didn't close".`
       : r.colour.includes("set before the call")
-        ? `calendar ${r.colour}`
+        ? "The calendar colour was set before the call started, so it says nothing about how it went."
         : r.colour.startsWith("left")
-          ? `calendar ${r.colour} (not a post-call colour)`
-          : `calendar: ${r.colour}`;
-  return `${rec} · ${colour}`;
+          ? "The calendar was left on its booking colour."
+          : `The calendar says: ${r.colour}.`;
+  return `${rec} ${colour}`;
 }
 
 export function NoOutcomePanel({ records, timezone }: { records: Rec[]; timezone: string }) {
@@ -34,10 +35,16 @@ export function NoOutcomePanel({ records, timezone }: { records: Rec[]; timezone
   return (
     <section className="rounded-xl border border-border bg-card">
       <div className="border-b border-border px-5 py-3.5">
-        <h2 className="text-sm font-semibold">Calls with no outcome · {open.length}</h2>
-        <p className="text-xs text-muted-foreground">
-          Finished calls where nothing says whether the prospect showed: no recording that could tell, and no dark green or yellow on the calendar after the call. Red is listed here too, because this team uses red for &quot;didn&apos;t close&quot; as well as no-show, so only a recording can settle a red call. The bot being on the call clears a line for good.
-        </p>
+        <h2 className="text-sm font-semibold">Did they show up? · {open.length}</h2>
+        <p className="text-xs text-muted-foreground">These calls are over and nothing tells us whether the prospect turned up. Ask the closer, or let the bot into the next one.</p>
+        <details className="mt-1 text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">Why are these here?</summary>
+          <p className="mt-1 max-w-3xl">
+            Two things can answer the question: a recording with someone on it, or the closer colouring the call dark green or yellow after it finishes. Red calls are listed too,
+            because this team uses red for &quot;didn&apos;t close&quot; as well as for a no-show, so red alone can&apos;t settle it. Letting the recording bot into a call answers
+            it for good.
+          </p>
+        </details>
       </div>
       <div className="px-5 py-2">
         {closers.map(([closer, rows]) => (

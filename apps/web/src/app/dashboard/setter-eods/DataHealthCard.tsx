@@ -4,21 +4,17 @@ import React, { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { useUser } from "@clerk/nextjs";
-import { Activity } from "lucide-react";
-import { api } from "../../../../convex/_generated/api";
+import { ClipboardCheck } from "lucide-react";
 import type { FunctionReturnType } from "convex/server";
-import { flagText } from "../../../../convex/lib/eodCrossCheck";
-
-// ============================================================================
-// Data health, this week so far: the accuracy score, what it is made of, and
-// the lists that move it. Same numbers the Monday post carries. Hidden for
-// teams without the setter_teams flag (the query returns null).
-// ============================================================================
-
-const pct = (v: number | null) => (v === null ? "—" : `${v}%`);
-const named = (rows: Array<{ name: string; count: number }>) => rows.map((r) => `${r.name} ${r.count}`).join(", ");
-
+import { api } from "../../../../convex/_generated/api";
 import { humanDay } from "../setters/lib/format";
+import { missingRows } from "../../../../convex/lib/dataHealthRows";
+
+// ============================================================================
+// "Is the data complete?" — one question, one number, and a list of what is
+// missing with the people who can fix it. The same facts the Monday post
+// carries. Hidden for teams without the setter_teams flag (query returns null).
+// ============================================================================
 
 export type DataHealthWeekView = NonNullable<FunctionReturnType<typeof api.dataHealthQueries.getDataHealthWeek>>;
 export type EodChecksView = NonNullable<FunctionReturnType<typeof api.setterEodCrossCheck.getEodCrossCheckThisWeek>>;
@@ -28,7 +24,7 @@ export function DataHealthCard() {
   const clerkId = user?.id;
   const data = useQuery(api.dataHealthQueries.getDataHealthWeek, clerkId ? { clerkId } : "skip");
   const checks = useQuery(api.setterEodCrossCheck.getEodCrossCheckThisWeek, clerkId ? { clerkId } : "skip");
-  // Hidden while loading too — most teams don't have the flag, and a
+  // Hidden while loading too — most teams do not have the flag, and a
   // placeholder card that vanishes would jump the page.
   if (data === null || data === undefined) return null;
   return (
@@ -38,94 +34,83 @@ export function DataHealthCard() {
   );
 }
 
-/** The card itself, given the week's data — also what the dev preview renders. */
-/** Per setter: days filed of days due, and each flagged day with both numbers. */
-function EodChecks({ checks }: { checks: EodChecksView }) {
-  const rows = checks.byRoster.filter((r) => r.daysFiled > 0 || r.daysDue > 0);
-  if (rows.length === 0) return null;
+/** How much of the week is accounted for, with the key beside it. */
+function ScoreBar({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
-    <div className="border-t border-border px-5 py-4 text-[12px]">
-      <div className="mb-1 font-medium">EODs vs Close and the calendar</div>
-      <ul className="space-y-1">
-        {rows.map((r) => {
-          const flagged = r.days.filter((d) => d.flags.length > 0);
-          return (
-            <li key={r.rosterId}>
-              <span className="font-medium">{r.name}</span>{" "}
-              <span className={r.daysFiled < r.daysDue ? "text-amber-700" : "text-muted-foreground"}>filed {r.daysFiled} of {r.daysDue} due</span>
-              {r.daysFiled > 0 && flagged.length === 0 && <span className="text-muted-foreground"> · all within tolerance</span>}
-              {flagged.length > 0 && (
-                <ul className="ml-3 mt-0.5 space-y-0.5 text-amber-800">
-                  {flagged.map((d) => (
-                    <li key={d.dayKey}>
-                      {humanDay(d.dayKey)} — {d.flags.map(flagText).join(" · ")}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {checks.truncated.length > 0 && <p className="mt-1 text-amber-700">Partial: some reads hit their cap ({checks.truncated.join(", ")}).</p>}
-    </div>
+    <>
+      <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted-foreground/25" role="img" aria-label={`${done} of ${total} complete`}>
+        <div className="h-full bg-foreground" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-1.5 flex gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-sm bg-foreground" />
+          complete
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-sm bg-muted-foreground/25" />
+          missing something
+        </span>
+      </div>
+    </>
   );
 }
 
+/** The card itself, given the week's data — also what the dev preview renders. */
 export function DataHealthView({ data, checks, children }: { data: DataHealthWeekView; checks?: EodChecksView | null; children?: React.ReactNode }) {
   const a = data.accuracy;
-  const drags: string[] = [];
-  if (data.drags.untaggedSelfBooks.total > 0) drags.push(`Self-booked calls with no tag: ${data.drags.untaggedSelfBooks.total} (${named(data.drags.untaggedSelfBooks.byCloser)})`);
-  if (data.drags.missingInitials.total > 0) drags.push(`Sets credited from Close only, initials missing: ${data.drags.missingInitials.total} (${named(data.drags.missingInitials.bySetter)})`);
-  if (data.drags.unlabeledTouched.total > 0) drags.push(`Unlabeled bookings a setter worked, no initials: ${data.drags.unlabeledTouched.total} (${named(data.drags.unlabeledTouched.bySetter)})${data.claimedThisWeek > 0 ? `. Claims and assignments made this week (any booking): ${data.claimedThisWeek}` : ""}`);
-  if (data.drags.notRecolored.total > 0) drags.push(`Calls not recoloured after the call: ${data.drags.notRecolored.total} (${named(data.drags.notRecolored.byCloser)})`);
-  if (data.drags.handMadeUntagged > 0) drags.push(`Hand-made bookings with no tag and no Close touch: ${data.drags.handMadeUntagged}`);
-  if (data.drags.leadMissing > 0) drags.push(`Funnel bookings with no lead in Close: ${data.drags.leadMissing}`);
-  for (const e of data.drags.eodMissed) if (e.days.length > 0) drags.push(`${e.name}'s EOD not filed: ${e.days.map(humanDay).join(", ")}`);
-
+  const rows = missingRows(data, checks);
   return (
     <section className="rounded-xl border border-border bg-card">
-      <div className="flex items-center gap-2 border-b border-border px-5 py-3.5">
-        <Activity className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-semibold">Data health</span>
-        <span className="text-xs text-muted-foreground">
-          week of {humanDay(data.weekStartKey)}, so far
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border px-5 py-3.5">
+        <span className="flex items-center gap-2">
+          <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Is the data complete?</h2>
         </span>
+        <span className="text-xs text-muted-foreground">This week so far, from {humanDay(data.weekStartKey)}</span>
       </div>
-      <div className="grid grid-cols-1 gap-5 px-5 py-4 md:grid-cols-[auto_1fr]">
-        <div className="flex items-start gap-5">
-          <div>
-            <div className="text-3xl font-semibold tabular-nums">{pct(a.score)}</div>
-            <div className="text-[11px] text-muted-foreground">
-              {a.allKnown} of {a.due} due bookings fully accounted for
-            </div>
-          </div>
-          <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-[12px] tabular-nums">
-            <dt className="text-muted-foreground">Source known</dt>
-            <dd className="text-right">{pct(a.sourcePct)}</dd>
-            <dt className="text-muted-foreground">Contact known</dt>
-            <dd className="text-right">{pct(a.contactPct)}</dd>
-            <dt className="text-muted-foreground">Show known</dt>
-            <dd className="text-right">{pct(a.showPct)}</dd>
-            <dt className="text-muted-foreground">Bookings</dt>
-            <dd className="text-right">{data.bookings}</dd>
-          </dl>
+      <div className="grid gap-x-8 gap-y-5 px-5 py-4 md:grid-cols-[minmax(0,17rem)_1fr]">
+        <div>
+          <div className="text-4xl font-semibold tabular-nums">{a.score === null ? "—" : `${a.score}%`}</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {a.due === 0 ? "No calls have finished yet this week." : `${a.allKnown} of ${a.due} finished calls have everything we need.`}
+          </p>
+          {a.due > 0 && <ScoreBar done={a.allKnown} total={a.due} />}
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            A call is complete when we know three things: where it came from, who contacted them, and whether they showed up.
+          </p>
         </div>
-        <div className="text-[12px]">
-          <div className="mb-1 font-medium">What moves it</div>
-          {drags.length === 0 ? (
-            <p className="text-muted-foreground">Nothing dragging the score down this week.</p>
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What&apos;s missing, and who can fix it</h3>
+          {rows.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">Nothing is missing this week.</p>
           ) : (
-            <ul className="space-y-0.5 text-muted-foreground">
-              {drags.map((d) => (
-                <li key={d}>• {d}</li>
+            <ul className="mt-1 divide-y divide-border/60">
+              {rows.map((r) => (
+                <li key={r.key} className="flex items-baseline justify-between gap-4 py-2">
+                  <span className="min-w-0">
+                    <span className="block text-sm">{r.label}</span>
+                    {r.detail.map((d) => (
+                      <span key={d} className="block text-xs text-muted-foreground">
+                        {d}
+                      </span>
+                    ))}
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">{r.count}</span>
+                </li>
               ))}
             </ul>
           )}
-          {data.truncated.length > 0 && <p className="mt-1 text-amber-700">Partial: some reads hit their cap ({data.truncated.join(", ")}).</p>}
+          {data.claimedThisWeek > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {data.claimedThisWeek} {data.claimedThisWeek === 1 ? "booking was" : "bookings were"} claimed or assigned this week.
+            </p>
+          )}
+          {(data.truncated.length > 0 || (checks?.truncated.length ?? 0) > 0) && (
+            <p className="mt-2 text-xs text-muted-foreground">Part of this week was too busy to read in one go, so a few of these counts may be low.</p>
+          )}
         </div>
       </div>
-      {checks && <EodChecks checks={checks} />}
       {children}
     </section>
   );

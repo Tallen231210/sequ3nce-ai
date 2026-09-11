@@ -187,3 +187,25 @@ export function flagText(f: CrossCheckFlag): string {
 export function flagPair(f: CrossCheckFlag): string {
   return `filed ${f.filed} · ${f.source} ${f.measured}`;
 }
+
+/**
+ * The same facts as a sentence a manager can read without a key:
+ * "said 32 pick-ups, Close saw 7". The dashboard and the posts use this;
+ * flagText keeps the percentage for anyone who wants the magnitude.
+ */
+const PLAIN_FIELD_LABELS: Record<CheckField, string> = {
+  dials: "dials",
+  pickUps: "pick-ups",
+  sets: "sets",
+  callsOnCalendar: "calls on the calendar",
+  callsShown: "calls shown",
+  newSelfBooked: "new self-books",
+  contacted: "people contacted",
+  reached: "people reached",
+  confirmedOnCalendar: "confirmed calls on the calendar",
+  confirmedShowed: "confirmed calls shown",
+};
+
+export function flagPlain(f: CrossCheckFlag): string {
+  return `said ${f.filed} ${PLAIN_FIELD_LABELS[f.field]}, ${f.source === "Close" ? "Close" : "the calendar"} saw ${f.measured}`;
+}

@@ -10,7 +10,7 @@ export function CadenceRows({ clerkId, rosterId, rangeStart, rangeEnd, timezone 
   const data = useQuery(api.settersPageQueries.getCadenceRows, { clerkId, rosterId, rangeStart, rangeEnd });
   const when = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   if (data === undefined) return <Loader2 className="my-6 h-4 w-4 animate-spin text-muted-foreground" />;
-  if (data === null) return <p className="py-6 text-sm text-muted-foreground">No Close user linked, so there's nothing to count.</p>;
+  if (data === null) return <p className="py-6 text-sm text-muted-foreground">Nobody has linked them to a Close user, so their dials can't be counted. You can link them under Settings → Roster.</p>;
   const s = data.summary;
   return (
     <div className="space-y-3 text-sm">
@@ -20,7 +20,7 @@ export function CadenceRows({ clerkId, rosterId, rangeStart, rangeEnd, timezone 
         <span><b className="text-foreground">{s.medianPursuitDays ?? "—"}</b> days pursued (median)</span>
         <span><b className="text-foreground">{int(s.leadsAnswered)}</b> of {int(s.leadsDialled)} leads answered</span>
       </div>
-      {s.truncated && <p className="text-xs text-amber-700">Partial: more dials than one look can hold.</p>}
+      {s.truncated && <p className="text-xs text-muted-foreground">They made more dials than we can read in one go, so these are the most recent.</p>}
       {data.listed < s.leadsDialled && <p className="text-xs text-muted-foreground">Showing the {data.listed} most-dialled of {s.leadsDialled} leads.</p>}
       <table className="w-full tabular-nums">
         <thead>

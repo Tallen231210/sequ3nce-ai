@@ -15,11 +15,11 @@ export function SpeedByDay({ clerkId, rosterId, rangeStart, rangeEnd, timezone }
   if (data === null) return <p className="py-6 text-sm text-muted-foreground">Nothing to show.</p>;
   const s = data.summary;
   const excluded: string[] = [];
-  if (s.noArrivalCount) excluded.push(`${s.noArrivalCount} with no arrival time (Close created the lead from the dial)`);
+  if (s.noArrivalCount) excluded.push(`${s.noArrivalCount} we can't time — the lead first appeared in Close when it was called`);
   if (s.neverContactedCount) excluded.push(`${s.neverContactedCount} never contacted`);
-  if (s.untimedCount) excluded.push(`${s.untimedCount} contacted, no Close time (credited by the calendar tag)`);
-  if (s.selfBookedCount) excluded.push(`${s.selfBookedCount} booked themselves (the confirmation team's)`);
-  if (s.clippedCount || s.unreadCount) excluded.push(`${s.clippedCount + s.unreadCount} not read (too much activity for one look)`);
+  if (s.untimedCount) excluded.push(`${s.untimedCount} contacted with no time recorded in Close`);
+  if (s.selfBookedCount) excluded.push(`${s.selfBookedCount} booked themselves, so they belong to the confirmation team`);
+  if (s.clippedCount || s.unreadCount) excluded.push(`${s.clippedCount + s.unreadCount} with too much activity to read in one go`);
   return (
     <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -34,7 +34,7 @@ export function SpeedByDay({ clerkId, rosterId, rangeStart, rangeEnd, timezone }
         </label>
       </div>
       {excluded.length > 0 && <p className="text-xs text-muted-foreground">Not in the median: {excluded.join(" · ")}.</p>}
-      {data.truncated.length > 0 && <p className="text-xs text-amber-700">Partial: {data.truncated.join(", ")}.</p>}
+      {data.truncated.length > 0 && <p className="text-xs text-muted-foreground">This range was too busy to read in one go, so a few leads are missing from the list.</p>}
       {data.days.length === 0 && <p className="py-4 text-muted-foreground">No leads in this range.</p>}
       {data.days.map((day) => (
         <div key={day.dayKey}>

@@ -61,8 +61,8 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
   return (
     <div className="space-y-5">
       <section className="rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold">Section names</h3>
-        <p className="text-xs text-muted-foreground">A team type, never a person. Blank means the default.</p>
+        <h3 className="text-sm font-semibold">What do you call each team?</h3>
+        <p className="text-xs text-muted-foreground">Name the job, never a person — people change teams. Leave a box empty to keep the name shown in it.</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-4">
           {(["dm", "outbound", "confirmation", "unlabeled"] as const).map((k) => (
             <label key={k} className="text-xs text-muted-foreground">
@@ -74,8 +74,11 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
       </section>
 
       <section className="rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold">DM setters</h3>
-        <p className="text-xs text-muted-foreground">Not Close users and no EOD. We recognise them by the word inside the booking link: "Instagram (Davud)" → link name davud.</p>
+        <h3 className="text-sm font-semibold">Who books calls from DMs?</h3>
+        <p className="text-xs text-muted-foreground">
+          They don&apos;t work in Close and don&apos;t file an end-of-day form, so we recognise them by the name inside their booking link. A link called &quot;Instagram
+          (Davud)&quot; means the link name is davud.
+        </p>
         <div className="mt-3 space-y-2">
           {people.map((p, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2">
@@ -101,8 +104,8 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
       </section>
 
       <section className="rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold">Booking link words</h3>
-        <p className="text-xs text-muted-foreground">Which booking links are DM and which are the funnel, matched inside the Calendly event name. Comma-separated.</p>
+        <h3 className="text-sm font-semibold">Which booking links come from DMs, and which from the funnel?</h3>
+        <p className="text-xs text-muted-foreground">Type words that appear in the booking link&apos;s name, separated by commas. We look for them inside the name.</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-muted-foreground">
             DM links contain
@@ -118,10 +121,14 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
         </button>
       </section>
       <section className="rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold">What credits a set</h3>
-        <p className="text-xs text-muted-foreground">
-          Initials on the booking, a DM link name, or a claim always credit the setter. This decides whether a setter&apos;s Close activity on the lead, with none of those, credits them too.
-        </p>
+        <h3 className="text-sm font-semibold">Does a setter need initials on the booking to get credit?</h3>
+        <details className="mt-1 text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">Why this matters</summary>
+          <p className="mt-1 max-w-3xl">
+            Initials on the booking, a name in the DM link, or a claim always credit the setter. This only decides what happens when a booking has none of those and the only
+            sign is that the setter called or texted the lead in Close.
+          </p>
+        </details>
         <label className="mt-3 flex items-start gap-2 text-sm">
           <input
             type="checkbox"
@@ -134,17 +141,20 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
             }}
           />
           <span>
-            A set needs initials. A Close touch alone never credits one.
-            <span className="block text-xs text-muted-foreground">On: bookings with no name on them go to {config.labels.unlabeled}, listed under whoever touched them, to be claimed or assigned. Off: a setter who worked the lead in Close is credited without initials.</span>
+            Yes — a call or text in Close is never enough on its own.
+            <span className="block text-xs text-muted-foreground">
+              On: a booking with nobody&apos;s name on it waits under &quot;Who booked these?&quot;, listed beside whoever called the lead, for someone to say whose it is. Off: a
+              setter who worked the lead in Close gets the credit without initials.
+            </span>
           </span>
         </label>
       </section>
 
       <section className={`rounded-lg border border-border p-4 ${(setsNeedInitials ?? config.setsNeedInitials) ? "opacity-60" : ""}`}>
-        <h3 className="text-sm font-semibold">Who counts as the setter on a self-booked lead</h3>
-        {(setsNeedInitials ?? config.setsNeedInitials) && <p className="text-xs text-amber-800">Not in use while a set needs initials.</p>}
+        <h3 className="text-sm font-semibold">Who gets a lead who booked themselves and was called afterwards?</h3>
+        {(setsNeedInitials ?? config.setsNeedInitials) && <p className="text-xs font-medium">Not in use while a set needs initials.</p>}
         <p className="text-xs text-muted-foreground">
-          A lead books itself through the funnel link, and an outbound setter calls or texts them afterwards, with no initials on the booking. Initials always credit the setter; this decides what a Close touch alone does.
+          The lead booked themselves through the funnel, an outbound setter called or texted them afterwards, and nobody wrote initials on the booking.
         </p>
         <label className="mt-3 flex items-start gap-2 text-sm">
           <input
@@ -159,8 +169,8 @@ export function TeamConfigForm({ clerkId }: { clerkId: string }) {
             }}
           />
           <span>
-            Credit the outbound setter who contacted them after the booking.
-            <span className="block text-xs text-muted-foreground">Off: it stays a self-book in the confirmation column, and the setter&apos;s contact counts as confirmation work.</span>
+            The outbound setter who called them after they booked.
+            <span className="block text-xs text-muted-foreground">Off: it stays a self-booked call in the confirmation column, and the call they made counts as confirmation work.</span>
           </span>
         </label>
       </section>

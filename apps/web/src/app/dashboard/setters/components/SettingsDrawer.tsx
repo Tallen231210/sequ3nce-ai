@@ -18,6 +18,7 @@ import { TeamConfigForm } from "./TeamConfigForm";
 import { ToleranceForm } from "./ToleranceForm";
 import { ConnectLadder } from "./ConnectLadder";
 import { ConnectThresholdForm } from "./ConnectThresholdForm";
+import { CoveragePanel } from "./CoveragePanel";
 import type { CrossCheckData } from "../lib/cards";
 
 type Tab = "roster" | "team" | "posts" | "crm";
@@ -29,6 +30,7 @@ export function SettingsDrawer({
   checks,
   initialTab = "roster",
   flash = null,
+  coverage = [],
 }: {
   clerkId: string;
   open: boolean;
@@ -37,6 +39,8 @@ export function SettingsDrawer({
   /** Which tab to open on — the page sets "crm" when a CRM callback landed. */
   initialTab?: Tab;
   flash?: string | null;
+  /** What this page can't measure for this team — the footnote under Teams & links. */
+  coverage?: string[];
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const { team } = useTeam();
@@ -69,15 +73,24 @@ export function SettingsDrawer({
           <div className="space-y-5">
             <TeamConfigForm clerkId={clerkId} />
             <section className="rounded-lg border border-border p-4">
-              <h3 className="text-sm font-semibold">What counts as a connect</h3>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Close marks a dial "answered" whenever the line picked up, voicemail included, so a connect here is an answered call at or over this many
-                seconds. It can't tell a short human hang-up from a machine. Tune it until the connects on the cards agree with the pick ups your setters file.
-              </p>
-              <ConnectLadder checks={checks} />
+              <h3 className="text-sm font-semibold">How long must a call last to count as a pick-up?</h3>
               <ConnectThresholdForm clerkId={clerkId} />
+              <details className="mt-3 text-xs text-muted-foreground">
+                <summary className="cursor-pointer select-none hover:text-foreground">Why this matters</summary>
+                <p className="mt-1 max-w-3xl">
+                  Close says a call was &quot;answered&quot; the moment the line picks up, voicemail included, and it can&apos;t tell a machine from a person who hung up
+                  straight away. Setting a length is how we tell them apart. Move it until the pick-ups on the cards agree with what your setters report.
+                </p>
+              </details>
+              <details className="mt-2 text-xs text-muted-foreground">
+                <summary className="cursor-pointer select-none hover:text-foreground">See what each length would count</summary>
+                <div className="mt-2">
+                  <ConnectLadder checks={checks} />
+                </div>
+              </details>
             </section>
             <ToleranceForm clerkId={clerkId} />
+            <CoveragePanel lines={coverage} />
           </div>
         )}
         {tab === "posts" && <NotificationsCard />}

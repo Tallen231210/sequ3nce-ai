@@ -88,9 +88,9 @@ export function RosterIdentityInputs({
         onBlur={() => {
           if ((tag ?? "") !== tagDraft.trim().toLowerCase()) void save({ tag: tagDraft.trim() || null });
         }}
-        placeholder="tag"
-        title="Call-title tag, e.g. 'er' — an exact match goes ONLY to this setter"
-        className={`w-14 ${input}`}
+        placeholder="initials"
+        title="The initials closers write on a booking title, for example 'er'. An exact match credits this setter and nobody else."
+        className={`w-16 ${input}`}
       />
       <input
         value={podDraft}
@@ -99,6 +99,7 @@ export function RosterIdentityInputs({
           if ((pod ?? "") !== podDraft.trim()) void save({ pod: podDraft.trim() || null });
         }}
         placeholder="pod"
+        title="Optional. A group name, if this team splits setters into pods."
         className={`w-14 ${input}`}
       />
       <select
@@ -113,11 +114,11 @@ export function RosterIdentityInputs({
       <select
         value={crmUserId ?? ""}
         onChange={(e) => void saveLink({ crmUserId: e.target.value })}
-        title="Which CRM user this person is — how their calls and texts get counted"
+        title="Which Close user this person is — how their calls and texts get counted"
         className={`max-w-[11rem] ${input}`}
       >
-        <option value="">CRM user: not linked</option>
-        {linkedUnknown && <option value={crmUserId as string}>{crmUserId}</option>}
+        <option value="">Close user: not linked</option>
+        {linkedUnknown && <option value={crmUserId as string}>someone no longer in Close</option>}
         {(crmUsers ?? []).map((u) => (
           <option key={u.crmUserId} value={u.crmUserId}>
             {u.name}

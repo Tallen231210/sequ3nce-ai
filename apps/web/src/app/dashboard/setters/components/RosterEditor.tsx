@@ -26,7 +26,7 @@ function CopyLink({ token }: { token: string }) {
         }
       }}
       className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-      title="Copy their personal EOD link"
+      title="Copy their own end-of-day link"
     >
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       {copied ? "copied" : "copy link"}
@@ -64,7 +64,9 @@ export function RosterEditor({ clerkId }: { clerkId: string }) {
     <section className="rounded-lg border border-border">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold">Roster</span>
-        <span className="text-xs text-muted-foreground">Role decides their form and their team. Tag = the initials closers write on their bookings.</span>
+        <span className="max-w-md text-xs text-muted-foreground">
+          Each row: their login email, the initials closers write on a booking, an optional pod, which end-of-day form they get, and which Close user they are.
+        </span>
       </div>
       <form
         className="flex gap-2 border-b border-border/60 px-4 py-3"
@@ -91,7 +93,7 @@ export function RosterEditor({ clerkId }: { clerkId: string }) {
         </button>
       </form>
       {error && <p className="border-b border-border/60 px-4 py-2 text-[13px] text-rose-600">{error}</p>}
-      {active.length === 0 && <p className="px-4 py-5 text-sm text-muted-foreground">Add your setters by name. Each gets a personal EOD link.</p>}
+      {active.length === 0 && <p className="px-4 py-5 text-sm text-muted-foreground">Add your setters by name. Each one gets their own end-of-day link.</p>}
       {active.map((r) => (
         <div key={r._id} className="flex flex-wrap items-center gap-3 border-b border-border/50 px-4 py-3 last:border-0">
           <span className="min-w-28 text-sm font-medium">{r.name}</span>

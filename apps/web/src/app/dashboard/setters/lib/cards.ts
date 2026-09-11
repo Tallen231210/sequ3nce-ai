@@ -17,6 +17,22 @@ export type RosterCheck = CrossCheckData["byRoster"][number];
 
 export type Format = "int" | "pct" | "money" | "hours" | "ratio" | "days";
 
+/**
+ * What this page can't measure for this team, in a sentence each. Lives in
+ * settings, not on the board — a manager reading the numbers shouldn't have to
+ * step over a list of what isn't there.
+ */
+export function coverageLines(
+  bookings: BookingsData,
+  activity: ActivityData | null | undefined,
+  ...partials: Array<{ truncated: string[] } | null | undefined>
+): string[] {
+  const lines = [...bookings.coverage, ...(activity?.coverage ?? [])];
+  const short = partials.some((p) => (p?.truncated.length ?? 0) > 0) || bookings.truncated.length > 0;
+  if (short) lines.push("Some days in this range were too busy to read in one go, so a few counts may come up short.");
+  return Array.from(new Set(lines));
+}
+
 export interface MetricVM {
   key: string;
   label: string;

@@ -79,12 +79,11 @@ export const getSettersBookings = query({
       return { ...row, responseMedianWorkingMs: median };
     });
     const coverage = [
-      "Leads per setter and set rate per lead aren't shown: Close doesn't sync a lead owner.",
-      "Funnel by source, pipeline stages, ad attribution and pre-call qualification aren't available for this CRM.",
-      "Text replies count per lead, in the drawer — the cards count answered calls only.",
+      "Leads per setter, and sets per lead: Close doesn't tell us who owns a lead, so we can't split leads by setter.",
+      "Where a lead came from, pipeline stages, ad spend and pre-call questionnaires: this CRM doesn't give us any of them.",
+      "Replies to texts: the cards count answered calls only. Replies are listed per lead inside a setter's card.",
     ];
-    if (access.rangeClampedToDays) coverage.push(`Showing the last ${access.rangeClampedToDays} days of the range.`);
-    if (data.truncated.length > 0) coverage.push(`Partial: some reads hit their cap (${data.truncated.join(", ")}).`);
+    if (access.rangeClampedToDays) coverage.push(`Showing the last ${access.rangeClampedToDays} days of the range you picked.`);
     return {
       range: { startMs, endMs, timezone: data.timezone },
       rangeClampedToDays: access.rangeClampedToDays,
@@ -220,15 +219,14 @@ export const getSettersActivity = query({
     let otherUsersDials = 0;
     for (const [user, counts] of activity.byUser) if (user !== "" && !rosterCrm.has(user)) otherUsersDials += counts.dials;
     const coverage: string[] = [...duplicates];
-    if (!activity.rollupsReady) coverage.push("Daily rollups aren't built for this team yet, so dials are read from raw events and may be partial.");
+    if (!activity.rollupsReady) coverage.push("Dials for this team are counted call by call rather than from a daily total, so a very busy day can come up short.");
     if (activity.uncountedDays.length > 0) {
       const n = activity.uncountedDays.length;
-      coverage.push(`Connects and texts aren't shown: ${n} ${n === 1 ? "day" : "days"} in this range (${activity.uncountedDays[0]} to ${activity.uncountedDays[n - 1]}) predate the connect and text counters. A recount fills them in.`);
+      coverage.push(`Pick-ups and texts on ${n} ${n === 1 ? "day" : "days"} in this range (${activity.uncountedDays[0]} to ${activity.uncountedDays[n - 1]}): those days are older than the counters, so they show as blank rather than zero.`);
     }
-    if (unattributedDials > 0) coverage.push(`${unattributedDials} dials in the range carry no Close user and aren't credited to anyone.`);
-    if (otherUsersDials > 0) coverage.push(`${otherUsersDials} dials in the range were made by Close users who aren't on the setter roster (closers, admins, people who left).`);
+    if (unattributedDials > 0) coverage.push(`${unattributedDials} dials in this range have nobody's name on them in Close, so they aren't counted for any setter.`);
+    if (otherUsersDials > 0) coverage.push(`${otherUsersDials} dials in this range were made by people who aren't on the setter roster — closers, admins, or people who have left.`);
     const truncated = [...activity.truncated, ...filed.truncated];
-    if (truncated.length > 0) coverage.push(`Partial: some reads hit their cap (${truncated.join(", ")}).`);
     return {
       range: { startMs, endMs, timezone },
       rollupsReady: activity.rollupsReady,

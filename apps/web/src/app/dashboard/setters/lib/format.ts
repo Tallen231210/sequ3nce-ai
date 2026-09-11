@@ -19,7 +19,4 @@ export const hours = (ms: number | null | undefined): string => {
   return rest > 0 ? `${days}d ${rest}h` : `${days}d`;
 };
 
-export function humanDay(dayKey: string): string {
-  const [y, m, d] = dayKey.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-}
+export { humanDay } from "../../../../../convex/lib/dayLabel";

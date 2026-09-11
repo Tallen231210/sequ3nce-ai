@@ -10,12 +10,13 @@ import { RosterIdentityInputs } from "../dashboard/setter-eods/RosterIdentityInp
 import { DataHealthView } from "../dashboard/setter-eods/DataHealthCard";
 
 const HEALTH = {
-  weekStartKey: "2026-09-07", weekEndKey: "2026-09-09", timezone: "America/New_York", truncated: [], bookings: 186, followUps: 6,
+  weekStartKey: "2026-09-07", weekEndKey: "2026-09-09", timezone: "America/New_York", truncated: [], bookings: 186, followUps: 6, claimedThisWeek: 3,
   accuracy: { bookings: 186, due: 186, sourceKnown: 168, contactKnown: 170, showKnown: 121, allKnown: 104, sourcePct: 90, contactPct: 91, showPct: 65, score: 56 },
   lanes: { dm: 29, outbound: 59, confirmation: 65, selfBookedUncontacted: 5, unattributed: 28 },
   drags: {
     untaggedSelfBooks: { total: 25, byCloser: [{ name: "Rae Holt", count: 6 }, { name: "Bea Thornton", count: 5 }, { name: "Jonah Abel", count: 5 }, { name: "Musa Ade", count: 5 }, { name: "Kai Doran", count: 4 }] },
     missingInitials: { total: 8, bySetter: [{ name: "Ezra", count: 8 }] },
+    unlabeledTouched: { total: 14, bySetter: [{ name: "Ezra", count: 8 }, { name: "Noor", count: 4 }, { name: "Tam", count: 2 }] },
     notRecolored: { total: 31, byCloser: [{ name: "Jonah Abel", count: 12 }, { name: "Kai Doran", count: 10 }, { name: "Bea Thornton", count: 9 }] },
     leadMissing: 13, handMadeUntagged: 19,
     eodMissed: [{ name: "Sasha", days: ["2026-09-08"] }],

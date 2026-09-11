@@ -37,10 +37,10 @@ const SOURCE_LABEL: Record<string, string> = {
   calendar_color: "from the calendar colour",
 };
 const BY_LABEL: Record<string, string> = {
-  event_name: "booking link",
-  tag: "initials on the title",
-  crm_activity: "Close activity",
-  hand_created: "hand-made event",
+  event_name: "the name in the booking link",
+  tag: "the initials on the title",
+  crm_activity: "their calls and texts in Close",
+  hand_created: "a hand-typed calendar entry",
   none: "nothing to go on",
 };
 
@@ -48,10 +48,10 @@ export function BookingEvidenceList({ rows, timezone }: { rows: EvidenceRecord[]
   const when = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const short = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const bookedLabel = (r: EvidenceRecord) => {
-    if (!r.bookedDayKey) return "unknown";
+    if (!r.bookedDayKey) return "an unknown day";
     const [y, m, d] = r.bookedDayKey.split("-").map(Number);
     const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-    return r.bookedAtInferred ? `~${day} (from when we first saw it)` : day;
+    return r.bookedAtInferred ? `about ${day}` : day;
   };
   if (rows.length === 0) return <p className="py-6 text-sm text-muted-foreground">No bookings in this range.</p>;
   return (
@@ -76,20 +76,17 @@ export function BookingEvidenceList({ rows, timezone }: { rows: EvidenceRecord[]
             </span>
           </div>
           <div className="text-xs text-muted-foreground">
-            Booked: {bookedLabel(r)} · Link: {r.eventName ?? "none (hand-made)"} · Tag: {r.token ? `(${r.token})` : "none"} · Lead in Close: {r.leadInClose ? "yes" : "no"} · Calendar colour: {r.colour}
-          </div>
-          <div className="text-xs">
-            <span className="text-muted-foreground">Credit: </span>
-            {r.credit.length > 0 ? r.credit.join(", ") : r.dmPerson ?? "nobody"}
-            <span className="text-muted-foreground"> · by {BY_LABEL[r.attributedBy] ?? r.attributedBy}</span>
+            Booked {bookedLabel(r)}
+            {r.eventName ? ` through the "${r.eventName}" link` : " by hand on the calendar"}. Counts for{" "}
+            <span className="text-foreground">{r.credit.length > 0 ? r.credit.join(", ") : (r.dmPerson ?? "nobody")}</span>, from {BY_LABEL[r.attributedBy] ?? r.attributedBy}.
           </div>
           {r.touches.length > 0 && (
             <div className="text-xs text-muted-foreground">
-              Close touches before the call:{" "}
+              Before the call:{" "}
               {r.touches
                 .map(
                   (t) =>
-                    `${t.name} ${t.kind === "dial" ? "called" : "texted"} ${short.format(t.at)}${t.reached ? ", reached" : ""}${t.afterBooking ? "" : ", before they booked"}`,
+                    `${t.name} ${t.kind === "dial" ? "called" : "texted"} ${short.format(t.at)}${t.reached ? ", got through" : ""}${t.afterBooking ? "" : ", before they booked"}`,
                 )
                 .join("; ")}
             </div>
