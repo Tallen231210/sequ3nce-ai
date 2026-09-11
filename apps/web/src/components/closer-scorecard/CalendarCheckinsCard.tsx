@@ -65,7 +65,7 @@ export function CalendarCheckinsCard({ closers }: { closers: CloserRow[] }) {
     <div className="mb-4 rounded-xl border border-border bg-card p-4">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-semibold">
-          Calendar check-ins today
+          Who has coloured their calls?
           <span className="ml-2 font-normal text-muted-foreground">
             {dueToday === 0
               ? "no calls over yet"
@@ -82,7 +82,7 @@ export function CalendarCheckinsCard({ closers }: { closers: CloserRow[] }) {
               <span
                 key={c.closerId}
                 title={pillTitle(c.today)}
-                className="inline-flex items-center gap-1 rounded-full border border-emerald-600/30 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                className="inline-flex items-center gap-1 rounded-full border border-foreground bg-foreground px-2.5 py-1 text-xs font-medium text-background"
               >
                 ✓ {c.name}
                 <span className="font-normal opacity-70">
@@ -93,11 +93,11 @@ export function CalendarCheckinsCard({ closers }: { closers: CloserRow[] }) {
               <span
                 key={c.closerId}
                 title={pillTitle(c.today)}
-                className="inline-flex items-center gap-1 rounded-full border border-amber-600/30 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground"
               >
                 {c.name}
                 <span className="font-normal opacity-70">
-                  {c.today.done}/{c.today.due} — {c.today.pending.length} to recolor
+                  {c.today.done}/{c.today.due} — {c.today.pending.length} still to colour
                 </span>
               </span>
             ),
@@ -109,7 +109,7 @@ export function CalendarCheckinsCard({ closers }: { closers: CloserRow[] }) {
         {missedYesterday.length > 0 ? (
           <>
             Yesterday:{" "}
-            <span className="font-medium text-rose-600">
+            <span className="font-medium text-foreground">
               {missedYesterday
                 .map((c) => `${c.name} (${c.yesterday.pending.length})`)
                 .join(", ")}

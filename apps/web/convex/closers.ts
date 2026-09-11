@@ -349,6 +349,12 @@ interface CloserStats {
   // Time-based stats
   revenueThisWeek: number;
   revenueThisMonth: number;
+  /** Cash collected this week / month, counted like the range tile. */
+  cashThisWeek: number;
+  cashThisMonth: number;
+  /** Calls taken (completed, with an outcome) this week / month. */
+  takenThisWeek: number;
+  takenThisMonth: number;
   cashCollectedThisWeek: number; // NEW: Upfront payments this week
   cashCollectedThisMonth: number; // NEW: Upfront payments this month
   contractValueThisWeek: number; // NEW: Contract value this week
@@ -623,9 +629,19 @@ export const getCloserStats = query({
       const weekClosedCalls = weekCalls.filter((c) => c.outcome === "closed");
       const monthClosedCalls = monthCalls.filter((c) => c.outcome === "closed");
 
-      // Legacy revenue (uses dealValue)
+      // Legacy revenue (uses dealValue) — kept for older callers.
       const revenueThisWeek = weekClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
       const revenueThisMonth = monthClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+
+      // Cash the same way the range tile counts it: every closed call's
+      // cashCollected, no new-fields filter. dealValue is the pre-2025 field
+      // and is empty on every current team, which is why the week and month
+      // tiles read $0 beside real closes.
+      const cashThisWeek = weekClosedCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+      const cashThisMonth = monthClosedCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+      // And calls the way the range tile counts them: completed WITH an outcome.
+      const takenThisWeek = weekCalls.filter((c) => c.outcome != null).length;
+      const takenThisMonth = monthCalls.filter((c) => c.outcome != null).length;
 
       // NEW: Split metrics for week/month (only from calls with new fields)
       const weekNewFieldCalls = weekClosedCalls.filter((c) => c.contractValue !== undefined);
@@ -681,6 +697,10 @@ export const getCloserStats = query({
         talkToListenRatio,
         revenueThisWeek,
         revenueThisMonth,
+        cashThisWeek,
+        cashThisMonth,
+        takenThisWeek,
+        takenThisMonth,
         cashCollectedThisWeek,
         cashCollectedThisMonth,
         contractValueThisWeek,

@@ -138,12 +138,13 @@ export function EditableCell({
               : "Not reported — this is what we recorded. Click to enter a value."
  }
         className={
-          "rounded px-1 py-0.5 " + MONO + " transition-colors hover:bg-muted " +
- (source === "manager"
- ? "font-semibold text-amber-700 underline decoration-amber-500/60 decoration-dotted underline-offset-2"
- : source === "closer"
- ? "font-medium"
- : "text-muted-foreground")
+          "rounded px-1 py-0.5 " + MONO + " transition-colors " +
+          (editable ? "hover:bg-muted hover:ring-1 hover:ring-border " : "") +
+          (source === "manager"
+            ? "font-semibold underline decoration-foreground/50 decoration-dotted underline-offset-2"
+            : source === "closer"
+              ? "font-medium"
+              : "text-muted-foreground")
  }
       >
         {display}

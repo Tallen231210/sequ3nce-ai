@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readableError } from "@/lib/convexError";
 import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Info, Loader2 } from "lucide-react";
@@ -94,14 +95,14 @@ export function TargetsSettings() {
   const save = (patch: any) => {
     setError(null);
     void update({ clerkId: user!.id, ...patch }).catch((e) =>
-      setError(e instanceof Error ? e.message : "Could not save"),
+      setError(readableError(e, "Could not save")),
  );
   };
 
   const saveGoal = (closerId: string, cashGoal: number | null) => {
     setError(null);
     void setGoal({ clerkId: user!.id, closerId: closerId as never, cashGoal }).catch(
-      (e) => setError(e instanceof Error ? e.message : "Could not save"),
+      (e) => setError(readableError(e, "Could not save")),
  );
   };
 
@@ -116,27 +117,17 @@ export function TargetsSettings() {
       {/* One home per setting. Targets and economics are edited on the board
           itself, beside the results they govern — but say so here, because
           Settings is where someone will look for them first. */}
-      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
- <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
- <p className="text-xs leading-relaxed text-muted-foreground">
- Rate targets, monthly ad spend and rep commission are edited directly
-          on the <span className="font-medium text-foreground">Team</span> tab,
- in the strip above the funnel — so they can be adjusted against the
-          numbers they govern rather than from memory.
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Looking for rate targets, ad spend or commission? They sit on the <span className="font-medium text-foreground">Team</span> tab, in the strip above the funnel, so you
+        can set them against the numbers they judge.
+      </p>
 
       {/* Goals */}
       <div className="rounded-xl border border-border bg-card">
  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-3.5">
  <div>
-            <h3 className="text-sm font-semibold">
- Cash goals — {monthLabel(data.monthKey, true)}
-            </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
- Per closer. Stored per month, so changing next month&apos;s goal
-              never rewrites what this month was measured against.
-            </p>
+            <h3 className="text-sm font-semibold">How much should each closer collect in {monthLabel(data.monthKey, true)}?</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Goals are kept per month, so setting next month&apos;s never rewrites what this month was judged against.</p>
           </div>
           <span className="text-xs text-muted-foreground">
  Team total {fmtCurrency(data.sumRepGoals)}

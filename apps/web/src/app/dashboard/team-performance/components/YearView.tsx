@@ -162,9 +162,9 @@ export function YearView({
       </div>
 
       {data.truncated && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50/70 px-4 py-3">
- <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
- <p className="text-xs text-amber-800">
+        <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">
  This year has more daily records than a single read can return, so
             the figures below are incomplete. Use the month view for accurate
             numbers.
@@ -260,7 +260,7 @@ export function YearView({
                             ? "cursor-pointer hover:bg-muted/40 "
  : "") +
  (m.monthKey === data.bestMonthKey
-                            ? "bg-amber-50/40"
+                            ? "bg-muted/50"
  : "")
  }
                       >
@@ -270,7 +270,7 @@ export function YearView({
                             {m.monthKey === data.bestMonthKey &&
                               m.totals.cash > 0 && (
                                 <Crown
-                                  className="h-3 w-3 text-amber-500"
+                                  className="h-3 w-3 text-muted-foreground"
  aria-label="Best month"
  />
                               )}

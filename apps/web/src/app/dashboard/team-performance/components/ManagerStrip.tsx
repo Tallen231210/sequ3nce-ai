@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readableError } from "@/lib/convexError";
 import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { api } from "../../../../../convex/_generated/api";
@@ -188,7 +189,7 @@ export function ManagerStrip({
   const save = (patch: any) => {
     setError(null);
     void update({ clerkId: user!.id, ...patch }).catch((e) =>
-      setError(e instanceof Error ? e.message : "Could not save"),
+      setError(readableError(e, "Could not save")),
  );
   };
 
@@ -256,7 +257,7 @@ export function ManagerStrip({
               monthKey,
               amount: v,
             }).catch((e) =>
-              setError(e instanceof Error ? e.message : "Could not save"),
+              setError(readableError(e, "Could not save")),
  );
           }}
         />

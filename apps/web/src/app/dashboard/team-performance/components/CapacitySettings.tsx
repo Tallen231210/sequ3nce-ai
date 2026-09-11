@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { readableError } from "@/lib/convexError";
 import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
-import { CalendarCheck, Info, Loader2, RotateCcw } from "lucide-react";
+import { CalendarCheck, Loader2, RotateCcw } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import { MONO } from "@/components/analytics/primitives/typography";
 
@@ -73,7 +74,7 @@ export function CapacitySettings() {
         countsTowardCapacity: value,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save");
+      setError(readableError(e, "Could not save"));
  } finally {
       setPending(null);
     }
@@ -81,17 +82,16 @@ export function CapacitySettings() {
 
   return (
     <div className="space-y-4">
- <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
- <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
- <p className="text-xs leading-relaxed text-muted-foreground">
- Slots measure how much bookable time a rep had. To work that out, the
-          board needs to know which calendars represent{" "}
- <span className="font-medium text-foreground">their own</span>{" "}
- availability — time blocked on a teammate&apos;s calendar
-          shouldn&apos;t reduce theirs. We infer this from the calendar address;
-          override it here when the guess is wrong. Changes apply from the next
-          sync, within the hour.
-        </p>
+ <div>
+        <h3 className="text-sm font-semibold">Which calendars show when a closer is free?</h3>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">Why this matters</summary>
+          <p className="mt-1 max-w-3xl leading-relaxed">
+            A slot is a piece of bookable time a closer had, and every rate that starts with &quot;of the time they had&quot; rests on it. Time blocked on a teammate&apos;s
+            calendar shouldn&apos;t count against them, so we work out which calendars are their own from the address — correct the guess here when it&apos;s wrong. A change
+            takes effect at the next sync, within the hour.
+          </p>
+        </details>
       </div>
 
       {error && (
@@ -102,12 +102,11 @@ export function CapacitySettings() {
 
       {config && (
         <div className="rounded-xl border border-border bg-card px-5 py-4">
- <label className="text-xs font-medium" htmlFor="cap-len">
- Typical call length
+ <label className="text-sm font-medium" htmlFor="cap-len">
+            How long is a typical call?
           </label>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
- Open time on a calendar is divided by this to count slots. A wrong
-            value shifts every Slots figure on the board.
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            We divide a closer&apos;s open time by this to count slots, so a wrong number moves every Slots figure on the board.
           </p>
           <div className="mt-2 flex items-center gap-2">
  <input
@@ -125,7 +124,7 @@ export function CapacitySettings() {
                   clerkId: user!.id,
                   typicalCallLengthMin: v,
                 }).catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not save"),
+                  setError(readableError(err, "Could not save")),
  );
               }}
               className={`w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm ${MONO} outline-none focus:border-foreground disabled:opacity-60`}
@@ -160,7 +159,7 @@ export function CapacitySettings() {
                   clerkId: user!.id,
                   bookingsPerSlot: v,
                 }).catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not save"),
+                  setError(readableError(err, "Could not save")),
  );
               }}
               className="w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-foreground disabled:opacity-60"

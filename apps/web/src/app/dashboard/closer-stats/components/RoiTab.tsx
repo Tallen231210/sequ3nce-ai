@@ -89,10 +89,8 @@ export function RoiTab() {
     return (
       <div className="px-6 py-12">
         <div className="rounded-lg border border-dashed border-border bg-muted/30 px-6 py-16 text-center">
-          <h3 className="text-base font-semibold">No team data</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            ROI calculations need a synced team and closer-side calls.
-          </p>
+          <h3 className="text-base font-semibold">Nothing to work with yet</h3>
+          <p className="mt-2 text-sm text-muted-foreground">This needs a connected team and calls your closers have taken.</p>
         </div>
       </div>
     );
@@ -104,14 +102,13 @@ export function RoiTab() {
       <div className="px-6 py-8 space-y-6 pb-12">
         <div className="rounded-2xl border border-border bg-card p-8">
           <h2 className="text-lg font-semibold">Connect Meta Ads to see ROI</h2>
-          <p className="mt-2 text-sm text-muted-foreground max-w-xl">
-            Closer ROI joins ad spend (from Meta Marketing API) with cash
-            collected (from your closers&apos; post-call forms). Without spend
-            data, we can&apos;t compute ROI multiples.
+          <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+            This page puts what you spent on ads next to what your closers collected, so you can see what each of them returns per ad dollar. Without your ad spend there is
+            nothing to compare the cash against.
           </p>
 
           <div className="mt-6 space-y-3 rounded-md bg-muted/30 p-4 max-w-xl">
-            <h3 className="text-sm font-semibold">Quick setup (~5 min)</h3>
+            <h3 className="text-sm font-semibold">How to connect it (about 5 minutes)</h3>
             <ol className="text-xs text-muted-foreground space-y-2 list-decimal pl-4">
               <li>
                 Go to{" "}
@@ -146,10 +143,10 @@ export function RoiTab() {
 
           {/* Show what data already exists even without spend */}
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Calls in window" value={String(data.teamWide.callsTotal)} hint={`${ROI_WINDOW_DAYS} days`} />
-            <Stat label="Cash collected" value={fmtCurrency(data.teamWide.totalCashCollected)} hint="From post-call forms" />
-            <Stat label={dealLabels.long} value={fmtCurrency(data.teamWide.totalContractValue)} hint="Future commitments" />
-            <Stat label="Closers" value={String(data.rowsByCloser.length)} hint="With activity" />
+            <Stat label="Calls" value={String(data.teamWide.callsTotal)} hint={`In the last ${ROI_WINDOW_DAYS} days`} />
+            <Stat label="Cash collected" value={fmtCurrency(data.teamWide.totalCashCollected)} hint="From the post-call form" />
+            <Stat label={dealLabels.long} value={fmtCurrency(data.teamWide.totalContractValue)} hint="Signed, not yet paid" />
+            <Stat label="Closers" value={String(data.rowsByCloser.length)} hint="Who took a call" />
           </div>
         </div>
       </div>
@@ -165,8 +162,7 @@ export function RoiTab() {
             <div>
               <h2 className="text-sm font-semibold">Closer ROI</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Trailing {ROI_WINDOW_DAYS} days · spend from {data.spendSource} ·{" "}
-                {data.spendCoveragePct}% of calls have attributable spend
+                The last {ROI_WINDOW_DAYS} days, whatever period the rest of the page is showing. We can trace the ad spend behind {data.spendCoveragePct}% of these calls.
               </p>
             </div>
             {excluded.size > 0 && (
@@ -183,19 +179,11 @@ export function RoiTab() {
             <Stat
               label="Total spend"
               value={fmtCurrency(simulation?.spend ?? 0)}
-              hint={
-                excluded.size > 0
-                  ? `Excluding ${excluded.size}`
-                  : "All closers"
-              }
+              hint={excluded.size > 0 ? `Leaving out ${excluded.size}` : "Every closer"}
             />
+            <Stat label="Cash collected" value={fmtCurrency(simulation?.cash ?? 0)} hint="On calls that finished" />
             <Stat
-              label="Cash collected"
-              value={fmtCurrency(simulation?.cash ?? 0)}
-              hint="From completed calls"
-            />
-            <Stat
-              label="Blended ROI (cash)"
+              label="Cash back per ad dollar"
               value={
                 simulation?.blendedRoiCash != null
                   ? `${simulation.blendedRoiCash.toFixed(2)}×`
@@ -204,7 +192,7 @@ export function RoiTab() {
               tone={roiToneFor(simulation?.blendedRoiCash)}
             />
             <Stat
-              label="Blended ROI (contract)"
+              label="Deals signed per ad dollar"
               value={
                 simulation?.blendedRoiContract != null
                   ? `${simulation.blendedRoiContract.toFixed(2)}×`
@@ -216,12 +204,11 @@ export function RoiTab() {
 
           {/* Simulation chip */}
           {excluded.size > 0 && data.teamWide.blendedRoiCash != null && (
-            <div className="mt-3 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-xs">
-              <span className="font-semibold text-emerald-900 dark:text-emerald-200">
-                Simulating without {excluded.size} closer
-                {excluded.size === 1 ? "" : "s"}:
+            <div className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+              <span className="font-semibold text-foreground">
+                Without {excluded.size} closer{excluded.size === 1 ? "" : "s"}:
               </span>{" "}
-              <span className="text-emerald-700 dark:text-emerald-300">
+              <span className="text-muted-foreground">
                 team ROI would be{" "}
                 {simulation?.blendedRoiCash != null
                   ? `${simulation.blendedRoiCash.toFixed(2)}×`
@@ -233,14 +220,10 @@ export function RoiTab() {
 
           {/* No-show drag callout */}
           {data.teamWide.noShowDragUsd > 0 && (
-            <div className="mt-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs">
-              <span className="font-semibold text-amber-900 dark:text-amber-200">
-                Pipeline loss:
-              </span>{" "}
-              <span className="text-amber-800 dark:text-amber-300">
-                {fmtCurrency(data.teamWide.noShowDragUsd)} of spend went to leads
-                that no-showed ({data.teamWide.noShowCallCount} calls). Not
-                charged to any closer — this is a setter / show-rate issue.
+            <div className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+              <span className="font-semibold text-foreground">Spent on people who never showed:</span>{" "}
+              <span className="text-muted-foreground">
+                {fmtCurrency(data.teamWide.noShowDragUsd)} across {data.teamWide.noShowCallCount} calls. It isn&apos;t counted against any closer — nobody got to take the call.
               </span>
             </div>
           )}
@@ -267,14 +250,12 @@ export function RoiTab() {
                   <th className="px-4 py-2.5 font-medium text-muted-foreground text-right">
                     Cash
                   </th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground text-right">
-                    Contract
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Signed</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-right font-medium text-muted-foreground" title="Cash collected for every dollar of ad spend on their calls">
+                    Cash per $1
                   </th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground text-right">
-                    ROI (cash)
-                  </th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground text-right">
-                    ROI (contract)
+                  <th className="whitespace-nowrap px-4 py-2.5 text-right font-medium text-muted-foreground" title="Deals signed for every dollar of ad spend on their calls">
+                    Signed per $1
                   </th>
                 </tr>
               </thead>
@@ -343,8 +324,7 @@ export function RoiTab() {
 
       {/* Footer hint */}
       <p className="text-[11px] text-muted-foreground text-center">
-        Click checkboxes to simulate &quot;what if I removed these closers.&quot;
-        Worst ROI sorts to the top.
+        Tick a closer to see what the team would return without them. The lowest return sits at the top.
       </p>
     </div>
   );
@@ -358,9 +338,9 @@ function roiToneFor(roi: number | null | undefined): "warn" | undefined {
 
 function roiCellClass(roi: number | null | undefined): string {
   if (roi == null) return "text-muted-foreground";
-  if (roi < 1) return "text-red-600 dark:text-red-400 font-semibold";
-  if (roi < 2) return "text-amber-600 dark:text-amber-400 font-semibold";
-  return "text-emerald-600 dark:text-emerald-400 font-semibold";
+  if (roi < 1) return "text-rose-600 font-semibold";
+  if (roi < 2) return "text-foreground font-semibold";
+  return "text-emerald-600 font-semibold";
 }
 
 function Stat({
@@ -383,7 +363,7 @@ function Stat({
         className={
           "mt-0.5 text-xl font-semibold tabular-nums " +
           (tone === "warn"
-            ? "text-amber-700 dark:text-amber-400"
+            ? "font-medium text-foreground"
             : "text-foreground")
         }
       >

@@ -16,6 +16,7 @@ import { YearView } from "./components/YearView";
 import { SettingsTab } from "./components/SettingsTab";
 import { CloserScorecardSection } from "@/components/closer-scorecard/CloserScorecardSection";
 import { useTeam } from "@/hooks/useTeam";
+import { monthLabel } from "./lib/format";
 
 const HEADER = {
  title: "Closer Performance",
@@ -91,7 +92,17 @@ export default function TeamPerformancePage() {
     if (wanted) window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
- const data = useQuery(
+  // The month the page is on, as milliseconds, for tabs that take a range.
+  const monthPeriod = useMemo(() => {
+    const [y, m] = monthKey.split("-").map(Number);
+    return {
+      start: new Date(y, m - 1, 1).getTime(),
+      end: new Date(y, m, 1).getTime() - 1,
+      label: monthLabel(monthKey, true),
+    };
+  }, [monthKey]);
+
+  const data = useQuery(
     api.closerPerformanceQueries.getTeamPerformance,
     isLoaded && user
       ? {
@@ -146,13 +157,12 @@ export default function TeamPerformancePage() {
         </nav>
 
         {/* Sits above the board, because the board is what looks wrong. */}
-        {tab !== "settings" && tab !== "scorecard" && tab !== "closers" && (
-          <PendingOutcomesNotice teamId={data.teamId} />
-        )}
+        {tab !== "settings" && tab !== "scorecard" && <PendingOutcomesNotice teamId={data.teamId} />}
 
-        {/* The scorecard has its own RangeControl; PeriodNav would be a
-            second, disagreeing range picker. */}
-        {tab !== "settings" && tab !== "year" && tab !== "scorecard" && tab !== "closers" && (
+        {/* One date control for the page. Year steps through years and the
+            per-client scorecard runs on Saturday weeks, so those two keep
+            their own; everything else reads this. */}
+        {tab !== "settings" && tab !== "year" && tab !== "scorecard" && (
  <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey={thisMonth}
@@ -174,7 +184,7 @@ export default function TeamPerformancePage() {
             onWeekChange={setWeekIndex}
           />
         )}
-        {tab === "closers" && <CloserStatsView embedded initialSubTab={closerSubTab} />}
+        {tab === "closers" && <CloserStatsView embedded initialSubTab={closerSubTab} period={monthPeriod} />}
         {tab === "daily" && <DailyGrid monthKey={data.monthKey} />}
         {tab === "scorecard" && <CloserScorecardSection />}
  {tab === "year" && (

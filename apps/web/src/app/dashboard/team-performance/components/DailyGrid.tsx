@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
-import { Info, Loader2, PencilLine } from "lucide-react";
+import { Loader2, PencilLine } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import { EditableCell } from "./EditableCell";
 import { fmtCurrency, fmtNum, fmtPct } from "../lib/format";
@@ -24,13 +24,13 @@ const BASE_FIELDS: Array<{ key: string; label: string; title?: string }> = [
 function gridFields(tierPrices: number[] | undefined) {
   const tiers = (tierPrices ?? []).slice(0, 3).map((price, i) => ({
     key: `tier${i + 1}Pitched`,
-    label: `@ $${price >= 1000 ? `${Math.round(price / 100) / 10}k` : price}`,
+    label: `Pitched $${price >= 1000 ? `${Math.round(price / 100) / 10}k` : price}`,
     title: `Calls where the $${price.toLocaleString()} tier was pitched`,
   }));
   return [
     ...BASE_FIELDS,
-    { key: "fuBooked", label: "FU booked", title: "Follow-up calls scheduled" },
-    { key: "fuShown", label: "FU shown", title: "Follow-ups where the prospect showed" },
+    { key: "fuBooked", label: "Follow-ups booked", title: "Follow-up calls put on the calendar" },
+    { key: "fuShown", label: "Follow-ups shown", title: "Follow-up calls the prospect turned up to" },
     ...tiers,
   ];
 }
@@ -147,37 +147,30 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
         ))}
       </div>
 
-      {/* How editing works — stated once, up front, rather than as a tooltip
-          nobody hovers. */}
-      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
- <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
- <p className="text-xs leading-relaxed text-muted-foreground">
- {data.canEdit ? (
-            <>
-              These are the numbers your closers submitted, falling back to what
-              Sequ3nce measured on days they haven't. Click any cell to
-              correct it — including on days we recorded nothing at all, which
-              is what happens when a rep takes calls without the bot running. Corrections are{" "}
- <span className="font-medium text-amber-700">
- highlighted
-              </span>
-              , show what they reported on hover, and can be reset at any time.
-              Nothing you enter overwrites what they submitted.
-            </>
-          ) : (
-            <>
-              These are the daily numbers your closers submitted. Only managers
-              can enter corrections.
-            </>
-          )}
-        </p>
+      {/* How editing works — one line, stated up front rather than as a
+          tooltip nobody hovers. The detail sits behind the link. */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <span>
+          {data.canEdit
+            ? "What your closers submitted. Click any number to correct it — corrections are underlined, and you can undo one at any time."
+            : "What your closers submitted. Only managers can correct these."}
+        </span>
+        {data.canEdit && (
+          <details className="inline">
+            <summary className="cursor-pointer select-none underline-offset-2 hover:text-foreground hover:underline">How this works</summary>
+            <p className="mt-1 max-w-3xl">
+              On a day a closer hasn&apos;t submitted, we show what we measured instead. You can type a number on any day, including one where we recorded nothing at all —
+              that happens when a rep takes calls without the bot running. What you type never overwrites what they submitted; hover a corrected number to see their figure.
+            </p>
+          </details>
+        )}
       </div>
 
       {editedCount > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-4 py-2.5">
- <PencilLine className="h-3.5 w-3.5 shrink-0 text-amber-700" />
- <p className="text-xs text-amber-800">
- <span className="font-semibold">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-2.5">
+          <PencilLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">
  {editedCount} {editedCount === 1 ? "day has" : "days have"}{" "}
  a manager correction
             </span>{" "}
@@ -198,11 +191,8 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
  {f.label}
                   </th>
                 ))}
-                <th
-                  className={TH + " text-right"}
- title="Calls we recorded where no post-call form was submitted. Closes and cash for that day are understated by this many calls."
- >
-                  No outcome
+                <th className={TH + " text-right"} title="Calls we recorded with no post-call form. That day's closes and cash are short by this many calls.">
+                  No form filled in
                 </th>
               </tr>
             </thead>
@@ -213,7 +203,7 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     colSpan={FIELDS.length + 2}
                     className="px-3 py-10 text-center text-sm text-muted-foreground"
  >
-                    No days to show for this closer in {monthKey}.
+                    Nothing to show for this closer this month.
                   </td>
                 </tr>
               )}
@@ -275,7 +265,7 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
  }
                       title={
                         r.missingOutcomes > 0
-                          ? `${r.missingOutcomes} call(s) that day have no post-call form, so closes and cash are understated`
+                          ? `${r.missingOutcomes} ${r.missingOutcomes === 1 ? "call" : "calls"} that day have no post-call form, so closes and cash are short`
                           : undefined
                       }
                     >

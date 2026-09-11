@@ -314,13 +314,13 @@ export function Leaderboard({
  (selectedCloserId === r.closerId
                       ? "bg-muted "
  : "hover:bg-muted/40 " +
- (leader ? "bg-amber-50/40 " : ""))
+ (leader ? "bg-muted/50 " : ""))
  }
                 >
                   <td className={TD + " text-center text-muted-foreground"}>
  {leader ? (
                       <Crown
-                        className="mx-auto h-3.5 w-3.5 text-amber-500"
+                        className="mx-auto h-3.5 w-3.5 text-muted-foreground"
  aria-label="Top performer"
  />
                     ) : (

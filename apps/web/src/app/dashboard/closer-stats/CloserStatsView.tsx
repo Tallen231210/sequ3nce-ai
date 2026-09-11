@@ -87,23 +87,12 @@ function TrendIndicator({ value, suffix = "%" }: { value: number | null; suffix?
 
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) {
-    return (
-      <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30 hover:bg-amber-500/20">
-        #1
-      </Badge>
-    );
+    return <Badge className="border-foreground bg-foreground text-background hover:bg-foreground">#1</Badge>;
   }
-  if (rank === 2) {
+  if (rank === 2 || rank === 3) {
     return (
-      <Badge variant="outline" className="text-zinc-500 border-zinc-300">
-        #2
-      </Badge>
-    );
-  }
-  if (rank === 3) {
-    return (
-      <Badge variant="outline" className="text-zinc-500 border-zinc-300">
-        #3
+      <Badge variant="outline" className="border-border text-muted-foreground">
+        #{rank}
       </Badge>
     );
   }
@@ -114,16 +103,12 @@ function LiveStatusIndicator({ status }: { status?: "on_call" | "waiting" }) {
   if (!status) return null;
 
   if (status === "on_call") {
-    return (
-      <Badge className="bg-green-500/10 text-green-600 border-green-500/30 animate-pulse">
-        On Call
-      </Badge>
-    );
+    return <Badge className="border-foreground bg-foreground text-background hover:bg-foreground">On a call now</Badge>;
   }
 
   return (
-    <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30">
-      Waiting
+    <Badge variant="outline" className="border-border text-muted-foreground">
+      Waiting for a call
     </Badge>
   );
 }
@@ -154,79 +139,58 @@ interface CloserCardProps {
     revenueThisMonth: number;
     callsThisWeek: number;
     callsThisMonth: number;
+    cashThisWeek: number;
+    cashThisMonth: number;
+    takenThisWeek: number;
+    takenThisMonth: number;
     closeRateTrend: number | null;
     cashCollectedTrend: number | null;
     callsTakenTrend: number | null;
     rank: number;
   };
   liveStatus?: "on_call" | "waiting";
-  dateRange: DateRange;
+  /** What to call the period on screen — the page's month, or this tab's own choice. */
+  rangeLabel: string;
 }
 
-// Generate individual closer insights based on their stats
-function generateCloserInsights(closer: CloserCardProps["closer"], dateRange: DateRange): string[] {
-  const insights: string[] = [];
-  const periodLabel = DATE_RANGE_LABELS[dateRange].toLowerCase();
-  const firstName = closer.name.split(" ")[0];
+/** "this month" reads fine on its own; "July 2026" needs an "in" in front of it. */
+function periodPhrase(rangeLabel: string): string {
+  return /^(today|this|last|all)\b/i.test(rangeLabel) ? rangeLabel.toLowerCase() : `in ${rangeLabel}`;
+}
 
-  // Performance level
-  if (closer.closeRate >= 35) {
-    insights.push(`${firstName} is performing exceptionally with a ${formatPercent(closer.closeRate)} close rate.`);
-  } else if (closer.closeRate >= 25) {
-    insights.push(`${firstName} is showing solid performance with a ${formatPercent(closer.closeRate)} close rate.`);
-  } else if (closer.closeRate >= 15) {
-    insights.push(`${firstName}'s close rate of ${formatPercent(closer.closeRate)} has room for improvement.`);
-  } else if (closer.callsTaken > 0) {
-    insights.push(`${firstName}'s close rate of ${formatPercent(closer.closeRate)} needs attention.`);
+/**
+ * The card's summary: facts about this closer's period, not opinions about
+ * them. The old version graded people ("needs attention", "may be rushing")
+ * from thresholds nobody set, which isn't ours to say — the manager reads the
+ * numbers and decides.
+ */
+function generateCloserInsights(closer: CloserCardProps["closer"], rangeLabel: string): string[] {
+  const facts: string[] = [];
+  const periodLabel = periodPhrase(rangeLabel);
+  if (closer.callsTaken > 0) {
+    const closed = Math.round((closer.closeRate / 100) * closer.callsTaken);
+    facts.push(`Closed ${closed} of ${closer.callsTaken} calls ${periodLabel} — ${formatPercent(closer.closeRate)}.`);
   }
-
-  // Revenue contribution
   if (closer.cashCollected > 0) {
-    insights.push(`Collected ${formatCurrency(closer.cashCollected)} from ${closer.callsTaken} calls ${periodLabel}.`);
+    facts.push(`Collected ${formatCurrency(closer.cashCollected)}${closer.avgDealValue > 0 ? `, ${formatCurrency(closer.avgDealValue)} a deal on average` : ""}.`);
   }
-
-  // Trend analysis
-  if (closer.closeRateTrend !== null) {
-    if (closer.closeRateTrend > 5) {
-      insights.push(`Close rate is up ${closer.closeRateTrend.toFixed(0)} points vs previous period — great momentum!`);
-    } else if (closer.closeRateTrend < -5) {
-      insights.push(`Close rate dropped ${Math.abs(closer.closeRateTrend).toFixed(0)} points — may need coaching.`);
-    }
+  if (closer.closeRateTrend !== null && Math.abs(closer.closeRateTrend) >= 1) {
+    const dir = closer.closeRateTrend > 0 ? "up" : "down";
+    facts.push(`Close rate ${dir} ${Math.abs(closer.closeRateTrend).toFixed(0)} points on the period before.`);
   }
-
-  // Average deal value insight
-  if (closer.avgDealValue > 0) {
-    if (closer.avgDealValue >= 5000) {
-      insights.push(`Strong average deal value of ${formatCurrency(closer.avgDealValue)}.`);
-    } else if (closer.avgDealValue < 2000 && closer.callsTaken >= 3) {
-      insights.push(`Average deal value (${formatCurrency(closer.avgDealValue)}) is on the lower side.`);
-    }
-  }
-
-  // Call length observation
   if (closer.avgCallLength > 0) {
-    const avgMins = Math.floor(closer.avgCallLength / 60);
-    if (avgMins > 45) {
-      insights.push(`Calls averaging ${avgMins} minutes — may need to work on efficiency.`);
-    } else if (avgMins < 15 && closer.closeRate < 20) {
-      insights.push(`Short calls (avg ${avgMins} min) combined with low close rate — may be rushing.`);
-    }
+    facts.push(`Calls run ${Math.round(closer.avgCallLength / 60)} minutes on average.`);
   }
-
-  // Ranking context
-  if (closer.rank === 1 && closer.callsTaken > 0) {
-    insights.push(`Currently the top performer on the team!`);
-  } else if (closer.rank <= 3 && closer.callsTaken > 0) {
-    insights.push(`Ranked #${closer.rank} on the team.`);
+  if (closer.callsTaken > 0 && closer.rank <= 3) {
+    facts.push(`${closer.rank === 1 ? "Top of the team" : `Number ${closer.rank} on the team`} for cash collected.`);
   }
-
-  return insights.slice(0, 4); // Limit to 4 insights
+  return facts.slice(0, 4);
 }
 
-function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
+function CloserCard({ closer, liveStatus, rangeLabel }: CloserCardProps) {
   const hasNoData = closer.callsTaken === 0;
   const [showInsights, setShowInsights] = useState(false);
-  const insights = generateCloserInsights(closer, dateRange);
+  const insights = generateCloserInsights(closer, rangeLabel);
 
   return (
     <Card className="overflow-hidden">
@@ -251,9 +215,9 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
           </div>
           <div className="flex items-center gap-2">
             {closer.calendarProvider && (
-              <Badge className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-50 gap-1 text-[10px] px-1.5 py-0 h-5">
+              <Badge variant="outline" className="h-5 gap-1 border-border px-1.5 py-0 text-[11px] text-muted-foreground" title="Their calendar is connected">
                 <Calendar className="h-3 w-3" />
-                Calendar
+                Calendar connected
               </Badge>
             )}
             <LiveStatusIndicator status={liveStatus} />
@@ -337,38 +301,15 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">Ammo/Call</span>
-                  <span className="font-medium">
-                    {closer.avgAmmoPerCall > 0 ? closer.avgAmmoPerCall.toFixed(1) : "—"}
+                  <span className="text-zinc-500">Cash per call taken</span>
+                  <span className="flex items-center gap-1.5 font-medium">
+                    {closer.revenuePerCallCash > 0 ? formatCurrency(closer.revenuePerCallCash) : "—"}
+                    <TrendIndicator value={closer.revenuePerCallTrend} />
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">Rev/Call</span>
-                  <span className="font-medium flex items-center gap-1.5">
-                    {closer.revenuePerCallCash > 0 || closer.revenuePerCallContract > 0
-                      ? `${formatCurrency(closer.revenuePerCallCash)} / ${formatCurrency(closer.revenuePerCallContract)}`
-                      : "—"}
-                    {closer.revenuePerCallTrend !== null && (
-                      <span className={`text-[10px] font-semibold ${closer.revenuePerCallTrend > 0 ? 'text-green-600' : closer.revenuePerCallTrend < 0 ? 'text-red-500' : 'text-zinc-400'}`}>
-                        {closer.revenuePerCallTrend > 0 ? '↑' : closer.revenuePerCallTrend < 0 ? '↓' : ''}
-                        {closer.revenuePerCallTrend > 0 ? '+' : ''}{closer.revenuePerCallTrend}%
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Rev/Sit</span>
-                  <span className="font-medium flex items-center gap-1.5">
-                    {closer.revenuePerSitCash > 0 || closer.revenuePerSitContract > 0
-                      ? `${formatCurrency(closer.revenuePerSitCash)} / ${formatCurrency(closer.revenuePerSitContract)}`
-                      : "—"}
-                    {closer.revenuePerSitTrend !== null && (
-                      <span className={`text-[10px] font-semibold ${closer.revenuePerSitTrend > 0 ? 'text-green-600' : closer.revenuePerSitTrend < 0 ? 'text-red-500' : 'text-zinc-400'}`}>
-                        {closer.revenuePerSitTrend > 0 ? '↑' : closer.revenuePerSitTrend < 0 ? '↓' : ''}
-                        {closer.revenuePerSitTrend > 0 ? '+' : ''}{closer.revenuePerSitTrend}%
-                      </span>
-                    )}
-                  </span>
+                  <span className="text-zinc-500">Deal size per call taken</span>
+                  <span className="font-medium">{closer.revenuePerCallContract > 0 ? formatCurrency(closer.revenuePerCallContract) : "—"}</span>
                 </div>
                 {closer.talkToListenRatio !== null && (
                   <div className="flex justify-between">
@@ -385,21 +326,17 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
             <div className="border-t border-zinc-100 pt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-zinc-500 mb-1">This Week</p>
-                  <p className="text-sm font-medium">
-                    {formatCurrency(closer.revenueThisWeek)}
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    {closer.callsThisWeek} calls
+                  <p className="mb-1 text-xs text-muted-foreground">Cash this week</p>
+                  <p className="text-sm font-medium">{formatCurrency(closer.cashThisWeek)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {closer.takenThisWeek} {closer.takenThisWeek === 1 ? "call" : "calls"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500 mb-1">This Month</p>
-                  <p className="text-sm font-medium">
-                    {formatCurrency(closer.revenueThisMonth)}
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    {closer.callsThisMonth} calls
+                  <p className="mb-1 text-xs text-muted-foreground">Cash this month</p>
+                  <p className="text-sm font-medium">{formatCurrency(closer.cashThisMonth)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {closer.takenThisMonth} {closer.takenThisMonth === 1 ? "call" : "calls"}
                   </p>
                 </div>
               </div>
@@ -415,7 +352,7 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-zinc-400 group-hover:text-zinc-600" />
                     <span className="text-sm font-medium text-zinc-600 group-hover:text-zinc-800">
-                      {DATE_RANGE_LABELS[dateRange]} Summary
+                      {rangeLabel} summary
                     </span>
                   </div>
                   {showInsights ? (
@@ -505,17 +442,17 @@ function TeamStatCard({ icon, label, value, trend, trendSuffix = "%" }: TeamStat
 interface DynamicSummaryProps {
   teamStats: TeamStatsSectionProps["teamStats"];
   closerStats: CloserCardProps["closer"][];
-  dateRange: DateRange;
+  rangeLabel: string;
 }
 
-function DynamicSummary({ teamStats, closerStats, dateRange }: DynamicSummaryProps) {
+function DynamicSummary({ teamStats, closerStats, rangeLabel }: DynamicSummaryProps) {
   if (!teamStats || closerStats.length === 0) {
     return null;
   }
 
   // Generate insights based on the data
   const insights: string[] = [];
-  const periodLabel = DATE_RANGE_LABELS[dateRange].toLowerCase();
+  const periodLabel = periodPhrase(rangeLabel);
 
   // Total revenue insight
   if (teamStats.totalCashCollected > 0) {
@@ -526,21 +463,20 @@ function DynamicSummary({ teamStats, closerStats, dateRange }: DynamicSummaryPro
 
   // Close rate insight
   if (teamStats.totalCallsTaken > 0) {
-    const closeRateStatus = teamStats.teamCloseRate >= 30 ? "strong" : teamStats.teamCloseRate >= 20 ? "solid" : "needs work";
-    insights.push(`Team close rate is ${formatPercent(teamStats.teamCloseRate)} (${closeRateStatus}) from ${teamStats.totalCallsTaken} calls.`);
+    insights.push(`The team closed ${formatPercent(teamStats.teamCloseRate)} of ${teamStats.totalCallsTaken} calls.`);
   }
 
   // Top performer insight
   const topPerformer = closerStats.find(c => c.rank === 1 && c.callsTaken > 0);
   if (topPerformer) {
-    insights.push(`${topPerformer.name.split(" ")[0]} is leading with a ${formatPercent(topPerformer.closeRate)} close rate.`);
+    insights.push(`${topPerformer.name.split(" ")[0]} collected the most, closing ${formatPercent(topPerformer.closeRate)} of their calls.`);
   }
 
   // Trend insight
   if (teamStats.cashCollectedTrend !== null && teamStats.cashCollectedTrend !== 0) {
     const trendDirection = teamStats.cashCollectedTrend > 0 ? "up" : "down";
     const trendAmount = Math.abs(teamStats.cashCollectedTrend).toFixed(0);
-    insights.push(`Revenue is ${trendDirection} ${trendAmount}% compared to the previous period.`);
+    insights.push(`Cash is ${trendDirection} ${trendAmount}% on the period before.`);
   }
 
   if (insights.length === 0) {
@@ -548,18 +484,20 @@ function DynamicSummary({ teamStats, closerStats, dateRange }: DynamicSummaryPro
   }
 
   return (
-    <div className="mb-6 p-4 bg-zinc-50 border border-zinc-200 rounded-lg">
+    <div className="mb-6 rounded-lg border border-border bg-muted/40 p-4">
       <div className="flex items-start gap-3">
-        <div className="p-2 bg-zinc-900 text-white rounded-lg shrink-0">
+        <div className="shrink-0 rounded-lg bg-background p-2 text-muted-foreground">
           <BarChart3 className="h-4 w-4" />
         </div>
         <div>
           <h3 className="font-medium text-foreground mb-1">
-            {DATE_RANGE_LABELS[dateRange]} Summary
+            {rangeLabel} summary
           </h3>
-          <p className="text-sm text-zinc-600 leading-relaxed">
-            {insights.join(" ")}
-          </p>
+          <ul className="space-y-0.5 text-sm leading-relaxed text-muted-foreground">
+            {insights.map((i) => (
+              <li key={i}>{i}</li>
+            ))}
+          </ul>
         </div>
       </div>
     </div>
@@ -582,10 +520,10 @@ interface TeamStatsSectionProps {
     averageDealValueTrend: number | null;
     showRateTrend: number | null;
   } | null;
-  dateRange: DateRange;
+  rangeLabel: string;
 }
 
-function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
+function TeamStatsSection({ teamStats, rangeLabel }: TeamStatsSectionProps) {
   // Show empty state if no stats
   if (!teamStats) {
     return (
@@ -593,7 +531,7 @@ function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Team Overview</h2>
-            <p className="text-sm text-zinc-500">{DATE_RANGE_LABELS[dateRange]}</p>
+            <p className="text-sm text-zinc-500">{rangeLabel}</p>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -613,7 +551,7 @@ function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Team Overview</h2>
-          <p className="text-sm text-zinc-500">{DATE_RANGE_LABELS[dateRange]}</p>
+          <p className="text-sm text-zinc-500">{rangeLabel}</p>
         </div>
       </div>
 
@@ -675,21 +613,47 @@ function isTabId(v: string | null): v is TabId {
  * Rendered inside Closer Performance (embedded: no page header, sub-tab
  * state kept local) — the old /dashboard/closer-stats route redirects there.
  */
-export function CloserStatsView({ embedded = false, initialSubTab }: { embedded?: boolean; initialSubTab?: string | null }) {
+export function CloserStatsView({
+  embedded = false,
+  initialSubTab,
+  period,
+}: {
+  embedded?: boolean;
+  initialSubTab?: string | null;
+  /**
+   * The month the page as a whole is showing. When it's given, this tab
+   * follows it instead of offering a second date picker that disagreed with
+   * the one at the top of the page.
+   */
+  period?: { start: number; end: number; label: string };
+}) {
   const [tab, setTab] = useState<TabId>(isTabId(initialSubTab ?? null) ? (initialSubTab as TabId) : "performance");
   function changeTab(next: TabId) {
     setTab(next);
   }
 
   const { clerkId, isLoading: isTeamLoading } = useTeam();
-  const [dateRange, setDateRange] = useState<DateRange>("last_30_days");
+  const [ownRange, setOwnRange] = useState<DateRange>("last_30_days");
   const [customStart, setCustomStart] = useState<number | undefined>(undefined);
   const [customEnd, setCustomEnd] = useState<number | undefined>(undefined);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const dateRange: DateRange = period ? "custom" : ownRange;
+  const setDateRange = setOwnRange;
+  const rangeLabel = period
+    ? period.label
+    : dateRange === "custom" && customStart && customEnd
+      ? `${new Date(customStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${new Date(customEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+      : DATE_RANGE_LABELS[dateRange];
 
-  const queryArgs = dateRange === "custom" && customStart && customEnd
-    ? { clerkId: clerkId!, dateRange, customStart, customEnd }
-    : clerkId ? { clerkId, dateRange } : null;
+  const queryArgs = period
+    ? clerkId
+      ? { clerkId, dateRange: "custom" as const, customStart: period.start, customEnd: period.end }
+      : null
+    : dateRange === "custom" && customStart && customEnd
+      ? { clerkId: clerkId!, dateRange, customStart, customEnd }
+      : clerkId
+        ? { clerkId, dateRange }
+        : null;
 
   const stats = useQuery(
     api.closers.getCloserStats,
@@ -761,6 +725,9 @@ export function CloserStatsView({ embedded = false, initialSubTab }: { embedded?
               {stats.length} active closer{stats.length !== 1 ? "s" : ""}
             </span>
           </div>
+          {period ? (
+            <span className="text-sm text-muted-foreground">{period.label}</span>
+          ) : (
           <div className="relative">
             <Select
               value={dateRange}
@@ -809,17 +776,14 @@ export function CloserStatsView({ embedded = false, initialSubTab }: { embedded?
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Dynamic Summary */}
-        <DynamicSummary
-          teamStats={teamStats ?? null}
-          closerStats={stats}
-          dateRange={dateRange}
-        />
+        <DynamicSummary teamStats={teamStats ?? null} closerStats={stats} rangeLabel={rangeLabel} />
 
         {/* Team Overview Section */}
-        <TeamStatsSection teamStats={teamStats ?? null} dateRange={dateRange} />
+        <TeamStatsSection teamStats={teamStats ?? null} rangeLabel={rangeLabel} />
 
         {/* Section Divider */}
         <div className="flex items-center gap-3 mb-6">
@@ -834,7 +798,7 @@ export function CloserStatsView({ embedded = false, initialSubTab }: { embedded?
               key={closer.closerId}
               closer={closer}
               liveStatus={liveStatus?.[closer.closerId]}
-              dateRange={dateRange}
+              rangeLabel={rangeLabel}
             />
           ))}
         </div>

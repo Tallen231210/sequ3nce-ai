@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { readableError } from "@/lib/convexError";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
-import { CheckCircle2, Info, Loader2, Send } from "lucide-react";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import {
   SlackChannelPicker,
@@ -73,7 +74,7 @@ export function ScorecardSettings() {
       }
     } catch (err) {
       setChannels([]);
-      setFetchError(err instanceof Error ? err.message : String(err));
+      setFetchError(readableError(err, "Couldn't load your channels"));
     } finally {
       setLoadingChannels(false);
     }
@@ -101,7 +102,7 @@ export function ScorecardSettings() {
     try {
       await update({ clerkId: user!.id, ...patch });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save");
+      setError(readableError(e, "Could not save"));
  } finally {
       setBusy(false);
     }
@@ -129,7 +130,7 @@ export function ScorecardSettings() {
       if (!okToSave) return;
       await update({ clerkId: user!.id, ...slackArgs });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save");
+      setError(readableError(e, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -147,7 +148,7 @@ export function ScorecardSettings() {
  : `Not sent: ${res.reason ?? "unknown reason"}`,
  );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Test failed");
+      setError(readableError(e, "Test failed"));
  } finally {
       setBusy(false);
     }
@@ -155,15 +156,15 @@ export function ScorecardSettings() {
 
   return (
     <div className="space-y-4">
- <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
- <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
- <p className="text-xs leading-relaxed text-muted-foreground">
- Posts yesterday&apos;s numbers — cash, closes, show and close rates,
-          and a per-closer ranking — to Slack or Discord each morning. It reads
-          the same figures as this dashboard, corrections included, so the post
-          and the board can never disagree. Quiet days aren&apos;t posted: a
-          channel that gets &quot;0 booked&quot; every weekend stops being read.
-        </p>
+ <div>
+        <h3 className="text-sm font-semibold">Should we post yesterday&apos;s numbers every morning?</h3>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">What the post says</summary>
+          <p className="mt-1 max-w-3xl leading-relaxed">
+            Cash, closes, show rate, close rate and a ranking by closer, to Slack or Discord. It reads the same figures as this page, your corrections included, so the post and
+            the board can never disagree. Quiet days aren&apos;t posted — a channel that gets &quot;0 booked&quot; every weekend stops being read.
+          </p>
+        </details>
       </div>
 
       {error && (

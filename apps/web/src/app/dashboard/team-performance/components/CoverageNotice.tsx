@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowRight, ClipboardList, UserPlus } from "lucide-react";
 import { fmtNum, fmtPct } from "../lib/format";
 import { MONO } from "@/components/analytics/primitives/typography";
+import { Notice, NoticeMeter } from "@/components/dashboard/notice";
 
 interface Coverage {
  taken: number;
@@ -25,66 +26,32 @@ export function CoverageNotice({ coverage }: { coverage: Coverage }) {
   const pct = coverage.outcomeCoverage === null ? 0 : coverage.outcomeCoverage * 100;
 
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-5">
- <div className="flex items-start gap-3.5">
- <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
- <AlertTriangle className="h-4 w-4 text-amber-700" />
- </div>
-
-        <div className="min-w-0 flex-1">
- <h3 className="text-sm font-semibold text-amber-900">
- {fmtNum(coverage.missingOutcomes)} of {fmtNum(coverage.taken)} calls
-            have no logged outcome
-          </h3>
-          <p className="mt-1.5 text-sm leading-relaxed text-amber-800">
- Offers, closes and cash come from the post-call form.{" "}
- {logged === 0 ? (
-              <>Not one call this period has one,</>
-            ) : (
-              <>
-                Only{" "}
- <span className={`font-semibold ${MONO}`}>
-                  {fmtPct(pct)}
-                </span>{" "}
- of calls this period have one,
-              </>
-            )}{" "}
- so the bottom half of this board reads near zero — that reflects
-            missing paperwork, not missing results. Bookings, calls taken and
-            show rate are unaffected.
-          </p>
-
-          {/* Coverage meter — the number they need to move. */}
-          <div className="mt-3.5 max-w-sm">
- <div className="flex items-center justify-between text-[11px] font-medium text-amber-800">
- <span>Outcome coverage</span>
-              <span className={`${MONO}`}>
-                {fmtNum(logged)} / {fmtNum(coverage.taken)}
-              </span>
-            </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-amber-200/70">
- <div
-                className="h-full rounded-full bg-amber-500 transition-all"
- style={{ width: `${Math.max(pct, 1.5)}%` }}
-              />
-            </div>
-          </div>
-
+    <Notice
+      icon={AlertTriangle}
+      title={`${fmtNum(coverage.missingOutcomes)} of ${fmtNum(coverage.taken)} calls have no logged outcome`}
+      footer={
+        <>
+          <NoticeMeter label="Calls with an outcome" value={logged} max={coverage.taken} />
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
- <Link
-              href="/dashboard/team"
- className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-900 underline-offset-2 hover:underline"
- >
+            <Link href="/dashboard/team" className="inline-flex items-center gap-1.5 text-xs font-semibold underline-offset-2 hover:underline">
               Check who has the desktop app
               <ArrowRight className="h-3 w-3" />
- </Link>
-            <span className="text-xs text-amber-700/80">
- Calls recorded by the meeting bot log their outcome automatically.
-            </span>
+            </Link>
+            <span className="text-xs text-muted-foreground">Calls the meeting bot records log their outcome on their own.</span>
           </div>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      Offers, closes and cash come from the post-call form.{" "}
+      {logged === 0 ? (
+        <>Not one call this period has one,</>
+      ) : (
+        <>
+          Only <span className={`font-semibold ${MONO} text-foreground`}>{fmtPct(pct)}</span> of calls this period have one,
+        </>
+      )}{" "}
+      so the bottom half of this board reads near zero — that is missing paperwork, not missing results. Bookings, calls taken and show rate are unaffected.
+    </Notice>
   );
 }
 
@@ -180,63 +147,27 @@ export function ConfirmationNotice({
 
   const { daysConfirmed, daysInPeriod, closerDaysConfirmed, closerDaysExpected } =
     confirmation;
-  const pct =
-    closerDaysExpected > 0
-      ? (closerDaysConfirmed / closerDaysExpected) * 100
-      : 0;
   // Nothing at all reads differently from a partly-filled month: one is "this
   // hasn't started", the other is "these totals are short".
  const nothingYet = closerDaysConfirmed === 0;
 
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-5">
- <div className="flex items-start gap-3.5">
- <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
- <ClipboardList className="h-4 w-4 text-amber-700" />
- </div>
-
-        <div className="min-w-0 flex-1">
- <h3 className="text-sm font-semibold text-amber-900">
- {nothingYet
-              ? `No days submitted yet for ${monthLabel}`
-              : `${fmtNum(daysConfirmed)} of ${fmtNum(daysInPeriod)} days submitted`}
-          </h3>
-          <p className="mt-1.5 text-sm leading-relaxed text-amber-800">
- {nothingYet ? (
-              <>
-                This board shows what closers report in the desktop app. Until
-                they start filling in their day, there is nothing to show —
-                the calls we recorded are used to pre-fill their sheet, not to
-                stand in for it.
-              </>
-            ) : (
-              <>
-                Totals below cover only the days closers have submitted, so
-                they understate the month. A quiet month and an unsubmitted one
-                look the same here — check the gap before reading anything into
-                the numbers.
-              </>
-            )}
-          </p>
-
-          {!nothingYet && (
-            <div className="mt-3.5 max-w-sm">
- <div className="flex items-center justify-between text-[11px] font-medium text-amber-800">
- <span>Closer-days submitted</span>
-                <span className={MONO}>
-                  {fmtNum(closerDaysConfirmed)} / {fmtNum(closerDaysExpected)}
-                </span>
-              </div>
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-amber-200/70">
- <div
-                  className="h-full rounded-full bg-amber-500 transition-all"
-                  style={{ width: `${Math.max(pct, 1.5)}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    <Notice
+      icon={ClipboardList}
+      title={nothingYet ? `No days submitted yet for ${monthLabel}` : `${fmtNum(daysConfirmed)} of ${fmtNum(daysInPeriod)} days submitted`}
+      footer={!nothingYet ? <NoticeMeter label="Days closers have submitted" value={closerDaysConfirmed} max={closerDaysExpected} /> : undefined}
+    >
+      {nothingYet ? (
+        <>
+          This board shows what closers report in the desktop app. Until they start filling in their day there is nothing to show — the calls we recorded fill in their sheet
+          for them, they don&apos;t stand in for it.
+        </>
+      ) : (
+        <>
+          The totals below cover only the days closers have submitted, so they understate the month. A quiet month and an unsubmitted one look the same here — check the gap
+          before reading anything into the numbers.
+        </>
+      )}
+    </Notice>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { readableError } from "@/lib/convexError";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
-import { CheckCircle2, Info, Loader2, Send } from "lucide-react";
-import { ConvexError } from "convex/values";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import {
   SlackChannelPicker,
@@ -13,19 +13,6 @@ import {
 import { useSaveWithSlackJoin } from "@/components/slack/useSaveWithSlackJoin";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-/**
- * The human-readable half of a Convex failure.
- *
- * A plain Error thrown in a Convex function is stripped to "Server Error" by
- * the time it reaches the browser; only ConvexError carries its message
- * across. This reads that message when there is one and falls back otherwise,
- * so a validation rule can actually tell someone what they did wrong.
- */
-function readableError(e: unknown, fallback: string): string {
-  if (e instanceof ConvexError && typeof e.data === "string") return e.data;
-  return e instanceof Error ? e.message : fallback;
-}
 
 function hourLabel(h: number): string {
   if (h === 0) return "12am";
@@ -164,15 +151,15 @@ export function EodNudgeSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Names the closers who took calls yesterday but never filed their
-          end-of-day, with the number of calls they took. The scoreboard only
-          counts days a closer submitted, so anyone who skips the form drops off
-          it entirely — this is what says so. Nothing is posted on days everyone
-          filed, or days nobody worked.
-        </p>
+      <div>
+        <h3 className="text-sm font-semibold">Should we chase closers who didn&apos;t fill in their day?</h3>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">What the post says</summary>
+          <p className="mt-1 max-w-3xl leading-relaxed">
+            The closers who took calls yesterday and never filed their end-of-day form, and how many calls each of them took. This board only counts days a closer
+            submitted, so anyone who skips the form disappears from it — this is what says so. Nothing goes out on a day everyone filed, or a day nobody worked.
+          </p>
+        </details>
       </div>
 
       {error && (
@@ -192,9 +179,8 @@ export function EodNudgeSettings() {
           on and simply never arrive. Say it here rather than let someone
           discover it a week later. */}
       {data.enabled && noHour && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-          This is switched on but has no send time, so nothing will go out. Pick
-          a time below.
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-xs">
+          <span className="font-medium">This is switched on but has no send time, so nothing will go out.</span> Pick a time below.
         </div>
       )}
 
@@ -357,7 +343,7 @@ export function EodNudgeSettings() {
                 onChange={(e) => void save({ hourLocal: Number(e.target.value) })}
                 className={
                   "rounded-lg border bg-background px-3 py-1.5 text-sm outline-none focus:border-foreground " +
-                  (noHour ? "border-amber-400" : "border-border")
+                  (noHour ? "border-foreground" : "border-border")
                 }
               >
                 <option value="" disabled>

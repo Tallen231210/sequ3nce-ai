@@ -37,7 +37,7 @@ export function EodFilingCard({
     <div className="mb-4 rounded-xl border border-border bg-card p-4">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-semibold">
-          EOD check-ins today
+          Who has filed their end of day?
           <span className="ml-2 font-normal text-muted-foreground">
             {filedToday.length} of {total} filed
           </span>
@@ -49,7 +49,7 @@ export function EodFilingCard({
           <span
             key={f.name}
             title={`Filed at ${timeOf(f.at)}`}
-            className="inline-flex items-center gap-1 rounded-full border border-emerald-600/30 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+            className="inline-flex items-center gap-1 rounded-full border border-foreground bg-foreground px-2.5 py-1 text-xs font-medium text-background"
           >
             ✓ {f.name}
             <span className="font-normal opacity-70">{timeOf(f.at)}</span>
@@ -59,9 +59,10 @@ export function EodFilingCard({
           <span
             key={name}
             title="Hasn't submitted today's EOD yet"
-            className="inline-flex items-center rounded-full border border-amber-600/30 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+            className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground"
           >
-            {name} — not yet
+            {name}
+            <span className="font-normal text-muted-foreground">not yet</span>
           </span>
         ))}
       </div>
@@ -70,9 +71,7 @@ export function EodFilingCard({
         {missedYesterday.length > 0 ? (
           <>
             Yesterday:{" "}
-            <span className="font-medium text-rose-600">
-              {missedYesterday.join(", ")}
-            </span>{" "}
+            <span className="font-medium text-foreground">{missedYesterday.join(", ")}</span>{" "}
             worked but never filed.
           </>
         ) : filedYesterday.length > 0 ? (
