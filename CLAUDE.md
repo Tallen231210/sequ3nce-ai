@@ -131,14 +131,28 @@ npx convex deploy --yes                         # Deploy to production
 
 When debugging production issues, ALWAYS use `--prod` flag with Convex CLI commands.
 
-## Two-Agent Working Agreement (B2B and B2C in parallel)
+## Agent Working Agreement (parallel lanes)
 
-Two coding agents work at the same time in separate terminals: one on B2B, one on B2C. The Convex
-backend is shared by design and cannot be split, so the separation is by lane, not by backend.
-Goal: either lane can ship to production at any time without carrying the other lane's unfinished work.
+Several coding agents work at the same time in separate terminals. The Convex backend is shared by
+design and cannot be split, so the separation is by lane, not by backend. Goal: any lane can ship to
+production at any time without carrying another lane's unfinished work.
+
+**Who owns what — set by Tyler, 2026-09-12**
+
+| Lane | Owner |
+|------|-------|
+| B2B: `apps/desktop/**`, and `apps/web/src/**` minus the B2C surfaces | B2B agent |
+| Personal app features: `apps/personal/**` | Personal-app agent |
+| B2C funnel: `/start`, `/subscribe`, the thanks page, the GoHighLevel booking handoff | B2C release owner |
+| `apps/web/convex/**` | shared seam, additive only — see below |
+| Code review of Personal-app work, before every release | B2C release owner |
+| `/release-personal` tags, and every B2C `npx convex deploy` | B2C release owner |
+
+The Personal-app agent builds; the B2C release owner reviews and ships. Neither cuts a release tag nor
+deploys the backend for the other's work.
 
 **Lanes by folder — know whose work a change is before you touch it**
-- `apps/personal/**` → B2C only.
+- `apps/personal/**` → B2C only, owned by the Personal-app agent. Reviewed and released by the B2C release owner.
 - `apps/desktop/**` → B2B only.
 - `apps/web/src/**` → B2B, except the B2C web surfaces (the Personal funnel at `/start` and `/subscribe`,
   the closer deck at `/pitch`, and the public job board), which B2C owns.
@@ -175,6 +189,20 @@ Goal: either lane can ship to production at any time without carrying the other 
    Before the next deploy, list the backend changes since the last tag:
    `git log --oneline $(git describe --tags --match 'convex-prod-*' --abbrev=0 origin/main)..origin/main -- apps/web/convex`.
    If anything in that list is not ready, stop and say so.
+
+**Review and release gate (Personal app)**
+
+What reaches a customer, and when, decides what needs review first.
+- `apps/personal/**` on `main` reaches nobody until a release tag is cut. Merge it to `main` when the
+  change is finished; the B2C release owner reviews it before running `/release-personal`.
+- `apps/web/convex/**` is the opposite: it goes live the moment ANY lane runs `npx convex deploy`,
+  because a deploy pushes the whole folder. Backend changes are reviewed BEFORE they land on `main`, or
+  they land inert — a new function nobody calls yet, or an existing path behind a beta flag.
+- The B2C web surfaces (`/start`, `/subscribe`, `/pitch`, public job board) go live on every push to
+  `main` via Vercel. Route changes there through the B2C release owner.
+- A Personal release is signed off when `npx tsc --noEmit` is clean, the Playwright specs for the
+  touched views pass against a compiled `.webpack`, and the release owner has looked at the screens.
+  Findings get fixed on the branch, never after the tag.
 
 ## Documentation
 
