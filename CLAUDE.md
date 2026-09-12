@@ -170,6 +170,23 @@ deploys the backend for the other's work.
   rebase your own commits on top of `main`.
 - Never run `convex dev` or `convex deploy` against the other lane's dev deployment.
 
+**Commit, push, and merge are three different things. Only the third is a commitment.**
+- `git commit` on a `b2b/…` or `b2c/…` branch is a private save point. Free and reversible. Commit early
+  and often while building and testing. It reaches no customer and no other lane.
+- `git push` of that BRANCH publishes it for review and backs it up off the laptop. Still reaches no
+  customer: Vercel builds only `main`, the backend moves only on `npx convex deploy`, and the desktop
+  and Personal apps move only on a release tag.
+- Merging the branch into `main` is the commitment. It needs three things: the work is finished, the
+  lane's reviewer has read it, and Tyler wants it live.
+- An experiment that gets rejected needs no cleanup. Delete the branch or leave it. Nothing leaked into
+  `main`, so nothing has to be unpicked.
+- Therefore: never build or test in the shared checkout `/Users/tylerallen/Desktop/sequ3nce-ai`. Set up
+  your own worktree once, and keep every experiment in it:
+  `git worktree add -b b2c/<feature> ~/Desktop/sequ3nce-ai-personal origin/main`
+  then symlink `node_modules` from the shared checkout instead of reinstalling, as the B2B worktree does.
+- The shared checkout must stay clean and on `main`, because signed releases are built there. Uncommitted
+  work sitting in it blocks the release pipeline for whichever lane needs to ship next.
+
 **What goes live, and when**
 - The website: every push to `main`. Vercel builds all of `apps/web`, both products' pages included.
 - The backend: only `npx convex deploy`. It pushes the ENTIRE `apps/web/convex` folder and removes any
