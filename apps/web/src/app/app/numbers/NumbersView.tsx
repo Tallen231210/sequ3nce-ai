@@ -62,6 +62,10 @@ export function NumbersView() {
 
   const [perf, setPerf] = useState<SelfPerformance | null>(null);
   const [rows, setRows] = useState<DailyEntryRow[]>([]);
+  // The server's idea of today, in the closer's own timezone. Don't infer it
+  // from rows[0]: that only happens to be today while this view is pinned to
+  // the current month, and a month picker would silently break the count.
+  const [todayKey, setTodayKey] = useState<string | null>(null);
   const [tierPrices, setTierPrices] = useState<number[] | null>(null);
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
   const [year, setYear] = useState<number>(() => new Date().getFullYear());
@@ -87,6 +91,7 @@ export function NumbersView() {
       ]);
       setPerf(p);
       setRows(entries?.rows ?? []);
+      setTodayKey(entries?.todayKey ?? null);
       setTierPrices(entries?.tierPrices ?? null);
       setBoard(lb?.rows ?? []);
     } catch {
@@ -164,8 +169,8 @@ export function NumbersView() {
   // and was told they were behind. Weekends and days off never cleared
   // either. Same rule the missing-EOD nudge uses, so the app and Slack say
   // the same thing.
-  const owed = previous.filter(
-    (r) => !r.confirmedAt && (r.measured.booked > 0 || r.measured.taken > 0),
+  const owed = rows.filter(
+    (r) => r.dayKey !== todayKey && !r.confirmedAt && (r.measured.booked > 0 || r.measured.taken > 0),
   );
   const outstanding = owed.length;
 
