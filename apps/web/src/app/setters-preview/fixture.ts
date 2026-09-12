@@ -81,7 +81,7 @@ export const BOOKINGS: BookingsData = {
     { linkName: "no name on the link", name: "no name on the link", configured: false, active: true, ...tally(8, 4, 3), ...money(0, 0) },
   ],
   confirmation: [
-    { id: "r-sasha", rosterId: "r-sasha", name: "Sasha", active: true, linked: true, ...tally(65, 29, 23), tagged: 58, crmOnly: 6, claimed: 0, newSelfBooks: 77, contacted: 64, reached: 22, coveragePct: 83, ...money(5, 22_800), responseMedianWorkingMs: 1.4 * H },
+    { id: "r-sasha", rosterId: "r-sasha", name: "Sasha", active: true, linked: true, ...tally(65, 29, 23), tagged: 58, crmOnly: 6, claimed: 0, newSelfBooks: 77, contacted: 64, reached: 22, coveragePct: 83, ...money(5, 22_800), responseMedianWorkingMs: 1.4 * H, hoursBasis: "their hours (from their own calls), 10:00–21:00, 7 days a week" },
   ],
   selfBookedUncontacted: [],
   unattributed: [],

@@ -89,9 +89,17 @@ export const getSettersBookings = query({
     const view = buildSetterTeamsView(data.records, data.rosters, data.crmUserNames);
     const labels = teamLabelsFor(team.setterTeamLabels);
     const hours = await hoursFor(ctx, access);
+    // The confirmation setter gets her own window too. Measuring her against
+    // the team's 9–5 while every outbound setter is measured against their own
+    // hours would be the same bug in a different seat — and she works seven
+    // days, so it moves her number.
+    const rosterDocs = await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(200);
+    const rosterDocById = new Map(rosterDocs.map((r) => [String(r._id), r]));
     const confirmation = confirmationRows(view.confirmation, data.records, data.rosters).map((row) => {
-      const { median } = percentiles(responseTimes(data.records, row.rosterId, hours));
-      return { ...row, responseMedianWorkingMs: median };
+      const doc = rosterDocById.get(row.rosterId);
+      const own = doc ? hoursForRoster(doc, hours) : { hours, basis: `team hours, ${basisOf(hours)}` };
+      const { median } = percentiles(responseTimes(data.records, row.rosterId, own.hours));
+      return { ...row, responseMedianWorkingMs: median, hoursBasis: own.basis };
     });
     const coverage = [
       "Leads per setter, and sets per lead: the CRM doesn't tell us who owns a lead, so we can't split leads by setter.",
@@ -104,7 +112,9 @@ export const getSettersBookings = query({
       rangeClampedToDays: access.rangeClampedToDays,
       truncated: data.truncated,
       labels,
-      basis: basisOf(hours),
+      basis: rosterDocs.some((r) => r.derivedHours || r.hoursOverride)
+        ? "each setter's own, worked out from their calls"
+        : basisOf(hours),
       strip: teamStrip(view.comparison, data.records, labels, view.funnel),
       outbound: outboundRows(view.outbound, data.records, data.rosters),
       dm: dmRows(view.dm, data.records, team.setterDmPeople ?? []),
