@@ -89,10 +89,8 @@ export const getSettersBookings = query({
     const view = buildSetterTeamsView(data.records, data.rosters, data.crmUserNames);
     const labels = teamLabelsFor(team.setterTeamLabels);
     const hours = await hoursFor(ctx, access);
-    // The confirmation setter gets her own window too. Measuring her against
-    // the team's 9–5 while every outbound setter is measured against their own
-    // hours would be the same bug in a different seat — and she works seven
-    // days, so it moves her number.
+    // Each setter's own window, so this row agrees with the card's median
+    // (which comes from getSettersSets) rather than quietly using team hours.
     const rosterDocs = await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(200);
     const rosterDocById = new Map(rosterDocs.map((r) => [String(r._id), r]));
     const confirmation = confirmationRows(view.confirmation, data.records, data.rosters).map((row) => {
@@ -137,6 +135,11 @@ export const getSettersSets = query({
     if (!access) return null;
     const { records, rosters, truncated } = await collectBookedInRange(ctx, access);
     const hours = await hoursFor(ctx, access);
+    // Her own window, same as the outbound setters get. This is the median the
+    // card actually renders — the copy on getSettersBookings.confirmation is
+    // read by nothing.
+    const setsRosterDocs = await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", access.teamId)).take(200);
+    const setsRosterById = new Map(setsRosterDocs.map((r) => [String(r._id), r]));
     const outbound = rosters
       .filter((r) => r.role !== "confirmation")
       .map((r) => {
@@ -157,7 +160,9 @@ export const getSettersSets = query({
         const contacted = selfBooks.filter(
           (b) => hers(b).length > 0 || ((b.classification.attributedBy === "tag" || b.classification.attributedBy === "claim") && b.classification.creditRosterIds.includes(r.rosterId)),
         );
-        const { median } = percentiles(confirmationSpeedRows(records, r.rosterId, r.name, hours).flatMap((row) => (row.workingMs === null ? [] : [row.workingMs])));
+        const herDoc = setsRosterById.get(r.rosterId);
+        const herHours = herDoc ? hoursForRoster(herDoc, hours).hours : hours;
+        const { median } = percentiles(confirmationSpeedRows(records, r.rosterId, r.name, herHours).flatMap((row) => (row.workingMs === null ? [] : [row.workingMs])));
         // Every self-book is in her denominator (covering them is the job) and
         // lands in exactly ONE bucket below, so the breakdown adds up to the
         // total above it. These used to be independent filters that overlapped

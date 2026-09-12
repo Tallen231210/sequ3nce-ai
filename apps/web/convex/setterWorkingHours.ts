@@ -21,8 +21,25 @@ import { resolveAuthUser } from "./setterGhlOauth";
 /** How far back to look. Long enough to survive a quiet week, short enough to follow a shift change. */
 const LOOKBACK_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Calls read per setter. A window is a shape, not a total — this is plenty to find one. */
+/**
+ * Calls read per setter, NEWEST FIRST. A window is a shape, not a total, so a
+ * few thousand recent calls describe it well — but they must be the RECENT
+ * ones. Convex index reads ascend, so a bare `.take()` here kept the calls
+ * closest to 30 days ago and threw away everything since: a busy setter's
+ * window would have been re-derived from the same stale fortnight every night
+ * and never followed a shift change, which is the whole point of the job.
+ */
 const CALL_TAKE = 4_000;
+
+/** A timezone Intl won't accept would throw and, before the try/catch below, kill the rest of the chain. */
+function safeTimeZone(tz: string): string {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
 
 /** Team-local weekday and hour for a moment, without a formatter per row. */
 function localParts(fmt: Intl.DateTimeFormat, at: number): { day: number; hour: number } | null {
@@ -41,37 +58,45 @@ function localParts(fmt: Intl.DateTimeFormat, at: number): { day: number; hour: 
 export const deriveForRoster = internalMutation({
   args: { rosterId: v.id("setterRoster"), nextIds: v.array(v.id("setterRoster")) },
   handler: async (ctx, args) => {
-    const roster = await ctx.db.get(args.rosterId);
-    if (roster && roster.crmUserId) {
-      const team = await ctx.db.get(roster.teamId as Id<"teams">);
-      const tz = (team as { timezone?: string } | null)?.timezone || DEFAULT_TIMEZONE;
-      const since = Date.now() - LOOKBACK_DAYS * DAY_MS;
-      const events = await ctx.db
-        .query("setterLeadEvents")
-        .withIndex("by_team_and_setter_and_time", (q) =>
-          q.eq("teamId", roster.teamId).eq("ghlUserId", roster.crmUserId).gte("occurredAt", since),
-        )
-        .take(CALL_TAKE);
-      // One formatter for the whole row — building one per event is what blew
-      // the CPU limit on the cross-check query.
-      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "numeric", hour12: false });
-      const calls: Array<{ day: number; hour: number }> = [];
-      for (const e of events) {
-        if (e.eventType !== "dial_outbound" && e.eventType !== "sms_outbound") continue;
-        const p = localParts(fmt, e.occurredAt);
-        if (p) calls.push(p);
+    // Every failure here has to stay local to this row. A scheduled mutation
+    // that throws does NOT retry, and the tail of the chain is scheduled at
+    // the end of this same transaction — so one unparseable timezone or one
+    // OCC exhaustion would silently drop every setter queued behind it.
+    try {
+      const roster = await ctx.db.get(args.rosterId);
+      if (roster && roster.crmUserId) {
+        const team = await ctx.db.get(roster.teamId as Id<"teams">);
+        const tz = safeTimeZone((team as { timezone?: string } | null)?.timezone || DEFAULT_TIMEZONE);
+        const since = Date.now() - LOOKBACK_DAYS * DAY_MS;
+        const events = await ctx.db
+          .query("setterLeadEvents")
+          .withIndex("by_team_and_setter_and_time", (q) =>
+            q.eq("teamId", roster.teamId).eq("ghlUserId", roster.crmUserId).gte("occurredAt", since),
+          )
+          .order("desc")
+          .take(CALL_TAKE);
+        // One formatter for the whole row — building one per event is what blew
+        // the CPU limit on the cross-check query.
+        const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "numeric", hour12: false });
+        const calls: Array<{ day: number; hour: number }> = [];
+        for (const e of events) {
+          if (e.eventType !== "dial_outbound" && e.eventType !== "sms_outbound") continue;
+          const p = localParts(fmt, e.occurredAt);
+          if (p) calls.push(p);
+        }
+        const derived = deriveWindow(calls);
+        // Absent stays absent when we can't tell — the reader falls back to the
+        // team's hours and the card says which it used.
+        if (derived) {
+          await ctx.db.patch(args.rosterId, { derivedHours: { ...derived, computedAt: Date.now() } });
+        } else if (roster.derivedHours) {
+          await ctx.db.patch(args.rosterId, { derivedHours: undefined });
+        }
       }
-      const derived = deriveWindow(calls);
-      // Absent stays absent when we can't tell — the reader falls back to the
-      // team's hours and the card says which it used.
-      if (derived) {
-        await ctx.db.patch(args.rosterId, {
-          derivedHours: { ...derived, computedAt: Date.now() },
-        });
-      } else if (roster.derivedHours) {
-        await ctx.db.patch(args.rosterId, { derivedHours: undefined });
-      }
+    } catch (err) {
+      console.error(`[setterWorkingHours] ${args.rosterId} failed, continuing the chain:`, err);
     }
+
     const [next, ...rest] = args.nextIds;
     if (next) {
       await ctx.scheduler.runAfter(0, internal.setterWorkingHours.deriveForRoster, { rosterId: next, nextIds: rest });
