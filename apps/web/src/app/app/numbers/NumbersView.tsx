@@ -158,7 +158,16 @@ export function NumbersView() {
 
   const today = rows[0] ?? null;
   const previous = rows.slice(1);
-  const outstanding = rows.filter((r) => !r.confirmedAt).length;
+  // A day is owed once it's OVER and we measured them working it. Counting
+  // every calendar day meant today was always "not submitted" — so a closer
+  // who fills the form in every evening still opened the app each morning
+  // and was told they were behind. Weekends and days off never cleared
+  // either. Same rule the missing-EOD nudge uses, so the app and Slack say
+  // the same thing.
+  const owed = previous.filter(
+    (r) => !r.confirmedAt && (r.measured.booked > 0 || r.measured.taken > 0),
+  );
+  const outstanding = owed.length;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -182,14 +191,16 @@ export function NumbersView() {
       </div>
 
       {outstanding > 0 && (
-        <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-          <p className="text-xs leading-relaxed text-amber-800">
-            <span className="font-semibold">
-              {outstanding} day{outstanding === 1 ? "" : "s"} not submitted.
+        <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
+          <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground" />
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            <span className="font-semibold text-foreground">
+              {owed.length === 1
+                ? `${dayLabel(owed[0].dayKey)} isn't submitted.`
+                : `${outstanding} days aren't submitted: ${owed.slice(0, 4).map((r) => dayLabel(r.dayKey)).join(", ")}${owed.length > 4 ? ` and ${owed.length - 4} more` : ""}.`}
             </span>{" "}
-            Days you don&apos;t submit don&apos;t count toward your totals or
-            the team board — they aren&apos;t estimated for you.
+            A day you don&apos;t submit doesn&apos;t count toward your totals or
+            the team board — nothing is estimated for you.
           </p>
         </div>
       )}
@@ -210,10 +221,8 @@ export function NumbersView() {
             }
           >
             {label}
-            {id === "history" && outstanding > 1 && (
-              <span className="ml-1.5 text-[10px] font-semibold text-amber-600">
-                {outstanding - (today && !today.confirmedAt ? 1 : 0)}
-              </span>
+            {id === "history" && outstanding > 0 && (
+              <span className="ml-1.5 text-[10px] font-semibold">{outstanding}</span>
             )}
           </button>
         ))}

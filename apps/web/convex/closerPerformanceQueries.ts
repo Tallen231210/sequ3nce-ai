@@ -200,26 +200,37 @@ export const getTeamPerformance = query({
       }
     }
 
-    // Confirmation coverage. Expected = active closers x days elapsed, so a
-    // month in progress isn't reported as 90% missing on the 3rd.
+    // Confirmation coverage. Expected = the days a closer actually WORKED, not
+    // every day on the calendar: multiplying active closers by days elapsed
+    // counted weekends and days off nobody owed a form for, so the figure
+    // could never reach full and the "totals understate the month" banner was
+    // permanently on. Same rule as the missing-EOD nudge (eodNudge.ts) —
+    // judged on what we MEASURED, so "did they report anything?" can't decide
+    // whether to chase a missing report. Today is excluded: a day still in
+    // progress isn't owed yet.
     const confirmedDayKeys = new Set<string>();
+    const workedDayKeys = new Set<string>();
     let closerDaysConfirmed = 0;
+    let closerDaysExpected = 0;
+    const activeCloserIds = new Set(closers.filter((c) => c.status === "active").map((c) => String(c._id)));
     for (const row of merged) {
-      if (!inScope(row.dayKey) || !row.confirmed) continue;
-      confirmedDayKeys.add(row.dayKey);
-      closerDaysConfirmed += 1;
+      if (!inScope(row.dayKey)) continue;
+      if (row.confirmed) {
+        confirmedDayKeys.add(row.dayKey);
+        closerDaysConfirmed += 1;
+      }
+      const dayIsOver = !isCurrentMonth || row.dayKey < todayKey;
+      const worked = row.measured.booked > 0 || row.measured.taken > 0;
+      if (dayIsOver && worked && activeCloserIds.has(row.closerId)) {
+        closerDaysExpected += 1;
+        workedDayKeys.add(row.dayKey);
+      }
     }
-    const activeCloserCount = closers.filter(
-      (c) => c.status === "active",
-    ).length;
-    const daysElapsedInMonth = isCurrentMonth
-      ? parseInt(todayKey.slice(8, 10), 10)
-      : daysInMonth(monthKey);
     const confirmation = computeConfirmation(
       confirmedDayKeys.size,
-      daysElapsedInMonth,
+      workedDayKeys.size,
       closerDaysConfirmed,
-      activeCloserCount * daysElapsedInMonth,
+      Math.max(closerDaysExpected, closerDaysConfirmed),
     );
 
     const targets = {
