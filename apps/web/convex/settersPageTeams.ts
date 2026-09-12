@@ -30,6 +30,8 @@ export interface TeamStripColumn extends Money {
   bookings: number;
   showed: number;
   noShow: number;
+  /** Moved to another time. Its own outcome: the prospect neither showed nor ghosted. */
+  rescheduled: number;
   unknown: number;
   showRatePct: number | null;
   /** Finished calls, and how many of them have an outcome — the show rate's footing. */
@@ -116,6 +118,7 @@ export function teamStrip(
       bookings: sum((t) => t.bookings),
       showed,
       noShow,
+      rescheduled: sum((t) => t.rescheduled),
       unknown: sum((t) => t.unknown),
       /** Finished calls, and how many of them have an outcome — the show rate's footing. */
       due,

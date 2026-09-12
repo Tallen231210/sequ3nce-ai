@@ -114,7 +114,7 @@ export const SETS: SetsData = {
     { rosterId: "r-max", sets: 3, tagged: 3, crmOnly: 0, claimed: 0 },
     { rosterId: "r-miles", sets: 4, tagged: 4, crmOnly: 0, claimed: 0 },
   ],
-  confirmation: [{ rosterId: "r-sasha", newSelfBooks: 95, contacted: 77, reached: 22, coveragePct: 81, workedByOutbound: 6, contactedByOthers: 4, nobody: 8, leadMissing: 0, other: 0, responseMedianWorkingMs: 1.4 * H }],
+  confirmation: [{ rosterId: "r-sasha", newSelfBooks: 95, contacted: 77, reached: 22, coveragePct: 81, workedByOutbound: 6, contactedByOthers: 4, nobody: 8, leadMissing: 0, responseMedianWorkingMs: 1.4 * H }],
   dm: [
     { linkName: "dario", sets: 14 },
     { linkName: "luka", sets: 10 },

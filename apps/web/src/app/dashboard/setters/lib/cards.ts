@@ -247,11 +247,11 @@ export function buildCards(
       configured: true,
       note: s
         ? [
-            s.workedByOutbound > 0 ? `${s.workedByOutbound} self-books worked by outbound setters` : null,
+            `${s.contacted} of ${s.newSelfBooks} contacted by them`,
+            s.workedByOutbound > 0 ? `${s.workedByOutbound} worked by an outbound setter instead` : null,
             s.contactedByOthers > 0 ? `${s.contactedByOthers} confirmed by closers or the owner` : null,
             s.nobody > 0 ? `${s.nobody} contacted by nobody` : null,
-            s.leadMissing > 0 ? `${s.leadMissing} with no lead in the CRM` : null,
-            s.other > 0 ? `${s.other} other` : null,
+            s.leadMissing > 0 ? `${s.leadMissing} with no lead in the CRM, so nobody can tell` : null,
           ]
             .filter((x): x is string => x !== null)
             .join(" · ") || null

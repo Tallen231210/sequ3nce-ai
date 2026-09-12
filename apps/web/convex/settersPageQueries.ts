@@ -133,17 +133,37 @@ export const getSettersSets = query({
           (b) => hers(b).length > 0 || ((b.classification.attributedBy === "tag" || b.classification.attributedBy === "claim") && b.classification.creditRosterIds.includes(r.rosterId)),
         );
         const { median } = percentiles(confirmationSpeedRows(records, r.rosterId, r.name, hours).flatMap((row) => (row.workingMs === null ? [] : [row.workingMs])));
-        // Every self-book is in her denominator (covering them is the job);
-        // the ones an outbound setter worked instead sit in Unlabeled and
-        // are named here so the two numbers explain each other.
-        const workedByOutbound = selfBooks.filter((b) => b.classification.lane === "unattributed" && b.touches.some((t) => t.rosterId !== null && t.rosterId !== r.rosterId)).length;
-        const missed = selfBooks.filter((b) => b.classification.lane === "self_booked_uncontacted");
-        // Her misses split two ways: a closer or the owner confirmed it themselves, or nobody did.
-        const contactedByOthers = missed.filter((b) => b.touches.length > 0).length;
-        const nobody = missed.length - contactedByOthers;
-        // Self-books with no lead in Close: nothing to read. Anything else left over is named as "other".
-        const leadMissing = selfBooks.filter((b) => !b.leadContactId).length;
-        const other = Math.max(0, selfBooks.length - contacted.length - workedByOutbound - missed.length - leadMissing);
+        // Every self-book is in her denominator (covering them is the job) and
+        // lands in exactly ONE bucket below, so the breakdown adds up to the
+        // total above it. These used to be independent filters that overlapped
+        // — a booking with no lead in the CRM was counted twice — and the
+        // leftover was clamped at zero to hide the negative that produced.
+        const contactedSet = new Set(contacted.map((b) => b.key));
+        let workedByOutbound = 0;
+        let contactedByOthers = 0;
+        let leadMissing = 0;
+        let nobody = 0;
+        for (const b of selfBooks) {
+          // 1. She worked it. That is the job, and it is provable.
+          if (contactedSet.has(b.key)) continue;
+          // 2. Another setter worked it instead — those sit in Unlabeled.
+          if (b.touches.some((t) => t.rosterId !== null && t.rosterId !== r.rosterId)) {
+            workedByOutbound += 1;
+            continue;
+          }
+          // 3. Somebody touched it who isn't on the setter roster: a closer or the owner.
+          if (b.touches.length > 0) {
+            contactedByOthers += 1;
+            continue;
+          }
+          // 4. No lead in the CRM, so "nobody called them" would be a claim we can't make.
+          if (!b.leadContactId) {
+            leadMissing += 1;
+            continue;
+          }
+          // 5. In the CRM, and nobody went near it.
+          nobody += 1;
+        }
         return {
           rosterId: r.rosterId,
           newSelfBooks: selfBooks.length,
@@ -154,7 +174,6 @@ export const getSettersSets = query({
           contactedByOthers,
           nobody,
           leadMissing,
-          other,
           responseMedianWorkingMs: median,
         };
       });
