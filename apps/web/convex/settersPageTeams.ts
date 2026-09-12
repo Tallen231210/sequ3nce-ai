@@ -57,6 +57,8 @@ export interface DmRow extends Money {
   due: number;
   showed: number;
   noShow: number;
+  /** Moved to another time. Carried so the outcomes add up to the calls. */
+  rescheduled: number;
   unknown: number;
   showRatePct: number | null;
 }
@@ -182,6 +184,7 @@ export function dmRows(rows: PersonRow[], records: BookingRecord[], people: DmPe
       due: r?.due ?? 0,
       showed: r?.showed ?? 0,
       noShow: r?.noShow ?? 0,
+      rescheduled: r?.rescheduled ?? 0,
       unknown: r?.unknown ?? 0,
       showRatePct: r?.showRatePct ?? null,
       ...money(link),
@@ -190,7 +193,7 @@ export function dmRows(rows: PersonRow[], records: BookingRecord[], people: DmPe
   for (const r of rows) {
     const link = r.id.toLowerCase();
     if (seen.has(link)) continue;
-    out.push({ linkName: link, name: r.name, configured: false, active: true, bookings: r.bookings, due: r.due, showed: r.showed, noShow: r.noShow, unknown: r.unknown, showRatePct: r.showRatePct, ...money(link) });
+    out.push({ linkName: link, name: r.name, configured: false, active: true, bookings: r.bookings, due: r.due, showed: r.showed, noShow: r.noShow, rescheduled: r.rescheduled, unknown: r.unknown, showRatePct: r.showRatePct, ...money(link) });
   }
   return out;
 }

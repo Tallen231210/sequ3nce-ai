@@ -101,9 +101,18 @@ export const getSelfPerformance = internalQuery({
     let capKnown = 0;
     let capUnknown = 0;
     let daysSubmitted = 0;
+    // Days this closer OWED a form: the day is over and we measured them
+    // working it. The header used to divide by the day of the month, so on the
+    // 12th a closer who had filed every day they worked still read "10/12" —
+    // the same "you're behind when you aren't" the banner below it just
+    // stopped saying. Same rule as the banner and the missing-EOD nudge.
+    let daysOwed = 0;
     // Their cash by week, for the same sparkline the manager board carries.
     const weekCash = [0, 0, 0, 0, 0];
+    const todayKeyForOwed = dayKeyInTz(Date.now(), tz);
     for (const row of mine) {
+      const dayIsOver = row.dayKey < todayKeyForOwed;
+      if (dayIsOver && (row.measured.booked > 0 || row.measured.taken > 0)) daysOwed += 1;
       // Reported-only, matching the manager board exactly.
       if (!row.confirmed && row.overridden.length === 0) continue;
       totals = addTotals(totals, row.totals);
@@ -135,9 +144,8 @@ export const getSelfPerformance = internalQuery({
 
     const todayKey = dayKeyInTz(Date.now(), tz);
     const isCurrentMonth = monthKey === todayKey.slice(0, 7);
-    const daysElapsed = isCurrentMonth
-      ? parseInt(todayKey.slice(8, 10), 10)
-      : daysInMonth(monthKey);
+    // Never fewer than they submitted: filing a day off shouldn't read "11/10".
+    const daysElapsed = Math.max(daysOwed, daysSubmitted);
 
     return {
       monthKey,

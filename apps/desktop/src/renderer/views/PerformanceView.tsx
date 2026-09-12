@@ -51,6 +51,8 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
 
   const [perf, setPerf] = useState<SelfPerformance | null>(null);
   const [rows, setRows] = useState<DailyEntryRow[]>([]);
+  // The server's today, in the closer's timezone — see the web twin.
+  const [todayKey, setTodayKey] = useState<string | null>(null);
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
   const [year, setYear] = useState<number>(() => new Date().getFullYear());
   const [yearData, setYearData] = useState<SelfYearPerformance | null>(null);
@@ -67,6 +69,7 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
     ]);
     setPerf(p);
     setRows(entries?.rows ?? []);
+    setTodayKey(entries?.todayKey ?? null);
     setBoard(lb?.rows ?? []);
     setLoading(false);
   }, [closerInfo.closerId, monthKey]);
@@ -117,7 +120,14 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
 
   const today = rows[0] ?? null;
   const previous = rows.slice(1);
-  const outstanding = rows.filter((r) => !r.confirmedAt).length;
+  // A day is owed once it is OVER and we measured them working it. Counting
+  // every calendar day meant today was always "not submitted", so a closer who
+  // files each evening was told every morning that they were behind. Kept in
+  // step with the web app and the missing-EOD nudge.
+  const owed = rows.filter(
+    (r) => r.dayKey !== todayKey && !r.confirmedAt && (r.measured.booked > 0 || r.measured.taken > 0),
+  );
+  const outstanding = owed.length;
 
   return (
     <div className="p-6">
@@ -145,10 +155,12 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
           <div className="mt-0.5 w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
           <p className="text-[12px] text-amber-800 leading-relaxed">
             <span className="font-semibold">
-              {outstanding} day{outstanding === 1 ? '' : 's'} not submitted.
+              {owed.length === 1
+                ? `${dayLabel(owed[0].dayKey)} isn't submitted.`
+                : `${outstanding} days aren't submitted: ${owed.slice(0, 4).map((r) => dayLabel(r.dayKey)).join(', ')}${owed.length > 4 ? ` and ${owed.length - 4} more` : ''}.`}
             </span>{' '}
-            Days you don't submit don't count toward your totals or the team
-            board — they aren't estimated for you.
+            A day you don't submit doesn't count toward your totals or the team
+            board — nothing is estimated for you.
           </p>
         </div>
       )}
@@ -167,10 +179,8 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
             }
           >
             {label}
-            {id === 'history' && outstanding > 1 && (
-              <span className="ml-1.5 text-[10px] text-amber-600 font-semibold">
-                {outstanding - (today && !today.confirmedAt ? 1 : 0)}
-              </span>
+            {id === 'history' && outstanding > 0 && (
+              <span className="ml-1.5 text-[10px] text-amber-600 font-semibold">{outstanding}</span>
             )}
           </button>
         ))}
