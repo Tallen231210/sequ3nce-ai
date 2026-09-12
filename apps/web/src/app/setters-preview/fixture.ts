@@ -133,6 +133,7 @@ const filed = (o: Partial<NonNullable<ActivityData["byRoster"][number]["filed"]>
   ...o,
 });
 const speed = (medianH: number | null, count: number, noArrival: number) => ({
+  hoursBasis: "their hours (from their own calls), 8:00–18:00, 6 days a week",
   count, medianWorkingMs: medianH === null ? null : medianH * H, p90WorkingMs: medianH === null ? null : medianH * 3 * H, medianElapsedMs: medianH === null ? null : medianH * 4 * H,
   noArrivalCount: noArrival, neverContactedCount: 2, untimedCount: 0, selfBookedCount: 4, clippedCount: 0, unreadCount: 0,
 });

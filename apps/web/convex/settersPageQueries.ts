@@ -7,6 +7,7 @@
 // ============================================================================
 
 import { v } from "convex/values";
+import { describeWindow } from "./lib/workingWindow";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { activeFunnelFor } from "./setterFunnels";
@@ -36,6 +37,20 @@ async function hoursFor(ctx: Parameters<typeof activeFunnelFor>[0], access: Sett
 
 function basisOf(hours: Hours): string {
   return `${hours.startHour}:00–${hours.endHour}:00, ${hours.days.length} days a week, ${hours.timezone}`;
+}
+
+/**
+ * The window to judge one setter's speed by: a manager's pin, else the one
+ * derived nightly from their own calls, else the team's. Returned with a label
+ * so the card can say which it used rather than implying we know their shift.
+ */
+function hoursForRoster(row: Doc<"setterRoster">, teamHours: Hours): { hours: Hours; basis: string; source: "override" | "derived" | "team" } {
+  const own = row.hoursOverride ?? row.derivedHours;
+  if (!own) return { hours: teamHours, basis: `team hours, ${basisOf(teamHours)}`, source: "team" };
+  const hours: Hours = { timezone: teamHours.timezone, days: own.days, startHour: own.startHour, endHour: own.endHour };
+  const source = row.hoursOverride ? "override" : "derived";
+  const how = source === "override" ? "set by a manager" : `from their own calls`;
+  return { hours, basis: `their hours (${how}), ${describeWindow(own)}`, source };
 }
 
 /** Bookings MADE in the range, through the same collector — the "sets" cohort. */
@@ -267,10 +282,11 @@ export const getSettersSpeed = query({
     if (!access) return null;
     const { teamId, startMs, endMs, nowMs } = access;
     const rosterRows = (await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", teamId)).take(200)).filter((r) => r.active);
+    const hours = await hoursFor(ctx, access);
+    const rowById = new Map(rosterRows.map((r) => [String(r._id), r]));
     const setters: SetterRef[] = rosterRefsOf(rosterRows)
       .filter((r) => r.role !== "confirmation" && r.crmUserId)
-      .map((r) => ({ rosterId: r.rosterId, name: r.name, crmUserId: r.crmUserId as string }));
-    const hours = await hoursFor(ctx, access);
+      .map((r) => ({ rosterId: r.rosterId, name: r.name, crmUserId: r.crmUserId as string, hours: hoursForRoster(rowById.get(r.rosterId)!, hours).hours }));
     const speed = await outboundSpeed(ctx, teamId, setters, hours, startMs, endMs, nowMs, access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC);
     const byId = speedBySetter(speed, setters);
     const all = speed.rows;
@@ -278,7 +294,12 @@ export const getSettersSpeed = query({
       range: { startMs, endMs },
       basis: basisOf(hours),
       truncated: speed.truncated,
-      bySetter: setters.map((s) => ({ rosterId: s.rosterId, ...byId.get(s.rosterId)! })),
+      bySetter: setters.map((s) => ({
+        rosterId: s.rosterId,
+        ...byId.get(s.rosterId)!,
+        // Which window judged them, so the card never implies we know a shift we guessed.
+        hoursBasis: hoursForRoster(rowById.get(s.rosterId)!, hours).basis,
+      })),
       team: {
         leads: all.length,
         selfBooked: all.filter((r) => r.note === "self-booked").length,
@@ -348,10 +369,12 @@ export const getSpeedByDay = query({
       return { kind: "confirmation" as const, basis: basisOf(hours), truncated, ...confirmationSpeedDays(rows, access.timezone, slowest) };
     }
     const rosterRows = (await ctx.db.query("setterRoster").withIndex("by_team", (q) => q.eq("teamId", access.teamId)).take(200)).filter((r) => r.active);
+    const drawerRowById = new Map(rosterRows.map((r) => [String(r._id), r]));
     const setters: SetterRef[] = rosterRefsOf(rosterRows)
       .filter((r) => r.role !== "confirmation" && r.crmUserId)
-      .map((r) => ({ rosterId: r.rosterId, name: r.name, crmUserId: r.crmUserId as string }));
+      .map((r) => ({ rosterId: r.rosterId, name: r.name, crmUserId: r.crmUserId as string, hours: hoursForRoster(drawerRowById.get(r.rosterId)!, hours).hours }));
+    const own = hoursForRoster(roster, hours);
     const speed = await outboundSpeed(ctx, access.teamId, setters, hours, access.startMs, access.endMs, access.nowMs, access.team.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC);
-    return { kind: "outbound" as const, basis: basisOf(hours), truncated: speed.truncated, ...speedDaysFor(speed, String(roster._id), access.timezone, slowest) };
+    return { kind: "outbound" as const, basis: own.basis, truncated: speed.truncated, ...speedDaysFor(speed, String(roster._id), access.timezone, slowest) };
   },
 });

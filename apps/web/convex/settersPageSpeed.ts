@@ -10,7 +10,7 @@
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { dayKeyInTz } from "./closerPerformance";
-import { elapsedWorkingMs } from "./setterFunnelResolve";
+import { elapsedWorkingMsOrNull } from "./setterFunnelResolve";
 import type { BookingRecord } from "./setterTeamBookings";
 import { loadLeadTouches } from "./setterTeamTouches";
 import { guestEmailOf } from "./setterTeamBookingHelpers";
@@ -74,6 +74,8 @@ export interface SetterRef {
   rosterId: string;
   name: string;
   crmUserId: string;
+  /** This person's own working window, when we know it. Falls back to the team's. */
+  hours?: Hours | null;
 }
 
 function summarise(rows: SpeedLeadRow[], clipped: number, unread: number): SpeedSummary {
@@ -201,6 +203,9 @@ export async function outboundSpeed(
       continue;
     }
     const by = byCrm.get(first.crmUserId)!;
+    // Their own hours if we have them: a setter in London or on an evening
+    // shift is measured against their day, not the team's assumed one.
+    const theirHours = by.hours ?? hours;
     const dials = mine.filter((t) => t.kind === "dial" && t.crmUserId === first.crmUserId).length;
     if (first.at < lead.dateAdded) {
       rows.push({ ...base, firstTouchAt: first.at, byRosterId: by.rosterId, byName: by.name, workingMs: null, elapsedMs: null, dials, note: "touched before arrival" });
@@ -211,7 +216,7 @@ export async function outboundSpeed(
       firstTouchAt: first.at,
       byRosterId: by.rosterId,
       byName: by.name,
-      workingMs: elapsedWorkingMs(lead.dateAdded, first.at, hours),
+      workingMs: elapsedWorkingMsOrNull(lead.dateAdded, first.at, theirHours),
       elapsedMs: first.at - lead.dateAdded,
       dials,
       note: null,
@@ -254,7 +259,7 @@ export function confirmationSpeedRows(records: BookingRecord[], rosterId: string
       rows.push({ ...base, firstTouchAt: null, byRosterId: taggedToHer ? rosterId : null, byName: taggedToHer ? name : null, workingMs: null, elapsedMs: null, dials: 0, note: taggedToHer ? "contacted, time unknown" : "never contacted" });
       continue;
     }
-    rows.push({ ...base, firstTouchAt: first.at, byRosterId: rosterId, byName: name, workingMs: elapsedWorkingMs(r.bookedAt, first.at, hours), elapsedMs: first.at - r.bookedAt, dials, note: null });
+    rows.push({ ...base, firstTouchAt: first.at, byRosterId: rosterId, byName: name, workingMs: elapsedWorkingMsOrNull(r.bookedAt, first.at, hours), elapsedMs: first.at - r.bookedAt, dials, note: null });
   }
   return rows;
 }

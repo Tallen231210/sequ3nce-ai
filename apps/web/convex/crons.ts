@@ -464,4 +464,14 @@ crons.cron(
   { dryRun: false },
 );
 
+// Each setter's working window, re-derived from their own calls. Nightly is
+// often enough: a window is a habit, not a number that moves hour to hour, and
+// re-deriving it on a schedule is what keeps it honest when someone moves
+// country or changes shift — the thing a settings field would fail to do.
+crons.cron(
+  "setter-working-hours",
+  "20 7 * * *",
+  internal.setterWorkingHours.deriveAll,
+);
+
 export default crons;

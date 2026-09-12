@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { v } from "convex/values";
+import { deriveWindow, describeWindow, hourInWindow } from "./lib/workingWindow";
 import { internalQuery } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { moneyOf } from "./setterTeamBookingHelpers";
@@ -135,5 +136,39 @@ export const arrivalAudit = internalQuery({
     delaysMin.sort((a, b) => a - b);
     const at = (p: number) => (delaysMin.length ? delaysMin[Math.max(0, Math.ceil(p * delaysMin.length) - 1)] : null);
     return { ...buckets, dialLaterDelayMin: { median: at(0.5), p25: at(0.25), p75: at(0.75) }, sample };
+  },
+});
+
+
+/**
+ * The derived working window. The case that matters is the overnight one:
+ * a setter in London reads as ~3:00–11:00 Eastern, and a window that wraps
+ * midnight has no meaningful median hour — which is why the rule takes the
+ * tightest covering span rather than percentiles.
+ */
+export const workingWindowBench = internalQuery({
+  args: {},
+  handler: async () => {
+    const many = (day: number, hour: number, n: number) => Array.from({ length: n }, () => ({ day, hour }));
+    const nineToFive = [1, 2, 3, 4, 5].flatMap((d) => [9, 10, 11, 13, 14, 15, 16].flatMap((h) => many(d, h, 3)));
+    const london = [1, 2, 3, 4, 5].flatMap((d) => [3, 4, 5, 6, 7, 8, 9, 10].flatMap((h) => many(d, h, 3)));
+    const evenings = [1, 2, 3, 4, 5].flatMap((d) => [19, 20, 21, 22, 23, 0, 1].flatMap((h) => many(d, h, 3)));
+    const w = (calls: Array<{ day: number; hour: number }>) => deriveWindow(calls);
+    const cases = [
+      { name: "a 9-5 week comes back as 9-5", got: (() => { const r = w(nineToFive)!; return `${r.startHour}-${r.endHour}`; })(), expect: "9-17" },
+      { name: "5 weekdays are recognised", got: String(w(nineToFive)!.days.join(",")), expect: "1,2,3,4,5" },
+      { name: "a London setter reads as an early team-local window", got: (() => { const r = w(london)!; return `${r.startHour}-${r.endHour}`; })(), expect: "3-11" },
+      { name: "an overnight shift wraps past midnight", got: (() => { const r = w(evenings)!; return `${r.startHour}-${r.endHour}`; })(), expect: "19-2" },
+      { name: "too few calls means we don't guess", got: String(w(many(1, 10, 20))), expect: "null" },
+      { name: "one stray Sunday call doesn't make Sunday a work day", got: String(w([...nineToFive, { day: 0, hour: 11 }])!.days.includes(0)), expect: "false" },
+      { name: "a real Sunday shift does", got: String(w([...nineToFive, ...many(0, 11, 40)])!.days.includes(0)), expect: "true" },
+      { name: "an hour inside a normal window", got: String(hourInWindow(10, 9, 17)), expect: "true" },
+      { name: "an hour outside a normal window", got: String(hourInWindow(22, 9, 17)), expect: "false" },
+      { name: "midnight is inside a wrapping window", got: String(hourInWindow(0, 19, 2)), expect: "true" },
+      { name: "noon is outside a wrapping window", got: String(hourInWindow(12, 19, 2)), expect: "false" },
+      { name: "a wrapping window says so", got: describeWindow({ days: [1, 2], startHour: 22, endHour: 6 }), expect: "22:00–6:00 (overnight), 2 days a week" },
+    ];
+    const results = cases.map((c) => ({ ...c, pass: c.got === c.expect }));
+    return { allPass: results.every((r) => r.pass), results };
   },
 });

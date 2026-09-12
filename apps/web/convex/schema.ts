@@ -1498,6 +1498,36 @@ export default defineSchema({
     /** The CRM user id (Close/GHL) this roster row IS — the join to
      *  setterLeadEvents.ghlUserId. Written by setterRosterLink. */
     crmUserId: v.optional(v.string()),
+    /**
+     * When this person actually works, expressed in the TEAM's timezone and
+     * allowed to wrap past midnight — so a setter in London reads as roughly
+     * 3:00–11:00 Eastern and nobody has to record a timezone that then goes
+     * stale when they move.
+     *
+     * Written nightly from their own outbound calls (setterWorkingHours.ts).
+     * Speed-to-lead is measured against this: the old single 9–17 Mon–Fri
+     * window scored anyone working outside it as ZERO elapsed, which reads as
+     * an instant callback rather than as "we didn't measure this".
+     */
+    derivedHours: v.optional(
+      v.object({
+        days: v.array(v.number()),
+        startHour: v.number(),
+        endHour: v.number(),
+        /** What the window was inferred from, so the card can say how sure it is. */
+        dials: v.number(),
+        activeDays: v.number(),
+        computedAt: v.number(),
+      }),
+    ),
+    /** A manager pinning this person's hours by hand. Outranks the derived window. */
+    hoursOverride: v.optional(
+      v.object({
+        days: v.array(v.number()),
+        startHour: v.number(),
+        endHour: v.number(),
+      }),
+    ),
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])

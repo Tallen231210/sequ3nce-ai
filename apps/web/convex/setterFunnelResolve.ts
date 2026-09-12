@@ -13,6 +13,7 @@
 // ============================================================================
 
 import type { Doc } from "./_generated/dataModel";
+import { hourInWindow } from "./lib/workingWindow";
 import type { FunnelBindings, BusinessHours } from "./setterFunnelTypes";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -244,6 +245,18 @@ const DAY_INDEX: Record<string, number> = {
  * Long gaps are capped — a lead untouched for three months contributes its
  * working hours up to the cap rather than spending the request counting them.
  */
+/**
+ * Working time between two moments, or null when NONE of the gap fell inside
+ * the window. Zero there would read as an instant callback when it means "we
+ * didn't measure this" — which is exactly how two of E2's busiest setters came
+ * to look like the fastest on the team.
+ */
+export function elapsedWorkingMsOrNull(startMs: number, endMs: number, hours: BusinessHours | null): number | null {
+  if (endMs <= startMs) return 0;
+  const ms = elapsedWorkingMs(startMs, endMs, hours);
+  return ms > 0 ? ms : null;
+}
+
 export function elapsedWorkingMs(
   startMs: number,
   endMs: number,
@@ -273,7 +286,9 @@ export function elapsedWorkingMs(
     }
     const day = DAY_INDEX[weekday];
     if (day === undefined || !days.has(day)) continue;
-    if (hour >= hours.startHour && hour < hours.endHour) total += slice;
+    // A derived window may wrap past midnight (a London setter reads as
+    // ~3:00–11:00 Eastern), so this can't be a simple range test.
+    if (hourInWindow(hour, hours.startHour, hours.endHour)) total += slice;
   }
   return total;
 }

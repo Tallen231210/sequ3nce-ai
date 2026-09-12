@@ -8,7 +8,7 @@
 import type { BookingRecord } from "./setterTeamBookings";
 import { emptyTally, showRateOf, type LaneTotals, type PersonRow, type ConfirmationRow } from "./setterTeamLanes";
 import type { RosterRef } from "./lib/setterTeamAttribution";
-import { elapsedWorkingMs, type defaultBusinessHours } from "./setterFunnelResolve";
+import { elapsedWorkingMsOrNull, type defaultBusinessHours } from "./setterFunnelResolve";
 import { TEAM_ORDER, type SetterTeamType } from "./settersPageLabels";
 
 export type Hours = ReturnType<typeof defaultBusinessHours>;
@@ -217,7 +217,8 @@ export function responseTimes(records: BookingRecord[], rosterId: string, hours:
     if (!r.classification.isFunnel || r.classification.lane === "outbound" || r.classification.lane === "dm") continue;
     const first = r.touches.filter((t) => t.rosterId === rosterId && t.afterBooking).sort((a, b) => a.at - b.at)[0];
     if (!first) continue;
-    out.push(elapsedWorkingMs(r.bookedAt, first.at, hours));
+    const ms = elapsedWorkingMsOrNull(r.bookedAt, first.at, hours);
+    if (ms !== null) out.push(ms);
   }
   return out;
 }
