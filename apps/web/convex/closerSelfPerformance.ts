@@ -101,6 +101,7 @@ export const getSelfPerformance = internalQuery({
     let capKnown = 0;
     let capUnknown = 0;
     let daysSubmitted = 0;
+    let daysOwedSubmitted = 0;
     // Days this closer OWED a form: the day is over and we measured them
     // working it. The header used to divide by the day of the month, so on the
     // 12th a closer who had filed every day they worked still read "10/12" —
@@ -111,8 +112,15 @@ export const getSelfPerformance = internalQuery({
     const weekCash = [0, 0, 0, 0, 0];
     const todayKeyForOwed = dayKeyInTz(Date.now(), tz);
     for (const row of mine) {
+      // Numerator and denominator walk the SAME set, or filing a day you
+      // didn't work hides one you did: Muzaffar filed two zero-call days,
+      // which pushed "submitted" past "owed" and made the header read 10/10
+      // while the banner below it said he still owed Friday.
       const dayIsOver = row.dayKey < todayKeyForOwed;
-      if (dayIsOver && (row.measured.booked > 0 || row.measured.taken > 0)) daysOwed += 1;
+      if (dayIsOver && (row.measured.booked > 0 || row.measured.taken > 0)) {
+        daysOwed += 1;
+        if (row.confirmed) daysOwedSubmitted += 1;
+      }
       // Reported-only, matching the manager board exactly.
       if (!row.confirmed && row.overridden.length === 0) continue;
       totals = addTotals(totals, row.totals);
@@ -144,8 +152,7 @@ export const getSelfPerformance = internalQuery({
 
     const todayKey = dayKeyInTz(Date.now(), tz);
     const isCurrentMonth = monthKey === todayKey.slice(0, 7);
-    // Never fewer than they submitted: filing a day off shouldn't read "11/10".
-    const daysElapsed = Math.max(daysOwed, daysSubmitted);
+    const daysElapsed = daysOwed;
 
     return {
       monthKey,
@@ -162,7 +169,7 @@ export const getSelfPerformance = internalQuery({
       pctGoal:
         goal && goal.cashGoal > 0 ? (totals.cash / goal.cashGoal) * 100 : null,
       // Their own submission rate — the nudge lives here, not on a manager screen.
-      daysSubmitted,
+      daysSubmitted: daysOwedSubmitted,
       daysElapsed,
       weekCash,
       // Paced against their own goal, not the team's.
