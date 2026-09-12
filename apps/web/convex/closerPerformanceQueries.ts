@@ -208,6 +208,9 @@ export const getTeamPerformance = query({
     // judged on what we MEASURED, so "did they report anything?" can't decide
     // whether to chase a missing report. Today is excluded: a day still in
     // progress isn't owed yet.
+    // Numerator and denominator are the SAME set of days, or the notice reads
+    // "12 of 11". A day counts only once it is over, somebody active worked
+    // it, and therefore somebody owed a form for it.
     const confirmedDayKeys = new Set<string>();
     const workedDayKeys = new Set<string>();
     let closerDaysConfirmed = 0;
@@ -215,22 +218,21 @@ export const getTeamPerformance = query({
     const activeCloserIds = new Set(closers.filter((c) => c.status === "active").map((c) => String(c._id)));
     for (const row of merged) {
       if (!inScope(row.dayKey)) continue;
-      if (row.confirmed) {
-        confirmedDayKeys.add(row.dayKey);
-        closerDaysConfirmed += 1;
-      }
       const dayIsOver = !isCurrentMonth || row.dayKey < todayKey;
       const worked = row.measured.booked > 0 || row.measured.taken > 0;
-      if (dayIsOver && worked && activeCloserIds.has(row.closerId)) {
-        closerDaysExpected += 1;
-        workedDayKeys.add(row.dayKey);
+      if (!dayIsOver || !worked || !activeCloserIds.has(row.closerId)) continue;
+      closerDaysExpected += 1;
+      workedDayKeys.add(row.dayKey);
+      if (row.confirmed) {
+        closerDaysConfirmed += 1;
+        confirmedDayKeys.add(row.dayKey);
       }
     }
     const confirmation = computeConfirmation(
       confirmedDayKeys.size,
       workedDayKeys.size,
       closerDaysConfirmed,
-      Math.max(closerDaysExpected, closerDaysConfirmed),
+      closerDaysExpected,
     );
 
     const targets = {
