@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { internalQuery } from "./_generated/server";
-import { crossCheckDay, DEFAULT_TOLERANCES, flagText, tolerancesFor, type MeasuredDay } from "./lib/eodCrossCheck";
+import { countsAsDue, crossCheckDay, dayStatusOf, DEFAULT_TOLERANCES, didWork, flagText, isChased, tolerancesFor, type DayActivity, type DayStatusInput, type MeasuredDay } from "./lib/eodCrossCheck";
 import { measureConfirmationDay } from "./setterEodMeasured";
 import { localDayBounds } from "./settersPageActivity";
 import type { BookingRecord } from "./setterTeamBookings";
@@ -77,6 +77,71 @@ export const measuredRules = internalQuery({
       { name: "day bounds are contiguous", got: dst.every((d, i) => i === 0 || dst[i - 1].endMs === d.startMs), expect: true },
       { name: "the spring-forward day is 23 hours, its neighbours 24", got: hours, expect: [24, 23, 24] },
       { name: "keys walk the calendar", got: dst.map((d) => d.dayKey), expect: ["2026-03-07", "2026-03-08", "2026-03-09"] },
+    ];
+    const results = cases.map((c) => ({ ...c, pass: JSON.stringify(c.got) === JSON.stringify(c.expect) }));
+    return { allPass: results.every((r) => r.pass), results };
+  },
+});
+
+// ============================================================================
+// Is a form owed? The rule that decides who gets chased.
+//   npx convex run eodCrossCheckBench:owedRules '{}'
+// ============================================================================
+
+const OWED_BASE: DayStatusInput = {
+  hasEntry: false, active: true, beforeJoin: false, dayIsOver: true,
+  measurable: true, readable: true, linkAlive: true, teamBlind: false, worked: true,
+};
+const owed = (o: Partial<DayStatusInput>) => dayStatusOf({ ...OWED_BASE, ...o });
+const activity = (a: Partial<DayActivity>): DayActivity => ({ dials: 0, answered: 0, texts: 0, ...a });
+
+export const owedRules = internalQuery({
+  args: {},
+  handler: async () => {
+    const cases: Array<{ name: string; got: unknown; expect: unknown }> = [
+      // The invariant that produced "12 of 11" and "filed 5 of 3": a filed day
+      // is ALWAYS in the denominator, whatever else is true of it.
+      { name: "filed outranks everything — no activity", got: owed({ hasEntry: true, worked: false }), expect: "filed" },
+      { name: "filed outranks everything — before they joined", got: owed({ hasEntry: true, beforeJoin: true }), expect: "filed" },
+      { name: "filed outranks everything — day not over", got: owed({ hasEntry: true, dayIsOver: false }), expect: "filed" },
+      { name: "filed outranks everything — unmeasurable", got: owed({ hasEntry: true, measurable: false }), expect: "filed" },
+      { name: "every filed day counts as due", got: [countsAsDue("filed"), countsAsDue("missing"), countsAsDue("unmeasured"), countsAsDue("no-activity"), countsAsDue(null)], expect: [true, true, true, false, false] },
+
+      // The bug this whole change exists to fix.
+      { name: "worked and didn't file → chased", got: owed({ worked: true }), expect: "missing" },
+      { name: "did nothing → not chased", got: owed({ worked: false }), expect: "no-activity" },
+      { name: "only missing and unmeasured are chased", got: [isChased("missing"), isChased("unmeasured"), isChased("no-activity"), isChased("filed")], expect: [true, true, false, false] },
+
+      // Refusing to guess. Each of these would otherwise excuse someone forever.
+      { name: "no CRM user → unmeasured, still chased", got: owed({ measurable: false, worked: false }), expect: "unmeasured" },
+      { name: "day too busy to read → unmeasured, not a real zero", got: owed({ readable: false, worked: false }), expect: "unmeasured" },
+      { name: "dead CRM link (zero all range) → unmeasured", got: owed({ linkAlive: false, worked: false }), expect: "unmeasured" },
+      { name: "whole team read zero → our sync, nobody excused", got: owed({ teamBlind: true, worked: false }), expect: "unmeasured" },
+
+      // Nothing owed.
+      { name: "today isn't owed yet", got: owed({ dayIsOver: false }), expect: null },
+      { name: "before they joined", got: owed({ beforeJoin: true }), expect: null },
+      { name: "off the roster", got: owed({ active: false }), expect: null },
+
+      // The floor. A bare > 0 chases someone over one stray auto-dial.
+      { name: "2 dials is not a working day", got: didWork(measured({}), activity({ dials: 2 })), expect: false },
+      { name: "3 dials is", got: didWork(measured({}), activity({ dials: 3 })), expect: true },
+      { name: "2 texts is not, 3 is", got: [didWork(measured({}), activity({ texts: 2 })), didWork(measured({}), activity({ texts: 3 }))], expect: [false, true] },
+      { name: "one set is work whatever the dials say", got: didWork(measured({ sets: 1 }), activity({ dials: 0 })), expect: true },
+      { name: "no activity at all", got: didWork(measured({}), activity({})), expect: false },
+      { name: "unreadable day (null activity) is not evidence of work", got: didWork(measured({}), null), expect: false },
+
+      // Demand is not effort: leads landing, or calls booked days ago sitting
+      // on today's calendar, say nothing about whether they showed up.
+      { name: "14 self-books arriving is not work", got: didWork(measured({ newSelfBooked: 14 }), activity({})), expect: false },
+      { name: "calls on the calendar today were booked earlier — not work", got: didWork(measured({ callsOnCalendar: 6, confirmedOnCalendar: 25 }), activity({})), expect: false },
+
+      // Confirmation setters: the truth table. Sophie has no dials of her own
+      // in the cross-check, so contacted/reached are what prove she worked.
+      { name: "confirmation, unlinked: no evidence either way → guard must catch it", got: [didWork(measured({ newSelfBooked: 14, contacted: null, reached: null }), null), owed({ measurable: false, worked: false })], expect: [false, "unmeasured"] },
+      { name: "confirmation, linked, worked her list", got: didWork(measured({ contacted: 8, reached: 2 }), null), expect: true },
+      { name: "confirmation, linked, genuinely off", got: didWork(measured({ newSelfBooked: 11, contacted: 0, reached: 0 }), null), expect: false },
+      { name: "confirmation dialling non-funnel leads still reads as work", got: didWork(measured({ contacted: 0, reached: 0 }), activity({ dials: 40 })), expect: true },
     ];
     const results = cases.map((c) => ({ ...c, pass: JSON.stringify(c.got) === JSON.stringify(c.expect) }));
     return { allPass: results.every((r) => r.pass), results };

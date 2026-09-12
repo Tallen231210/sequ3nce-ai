@@ -32,11 +32,15 @@ function Metric({ m }: { m: MetricVM }) {
 function Consistency({ c }: { c: NonNullable<CardVM["consistency"]> }) {
   const filed = c.daysDue > 0 ? `filed ${c.daysFiled} of ${c.daysDue} due days` : c.daysFiled > 0 ? `filed ${c.daysFiled} ${c.daysFiled === 1 ? "day" : "days"}` : "nothing filed yet";
   const off = c.daysFiled === 0 ? null : c.daysFlagged === 0 ? "all within tolerance of the CRM and the calendar" : `${c.daysFlagged} ${c.daysFlagged === 1 ? "day" : "days"} off vs measured`;
+  const quiet = c.daysNoActivity === 0 ? null : `${c.daysNoActivity} ${c.daysNoActivity === 1 ? "day" : "days"} no activity`;
+  const blind = c.daysUnmeasured === 0 ? null : `${c.daysUnmeasured} ${c.daysUnmeasured === 1 ? "day" : "days"} we couldn't measure`;
   const late = c.daysDue > c.daysFiled;
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-2 border-t border-border pt-2 text-[11px]" title="EOD entries beside what the CRM and the calendar measured for the same days. Open the card for the numbers.">
       <span className="uppercase tracking-wide text-muted-foreground">EODs</span>
       <span className={late ? "font-medium text-amber-700" : "text-muted-foreground"}>{filed}</span>
+      {quiet && <span className="text-muted-foreground">· {quiet}</span>}
+      {blind && <span className="text-muted-foreground">· {blind}</span>}
       {off && (
         <>
           <span className="text-muted-foreground">·</span>

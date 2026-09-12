@@ -37,6 +37,8 @@ export interface RosterRef {
   crmUserId: string | null;
   /** False for a deactivated roster row (kept so old bookings keep their credit). Absent = active. */
   active?: boolean;
+  /** When they joined. Nothing is owed before it. */
+  createdAt?: number;
 }
 
 /** One call or text by a setter to the lead, before the booked call. */

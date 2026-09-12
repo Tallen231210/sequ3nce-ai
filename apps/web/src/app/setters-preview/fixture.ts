@@ -197,7 +197,8 @@ const ladderAround = (at60: number | null) =>
   at60 === null ? null : { thresholds: LADDER, counts: [Math.round(at60 * 4.2) + 3, Math.round(at60 * 2.1) + 1, at60, Math.max(0, Math.round(at60 * 0.6))] };
 const day = (daysAgo: number, filed: FiledDay | null, measured: Partial<MeasuredDay>, due = true): CrossCheckData["byRoster"][number]["days"][number] => {
   const m = { ...noMeasure, ...measured };
-  return { dayKey: dayKey(daysAgo), due, filed, measured: m, flags: filed ? crossCheckDay(filed, m, DEFAULT_TOLERANCES) : [], ladder: ladderAround(m.pickUps) };
+  const status = filed ? ("filed" as const) : due ? ("missing" as const) : ("no-activity" as const);
+  return { dayKey: dayKey(daysAgo), due, status, filed, measured: m, flags: filed ? crossCheckDay(filed, m, DEFAULT_TOLERANCES) : [], ladder: ladderAround(m.pickUps) };
 };
 const roster = (rosterId: string, name: string, role: "booking" | "confirmation", linked: boolean, days: CrossCheckData["byRoster"][number]["days"]): CrossCheckData["byRoster"][number] => {
   const filedDays = days.filter((d) => d.filed !== null);
@@ -205,6 +206,8 @@ const roster = (rosterId: string, name: string, role: "booking" | "confirmation"
     rosterId, name, role, linked, active: true,
     daysDue: days.filter((d) => d.due).length,
     daysFiled: filedDays.length,
+    daysNoActivity: days.filter((d) => d.status === "no-activity").length,
+    daysUnmeasured: days.filter((d) => d.status === "unmeasured").length,
     daysFlagged: filedDays.filter((d) => d.flags.length > 0).length,
     flagCount: filedDays.reduce((n, d) => n + d.flags.length, 0),
     days,

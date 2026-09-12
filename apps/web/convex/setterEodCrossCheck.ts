@@ -18,14 +18,16 @@ import { teamHasSetterTeams } from "./setterTeamQueries";
 import { loadUserDays, localDayBounds } from "./settersPageActivity";
 import { resolveSettersPageAccess } from "./settersPageGate";
 import { DEFAULT_CONNECT_SEC, ladderFor } from "./lib/dialAnswered";
-import { crossCheckDay, tolerancesFor, type CrossCheckFlag, type CrossCheckTolerances, type FiledDay, type MeasuredDay } from "./lib/eodCrossCheck";
+import { countsAsDue, crossCheckDay, dayStatusOf, didWork, tolerancesFor, type CrossCheckFlag, type CrossCheckTolerances, type DayStatus, type FiledDay, type MeasuredDay } from "./lib/eodCrossCheck";
 
 const ENTRIES_TAKE = 4_000;
 const ROSTER_TAKE = 200;
 
 export interface DayCheck {
   dayKey: string;
-  /** An EOD was owed: an active setter and either a filed day, or a working day (Mon–Sat) that is over. */
+  /** Which of the four this day is. See dayStatusOf in lib/eodCrossCheck. */
+  status: DayStatus | null;
+  /** Shorthand for "counts in the denominator of filed N of M" — filed, missing or unmeasured. */
   due: boolean;
   filed: FiledDay | null;
   measured: MeasuredDay;
@@ -46,6 +48,10 @@ export interface RosterCheck {
   active: boolean;
   daysDue: number;
   daysFiled: number;
+  /** Days we could see and they did nothing. Nobody is chased for these. */
+  daysNoActivity: number;
+  /** Days we could not see them at all. Chased, because zero is not evidence. */
+  daysUnmeasured: number;
   /** Filed days with at least one flag. */
   daysFlagged: number;
   flagCount: number;
@@ -98,11 +104,6 @@ function shapeOf(e: Entry, role: "booking" | "confirmation"): "booking" | "confi
   return e.dials !== undefined || e.pickUps !== undefined || e.sets !== undefined ? "booking" : role;
 }
 
-const isSunday = (dayKey: string) => {
-  const [y, m, d] = dayKey.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0;
-};
-
 export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs: number, endMs: number, nowMs: number): Promise<CrossCheckRange> {
   const teamId = team._id;
   const tz = (team as { timezone?: string }).timezone || DEFAULT_TIMEZONE;
@@ -129,21 +130,74 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
   for (const e of entries) entryByRosterDay.set(`${String(e.rosterId)}|${e.dayKey}`, e);
 
   const byRoster: RosterCheck[] = [];
+  // ---- Pass one: read what Close recorded, decide nothing yet. ----------
+  // "Have we gone blind?" can only be answered once every row is in, and
+  // that question has to be answered before any day is excused.
+  interface Gathered {
+    row: Doc<"setterRoster">;
+    rosterId: string;
+    role: "booking" | "confirmation";
+    linked: boolean;
+    active: boolean;
+    firstDueKey: string;
+    activity: Map<string, DayActivity> | null;
+    unreadDays: Set<string>;
+  }
+  const gathered: Gathered[] = [];
   for (const row of rosterRows) {
     const rosterId = String(row._id);
     const role: "booking" | "confirmation" = row.role === "confirmation" ? "confirmation" : "booking";
     const linked = !!row.crmUserId;
     const active = row.active !== false;
+    const hasAnyEntry = bounds.some((b) => entryByRosterDay.has(`${rosterId}|${b.dayKey}`));
     let activity: Map<string, DayActivity> | null = null;
     let unreadDays = new Set<string>();
-    if (linked && role === "booking") {
+    // Someone off the roster with nothing filed is dropped further down, so
+    // don't pay for a day-by-day scan we are about to throw away.
+    if (linked && role === "booking" && (active || hasAnyEntry)) {
       const days = await loadUserDays(ctx, teamId, row.crmUserId as string, bounds, connectSec, ladderThresholds);
       if (days.truncatedDays.length > 0) truncated.push(`${row.name}: ${days.truncatedDays.length} ${days.truncatedDays.length === 1 ? "day" : "days"} too busy to read`);
       activity = days.byDay;
       unreadDays = new Set(days.truncatedDays);
     }
-    // Nothing is owed before the roster row existed.
-    const firstDueKey = dayKeyInTz(row._creationTime, tz);
+    gathered.push({ row, rosterId, role, linked, active, firstDueKey: dayKeyInTz(row._creationTime, tz), activity, unreadDays });
+  }
+
+  // The sync's own heartbeat: the last day ANYBODY on the team registered a
+  // call or a text. Before it we were provably listening, so a quiet day is
+  // a real quiet day and can be excused. After it we may simply have stopped
+  // hearing, so nobody is excused.
+  //
+  // This is deliberately not "did every setter read zero today" — for a
+  // Monday-to-Friday team that is true every weekend, and it would chase the
+  // whole roster every Saturday to guard against an outage that isn't there.
+  //
+  // Both heartbeat tests need more than one day to mean anything: over a
+  // single-day window "the team read nothing" and "it was Sunday" are the
+  // same sentence. crossCheckDayFor asks for exactly one day, so below two
+  // the heartbeat abstains rather than declaring everyone unreadable.
+  const heartbeatUsable = bounds.length >= 2;
+  const hasEvents = (c: DayActivity | undefined) => !!c && c.dials + (c.texts ?? 0) > 0;
+  let lastLiveDay: string | null = null;
+  for (const g of gathered) {
+    if (!g.activity) continue;
+    for (const [dayKey, counts] of g.activity) {
+      if (hasEvents(counts) && (lastLiveDay === null || dayKey > lastLiveDay)) lastLiveDay = dayKey;
+    }
+  }
+
+  // ---- Pass two: decide. ------------------------------------------------
+  for (const g of gathered) {
+    const { rosterId, role, linked, active, firstDueKey, activity, unreadDays } = g;
+    // A CRM link that was deleted or mis-typed reads zero forever. Left
+    // alone that excuses the person permanently and tells nobody, which is
+    // strictly worse than chasing them — so a person who registered nothing
+    // all period while the team was live is treated as unreadable, not idle.
+    const sawSomething = activity ? Array.from(activity.values()).some(hasEvents) : true;
+    const linkAlive = sawSomething || lastLiveDay === null || !heartbeatUsable;
+    if (heartbeatUsable && activity && !sawSomething && lastLiveDay !== null) {
+      truncated.push(`${g.row.name}: nothing at all from the CRM this period — check their Close user`);
+    }
     const days: DayCheck[] = [];
     for (const b of bounds) {
       const key = b.dayKey;
@@ -153,27 +207,44 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
       const dayRole: "booking" | "confirmation" = entry ? shapeOf(entry, role) : role;
       // A day we could read but that has no events is a real zero; a day
       // that hit the read cap is unknown — null, so it is never flagged.
-      const dayActivity = activity && !unreadDays.has(key) ? activity.get(key) ?? { dials: 0, answered: 0, answeredAt: ladderThresholds.map(() => 0) } : null;
+      const dayActivity = activity && !unreadDays.has(key) ? activity.get(key) ?? { dials: 0, answered: 0, texts: 0, answeredAt: ladderThresholds.map(() => 0) } : null;
       const measured = measuredDayFor(cohorts.records, { rosterId, role: dayRole, linked }, key, dayActivity, b.endMs);
       const filed = entry ? filedOf(entry, dayRole) : null;
-      const flags = filed ? crossCheckDay(filed, measured, tolerances) : [];
-      // A filed day always counts as due (a Sunday they worked is still a
-      // day they reported); an unfiled one only once it is over, Mon–Sat,
-      // and only from the day they joined the roster.
-      const due = active && (entry !== null || (!isSunday(key) && key <= yesterdayKey && key >= firstDueKey));
+      // A confirmation setter's rows from before the form split carry booking
+      // fields, so they read as a booking day and get compared against
+      // outbound-lane bookings she has none of — three false flags on a day
+      // she filed honestly. Her old numbers stand; we just don't check them.
+      const legacyShape = !!entry && role === "confirmation" && !entry.formShape;
+      const flags = filed && !legacyShape ? crossCheckDay(filed, measured, tolerances) : [];
+      const status = dayStatusOf({
+        hasEntry: entry !== null,
+        active,
+        beforeJoin: key < firstDueKey,
+        dayIsOver: key <= yesterdayKey,
+        measurable: linked,
+        readable: !unreadDays.has(key),
+        linkAlive,
+        // Only people whose evidence comes down the dial pipe are affected by
+        // that pipe going quiet; a confirmation setter is measured off the
+        // calendar and the booking records instead.
+        teamBlind: heartbeatUsable && activity !== null && (lastLiveDay === null || key > lastLiveDay),
+        worked: didWork(measured, dayActivity),
+      });
       const ladder = dayRole === "booking" && dayActivity?.answeredAt ? { thresholds: ladderThresholds, counts: dayActivity.answeredAt } : null;
-      days.push({ dayKey: key, due, filed, measured, flags, ladder });
+      days.push({ dayKey: key, due: countsAsDue(status), status, filed, measured, flags, ladder });
     }
     const filedDays = days.filter((d) => d.filed !== null);
     if (filedDays.length === 0 && !active) continue; // gone, and nothing to check
     byRoster.push({
       rosterId,
-      name: row.name,
+      name: g.row.name,
       role,
       linked,
       active,
       daysDue: days.filter((d) => d.due).length,
       daysFiled: filedDays.length,
+      daysNoActivity: days.filter((d) => d.status === "no-activity").length,
+      daysUnmeasured: days.filter((d) => d.status === "unmeasured").length,
       daysFlagged: filedDays.filter((d) => d.flags.length > 0).length,
       flagCount: filedDays.reduce((n, d) => n + d.flags.length, 0),
       days,

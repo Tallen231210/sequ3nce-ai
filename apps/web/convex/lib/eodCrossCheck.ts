@@ -207,3 +207,114 @@ const PLAIN_FIELD_LABELS: Record<CheckField, string> = {
 export function flagPlain(f: CrossCheckFlag): string {
   return `said ${f.filed} ${PLAIN_FIELD_LABELS[f.field]}, ${SOURCE_WORD[f.source]} saw ${f.measured}`;
 }
+
+// ============================================================================
+// Is an end-of-day form owed for this day?
+//
+// This used to be decided in six places, each slightly differently, and the
+// disagreements were the bug: a card read "filed 4 of 11" for a setter who
+// worked 6 days, and an hourly Slack post named him for four days he spent
+// away from his desk. Both now walk this one list.
+//
+// The rule every "N of M" on the product must obey: the numerator and the
+// denominator come from the SAME pass over the SAME days. `filed` therefore
+// outranks everything below it — a day someone filed is always a day that
+// counts, or you get "filed 5 of 3".
+//
+// The other half of the job is refusing to guess. Silence has two very
+// different causes: they didn't work, or we stopped being able to see them.
+// Those must never collapse into one answer, because the second one is our
+// bug and it would hide itself.
+// ============================================================================
+
+/** What Close recorded that setter doing that day. Null when we couldn't read it. */
+export interface DayActivity {
+  dials: number;
+  answered: number;
+  texts?: number;
+  answeredAt?: number[];
+}
+
+export type DayStatus =
+  /** They submitted the form. */
+  | "filed"
+  /** We looked, we can see this person, and they did nothing. Nobody is chased. */
+  | "no-activity"
+  /** We cannot see this person or this day. Chased, because zero is not evidence. */
+  | "unmeasured"
+  /** They worked and didn't file. The only status that means somebody slipped. */
+  | "missing";
+
+/**
+ * The floor for "they worked". A bare `> 0` would turn one stray auto-dial or
+ * a single text into a full working day and chase someone on their day off —
+ * the same complaint one level down.
+ */
+export const WORK_FLOOR = { dials: 3, texts: 3 } as const;
+
+/**
+ * Effort we can see. Demand is deliberately NOT effort: leads landing in
+ * someone's queue (`newSelfBooked`), or calls sitting on their calendar that
+ * were booked days ago, say nothing about whether they showed up today.
+ */
+export function activityShowsWork(activity: DayActivity | null | undefined): boolean {
+  if (!activity) return false;
+  return activity.dials >= WORK_FLOOR.dials || (activity.texts ?? 0) >= WORK_FLOOR.texts;
+}
+
+export function didWork(measured: MeasuredDay, activity: DayActivity | null): boolean {
+  if (activityShowsWork(activity)) return true;
+  if ((measured.dials ?? 0) >= WORK_FLOOR.dials) return true;
+  if ((measured.sets ?? 0) >= 1) return true;
+  if ((measured.contacted ?? 0) >= 1) return true;
+  if ((measured.reached ?? 0) >= 1) return true;
+  return false;
+}
+
+export interface DayStatusInput {
+  /** They filed. Outranks everything — see the "N of M" rule above. */
+  hasEntry: boolean;
+  /** Still on the roster. */
+  active: boolean;
+  /** Before they joined, nothing is owed. */
+  beforeJoin: boolean;
+  /** Today isn't owed yet. */
+  dayIsOver: boolean;
+  /** We have a way to see this person at all — a CRM user on their roster row. */
+  measurable: boolean;
+  /** We actually read this day. False when the day was too busy to read. */
+  readable: boolean;
+  /**
+   * This person's CRM link produced something somewhere in the range. A link
+   * that was deleted or mis-typed reads zero forever, and without this it
+   * would excuse them permanently and never tell anyone.
+   */
+  linkAlive: boolean;
+  /**
+   * Every linked setter on the team read zero this day. That is our sync
+   * dying, not the whole team taking the same day off. Nobody is excused.
+   * A genuine all-team day off is indistinguishable and gets chased — that is
+   * the safe direction, and it is rare and obvious to a manager. Do not
+   * "fix" it by excusing everyone.
+   */
+  teamBlind: boolean;
+  worked: boolean;
+}
+
+/** Null means the day is not owed and does not count either way. */
+export function dayStatusOf(a: DayStatusInput): DayStatus | null {
+  if (a.hasEntry) return "filed";
+  if (!a.active || a.beforeJoin || !a.dayIsOver) return null;
+  if (!a.measurable || !a.readable || !a.linkAlive || a.teamBlind) return "unmeasured";
+  return a.worked ? "missing" : "no-activity";
+}
+
+/** Days that belong in the denominator of "filed N of M". */
+export function countsAsDue(s: DayStatus | null): boolean {
+  return s === "filed" || s === "missing" || s === "unmeasured";
+}
+
+/** Statuses we actually chase somebody about. */
+export function isChased(s: DayStatus | null): boolean {
+  return s === "missing" || s === "unmeasured";
+}

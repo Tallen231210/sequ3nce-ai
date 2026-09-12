@@ -25,7 +25,7 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
 
 /** One setter's lines: the head, then at most a few flagged days with both numbers on every flag. */
 export function eodCheckLinesFor(r: CrossCheckRange["byRoster"][number]): string[] {
-  if (r.daysFiled === 0) return [];
+  if (r.daysFiled === 0 || r.daysDue === 0) return [];
   const flagged = r.days.filter((d) => d.flags.length > 0);
   const head =
     `${r.name}: filed ${r.daysFiled} of ${r.daysDue} days` +

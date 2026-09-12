@@ -13,6 +13,9 @@ import { addDaysKey, computeDataHealth, weekStartKeyFor, workingDaysOfWeek, type
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { collectTeamBookings } from "./setterTeamBookings";
+import { loadUserDays, localDayBounds } from "./settersPageActivity";
+import { activityShowsWork, type DayActivity } from "./lib/eodCrossCheck";
+import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 
 export interface DataHealthWeek extends DataHealth {
@@ -38,16 +41,35 @@ async function healthForWeek(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await collectTeamBookings(ctx as any, team._id, startMs, endMs, nowMs);
 
-  // The confirmation setter's filings, Mon..Sat up to the week's end.
+  // Who owed a form this week and didn't file it.
+  //
+  // This used to look at confirmation setters only, so the row it produces
+  // has only ever been able to name one person on a five-person roster —
+  // every booking setter was invisible to it. It also asked nothing about
+  // whether the day was worked, so a day off read the same as a day skipped.
   const eodDays: Array<{ rosterId: string; dayKey: string; filed: boolean }> = [];
   // Only days that are over count as missed: today's EOD isn't due yet.
   const yesterdayKey = addDaysKey(dayKeyInTz(nowMs, tz), -1);
   const until = weekEndKey < yesterdayKey ? weekEndKey : yesterdayKey;
+  const weekDays = workingDaysOfWeek(weekStartKey, until);
+  const connectSec = (team as { setterConnectionThresholdSec?: number }).setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
+  const dayBounds = weekDays.length > 0 ? localDayBounds(weekDays[0], weekDays[weekDays.length - 1], tz) : [];
   for (const r of data.rosters) {
-    // Only an active confirmation setter owes an EOD; a deactivated one
-    // stays in the roster refs so their old bookings keep their credit.
-    if (r.role !== "confirmation" || r.active === false) continue;
-    for (const dayKey of workingDaysOfWeek(weekStartKey, until)) {
+    // A deactivated setter stays in the roster refs so their old bookings
+    // keep their credit, but they owe nothing.
+    if (r.active === false) continue;
+    // Nothing is owed before they joined — the check this loop never had.
+    const joinedKey = r.createdAt ? dayKeyInTz(r.createdAt, tz) : null;
+    let activity: Map<string, DayActivity> | null = null;
+    if (r.crmUserId && dayBounds.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      activity = (await loadUserDays(ctx as any, team._id, r.crmUserId, dayBounds, connectSec)).byDay;
+    }
+    for (const dayKey of weekDays) {
+      if (joinedKey && dayKey < joinedKey) continue;
+      // No CRM user, or a day we couldn't read, means we cannot see them —
+      // and silence we caused must never be reported as a day off.
+      if (activity && activity.has(dayKey) && !activityShowsWork(activity.get(dayKey))) continue;
       const entry = await ctx.db
         .query("setterEodEntries")
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

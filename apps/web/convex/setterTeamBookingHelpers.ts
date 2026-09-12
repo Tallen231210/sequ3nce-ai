@@ -41,6 +41,7 @@ export function rosterRefsOf(rows: Doc<"setterRoster">[]): RosterRef[] {
     tag: r.tag ? r.tag.toLowerCase() : null,
     crmUserId: r.crmUserId ?? null,
     active: r.active !== false,
+    createdAt: r.createdAt ?? r._creationTime,
   }));
 }
 

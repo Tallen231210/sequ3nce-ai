@@ -20,6 +20,8 @@ export interface SetterDayRow {
   rosterId: string;
   name: string;
   filed: boolean;
+  /** We can see they worked that day. False also when we can't see them at all. */
+  worked: boolean;
   dials: number;
   pickUps: number;
   sets: number;
@@ -77,7 +79,7 @@ const MAX_SETTERS_SHOWN = 20;
 export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[] {
   const t = data.team;
   const filed = data.rows.filter((r) => r.filed);
-  const notFiled = data.rows.filter((r) => !r.filed);
+  const notFiled = data.rows.filter((r) => !r.filed && r.worked);
 
   const blocks: any[] = [
     {

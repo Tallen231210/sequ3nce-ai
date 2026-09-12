@@ -7,7 +7,9 @@ import { formatInTimeZone } from "./setterDataNotifications";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { deliver } from "./setterEodNotifications";
 import { crossCheckDayFor } from "./setterEodCrossCheck";
-import type { CrossCheckFlag } from "./lib/eodCrossCheck";
+import { activityShowsWork, type CrossCheckFlag } from "./lib/eodCrossCheck";
+import { loadUserDays, localDayBounds } from "./settersPageActivity";
+import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 import {
   buildSetterScorecardDiscordEmbed,
@@ -82,6 +84,7 @@ export const getSetterScorecardData = internalQuery({
         rosterId: String(r._id),
         name: r.name,
         filed: false,
+        worked: false,
         dials: 0, pickUps: 0, sets: 0, onCal: 0, shown: 0, closed: 0, cash: 0,
         cashReported: false,
         week: { sets: 0, cash: 0, cashReported: false },
@@ -123,6 +126,22 @@ export const getSetterScorecardData = internalQuery({
         }
       }
       dayKey = addDaysKey(dayKey, 1);
+    }
+
+    // Did they actually work the reported day? One indexed read each over a
+    // single day — no calendar, no bookings. Someone with no CRM user is
+    // left as "not worked" so this post never names them on a guess; the
+    // Setters page is where an unmeasurable person gets chased.
+    const teamDoc = await ctx.db.get(args.teamId);
+    const tz = (teamDoc as { timezone?: string } | null)?.timezone || DEFAULT_TIMEZONE;
+    const connectSec = (teamDoc as { setterConnectionThresholdSec?: number } | null)?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
+    const dayBounds = localDayBounds(args.reportDayKey, args.reportDayKey, tz);
+    for (const r of roster) {
+      if (!r.crmUserId) continue;
+      const row = byRoster.get(String(r._id));
+      if (!row) continue;
+      const days = await loadUserDays(ctx, args.teamId, r.crmUserId, dayBounds, connectSec);
+      row.worked = days.truncatedDays.length > 0 || activityShowsWork(days.byDay.get(args.reportDayKey));
     }
 
     // Cash first, then sets, then name — a statistic ordering, nothing more.

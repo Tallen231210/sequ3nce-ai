@@ -10,7 +10,7 @@ import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { collectTeamBookings, type BookingRecord } from "./setterTeamBookings";
 import type { RosterRef } from "./lib/setterTeamAttribution";
-import type { MeasuredDay } from "./lib/eodCrossCheck";
+import type { DayActivity, MeasuredDay } from "./lib/eodCrossCheck";
 
 /** Calendar rows read per cohort for one day; a team booking more than this in a day is beyond one form. */
 export const DAY_COHORT_TAKE = 1_500;
@@ -146,11 +146,7 @@ export function measureConfirmationDay(records: BookingRecord[], rosterId: strin
 // The cross-check shape: every field, null where that role can't be measured.
 // ----------------------------------------------------------------------------
 
-export interface DayActivity {
-  dials: number;
-  answered: number;
-  answeredAt?: number[];
-}
+export type { DayActivity } from "./lib/eodCrossCheck";
 
 export function measuredDayFor(
   records: BookingRecord[],

@@ -16,6 +16,12 @@ import {
 } from "./setterDataNotifications";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { resolveAuthUser } from "./setterGhlOauth";
+import { loadUserDays, localDayBounds } from "./settersPageActivity";
+import { activityShowsWork } from "./lib/eodCrossCheck";
+import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
+
+/** Same ceiling the cross-check uses; the old read here was unbounded. */
+const ROSTER_TAKE = 200;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -193,8 +199,20 @@ export const getRosterFilingState = internalQuery({
       await ctx.db
         .query("setterRoster")
         .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
-        .collect()
+        .take(ROSTER_TAKE)
     ).filter((r: any) => r.active);
+
+    // Whether they worked today, not just whether a row exists. This post
+    // names people in a shared channel, and it used to name whoever had no
+    // form — including someone who spent the day away from their desk.
+    //
+    // Deliberately its own cheap read rather than the page's cross-check:
+    // ~1 indexed read per setter over one day, no calendar, no bookings. It
+    // also asks a different question. The page asks "did you owe a form for
+    // a day that is over"; at 8pm today is not over, so that rule would
+    // answer "nobody is missing" every single night.
+    const bounds = localDayBounds(today, today, tz);
+    const connectSec = (team as any)?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
 
     const rows = [];
     for (const r of roster) {
@@ -204,7 +222,14 @@ export const getRosterFilingState = internalQuery({
           q.eq("rosterId", r._id).eq("dayKey", today),
         )
         .first();
-      rows.push({ name: r.name, token: r.token, filedToday: !!filed });
+      // No CRM user means their dials are invisible, not zero — we keep
+      // asking, because silence we caused must never read as a day off.
+      let worked = true;
+      if (r.crmUserId) {
+        const days = await loadUserDays(ctx, args.teamId, r.crmUserId, bounds, connectSec);
+        worked = days.truncatedDays.length > 0 || activityShowsWork(days.byDay.get(today));
+      }
+      rows.push({ name: r.name, token: r.token, filedToday: !!filed, worked });
     }
     rows.sort((a, b) => a.name.localeCompare(b.name));
     return { today, setters: rows };
@@ -354,33 +379,35 @@ async function maybeSend(
     };
   } else {
     slackChannelOverride = team.setterEodMissingSlackChannelId;
-    const missing = state.setters.filter((s: any) => !s.filedToday);
+    const expected = state.setters.filter((s: any) => s.worked || s.filedToday);
+    const missing = expected.filter((s: any) => !s.filedToday);
+    if (expected.length === 0) return { sent: false, reason: "nobody worked today" };
     if (missing.length === 0) {
-      fallback = `All ${state.setters.length} setters filed their EOD today.`;
+      fallback = `All ${expected.length} setters filed their EOD today.`;
       blocks = [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `✅ *All ${state.setters.length} setters filed their EOD today.*`,
+            text: `✅ *All ${expected.length} setters filed their EOD today.*`,
           },
         },
       ];
       embed = { title: "✅ EODs complete", description: fallback, color: 3066993 };
     } else {
       const names = missing.map((s: any) => `• ${s.name}`).join("\n");
-      fallback = `${missing.length} of ${state.setters.length} setters haven't filed their EOD.`;
+      fallback = `${missing.length} of ${expected.length} setters haven't filed their EOD.`;
       blocks = [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `⏳ *Still no EOD from ${missing.length} of ${state.setters.length} setters:*\n${names}`,
+            text: `⏳ *Still no EOD from ${missing.length} of ${expected.length} setters:*\n${names}`,
           },
         },
       ];
       embed = {
-        title: `⏳ Missing EODs — ${missing.length} of ${state.setters.length}`,
+        title: `⏳ Missing EODs — ${missing.length} of ${expected.length}`,
         description: names,
         color: 15105570,
       };

@@ -140,9 +140,13 @@ export function EodRows({
                   <span className="block text-[11px] text-muted-foreground">
                     {d.filed
                       ? "they said"
-                      : d.due
+                      : d.status === "missing"
                         ? "no form filed"
-                        : "no form due"}
+                        : d.status === "unmeasured"
+                          ? "no form filed — we couldn't measure this day"
+                          : d.status === "no-activity"
+                            ? "no activity, nothing owed"
+                            : "no form due"}
                   </span>
                 </td>
                 {columns.map((c) => {
