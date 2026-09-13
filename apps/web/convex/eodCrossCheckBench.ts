@@ -90,7 +90,7 @@ export const measuredRules = internalQuery({
 
 const OWED_BASE: DayStatusInput = {
   hasEntry: false, active: true, beforeJoin: false, dayIsOver: true,
-  measurable: true, readable: true, linkAlive: true, teamBlind: false, worked: true,
+  measurable: true, readable: true, linkAlive: true, teamBlind: false, worked: true, markedOff: false,
 };
 const owed = (o: Partial<DayStatusInput>) => dayStatusOf({ ...OWED_BASE, ...o });
 const activity = (a: Partial<DayActivity>): DayActivity => ({ dials: 0, answered: 0, texts: 0, ...a });
@@ -142,6 +142,22 @@ export const owedRules = internalQuery({
       { name: "confirmation, linked, worked her list", got: didWork(measured({ contacted: 8, reached: 2 }), null), expect: true },
       { name: "confirmation, linked, genuinely off", got: didWork(measured({ newSelfBooked: 11, contacted: 0, reached: 0 }), null), expect: false },
       { name: "confirmation dialling non-funnel leads still reads as work", got: didWork(measured({ contacted: 0, reached: 0 }), activity({ dials: 40 })), expect: true },
+
+      // "I didn't work that day." A statement, not a guess — so it beats
+      // everything we infer, and loses only to numbers they actually filed.
+      { name: "marked off → not chased", got: owed({ markedOff: true, worked: false }), expect: "off" },
+      { name: "a filed form outranks the button", got: owed({ hasEntry: true, markedOff: true }), expect: "filed" },
+      { name: "marked off beats 'we can't see you' — the whole point for an unlinked person", got: owed({ markedOff: true, measurable: false }), expect: "off" },
+      { name: "marked off beats an unreadable day", got: owed({ markedOff: true, readable: false }), expect: "off" },
+      { name: "marked off beats a dead link and a blind team", got: [owed({ markedOff: true, linkAlive: false }), owed({ markedOff: true, teamBlind: true })], expect: ["off", "off"] },
+      // Not silently accepted, not silently rejected: the mark stands and the
+      // manager sees the contradiction beside it.
+      { name: "marked off on a day they clearly worked still reads off", got: owed({ markedOff: true, worked: true }), expect: "off" },
+      { name: "a day off leaves the filed N of M fraction", got: countsAsDue("off"), expect: false },
+      { name: "a day off is never chased", got: isChased("off"), expect: false },
+      { name: "marking a day off before they joined changes nothing", got: owed({ markedOff: true, beforeJoin: true }), expect: null },
+      { name: "marking today off doesn't make today owed", got: owed({ markedOff: true, dayIsOver: false }), expect: null },
+      { name: "off and no-activity are different words", got: [owed({ markedOff: true, worked: false }), owed({ markedOff: false, worked: false })], expect: ["off", "no-activity"] },
     ];
     const results = cases.map((c) => ({ ...c, pass: JSON.stringify(c.got) === JSON.stringify(c.expect) }));
     return { allPass: results.every((r) => r.pass), results };

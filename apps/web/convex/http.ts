@@ -13018,6 +13018,43 @@ http.route({
 });
 closerPreflight("/getCloserDailyEntries");
 
+/** "I didn't work that day." Clears with off:false — undo is never gated. */
+http.route({
+  path: "/setCloserOffDay",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { sessionToken, closerId, dayKey, off, note } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      if (!dayKey) {
+        return new Response(JSON.stringify({ error: "dayKey is required" }), {
+          status: 400, headers: CLOSER_JSON,
+        });
+      }
+      await ctx.runMutation(internal.eodOffDays.setCloserOffDay, {
+        closerId: authedCloserId,
+        dayKey,
+        off: off === true,
+        note: typeof note === "string" ? note : undefined,
+      });
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "Could not save";
+      const message = raw.replace(/^Uncaught Error:\s*/, "").split("\n")[0].trim() || "Could not save";
+      console.error("[HTTP] setCloserOffDay:", message);
+      return new Response(JSON.stringify({ success: false, error: message }), {
+        status: 400, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/setCloserOffDay");
+
 /** Submit one day. Sending no values still confirms it. */
 http.route({
   path: "/saveCloserDailyEntry",

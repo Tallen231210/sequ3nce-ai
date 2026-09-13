@@ -12,6 +12,7 @@
 // are allowed — the picker only shows what it was given.
 
 import React, { useEffect, useState } from "react";
+import { OpenDays } from "./OpenDays";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useSetter, type EodEntryView, type EodFieldView } from "../_components/SetterContext";
@@ -39,6 +40,7 @@ function valuesFrom(e: EodEntryView | null, fields: EodFieldView[]): Record<stri
 export default function SetterEodPage() {
   const { sessionToken, home } = useSetter();
   const submit = useMutation(api.setterApp.submitEod);
+  const setOffDay = useMutation(api.eodOffDays.setSetterOffDay);
   const fields = home.eodFields;
   const isConfirmation = home.role === "confirmation";
   // Any role whose field list carries prefilled boxes gets the measured
@@ -46,6 +48,7 @@ export default function SetterEodPage() {
   const hasPrefill = fields.some((f) => f.measured);
 
   const [dayKey, setDayKey] = useState(home.today);
+  const [offBusy, setOffBusy] = useState(false);
   const isToday = dayKey === home.today;
   // Past days load on demand; today rides the home query it always has.
   const past = useQuery(api.setterApp.getEodForDay, isToday ? "skip" : { sessionToken, dayKey });
@@ -141,6 +144,30 @@ export default function SetterEodPage() {
     return `${when}${date}${d.filed ? "  ✓ filed" : ""}`;
   };
   const disabled = dayLoading || !dayAllowed;
+  const selectedOff = home.recentDays.find((d) => d.dayKey === dayKey)?.off ?? null;
+  // What we already recorded for this day. Marking off is never blocked by
+  // it — we report, we don't rule — but an honest mistake should get a
+  // chance to correct itself before it becomes a contradiction on a card.
+  const measuredWork = (measured?.measured as { dials?: number | null } | undefined)?.dials ?? null;
+
+  async function markOff(key: string, off: boolean) {
+    if (off && typeof measuredWork === "number" && measuredWork > 0 && key === dayKey) {
+      const ok = window.confirm(
+        `We recorded ${measuredWork} ${measuredWork === 1 ? "dial" : "dials"} for ${humanDay(key)}. Mark it as a day you didn't work anyway?`,
+      );
+      if (!ok) return;
+    }
+    setOffBusy(true);
+    setError(null);
+    try {
+      await setOffDay({ sessionToken, dayKey: key, off });
+    } catch (err) {
+      const data = (err as { data?: unknown })?.data;
+      setError(typeof data === "string" && data ? data : "That didn't save — try again.");
+    } finally {
+      setOffBusy(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-md">
@@ -178,6 +205,13 @@ export default function SetterEodPage() {
             )}
           </p>
         </div>
+
+        <OpenDays
+          days={home.recentDays}
+          busy={busy || offBusy}
+          onFile={(k) => setDayKey(k)}
+          onOff={(k) => markOff(k, true)}
+        />
 
         <form onSubmit={onSubmit} className="space-y-3">
           {hasPrefill && measured !== null && (
@@ -231,6 +265,29 @@ export default function SetterEodPage() {
           >
             {busy ? "Saving…" : isToday ? (home.filedToday ? "Update today's numbers" : "Submit EOD") : entry ? `Update ${label}` : `Submit for ${label}`}
           </button>
+          {entry ? null : selectedOff ? (
+            <p className="text-center text-[13px] text-neutral-500">
+              Marked as a day you didn&apos;t work
+              {selectedOff.by === "manager" ? ` by ${selectedOff.byName ?? "your manager"}` : ""}.{" "}
+              <button
+                type="button"
+                disabled={offBusy}
+                onClick={() => markOff(dayKey, false)}
+                className="underline underline-offset-2 hover:text-neutral-900 disabled:opacity-50"
+              >
+                Undo
+              </button>
+            </p>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || offBusy || disabled}
+              onClick={() => markOff(dayKey, true)}
+              className="w-full py-1 text-center text-[13px] text-neutral-500 transition-colors hover:text-neutral-900 disabled:opacity-50"
+            >
+              {offBusy ? "Saving…" : isToday ? "I didn't work today" : `I didn't work ${label}`}
+            </button>
+          )}
           {saved && <p className="text-center text-[13px] text-green-700">Saved for {humanDay(saved)} ✓</p>}
           {error && <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[13px] text-red-700">{error}</p>}
         </form>

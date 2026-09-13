@@ -4,6 +4,7 @@ import {
   getCloserPerformance,
   getCloserDailyEntries,
   saveCloserDailyEntry,
+  setCloserOffDay,
   getTeamLeaderboardForCloser,
   getCloserYearPerformance,
   type SelfPerformance,
@@ -90,6 +91,23 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
     return () => { cancelled = true; };
   }, [section, year, closerInfo.closerId]);
 
+  const [offBusy, setOffBusy] = useState(false);
+  const [offError, setOffError] = useState<string | null>(null);
+
+  /**
+   * "I didn't work that day", and taking it back. Undo matters more than the
+   * mark does: one mistap otherwise removes a day from your record with no
+   * way back. Never offered for today — the day isn't over.
+   */
+  const markOff = async (dayKey: string, off: boolean) => {
+    setOffBusy(true);
+    setOffError(null);
+    const res = await setCloserOffDay(closerInfo.closerId, dayKey, off);
+    setOffBusy(false);
+    if (res.success) await load();
+    else setOffError(res.error ?? 'Could not save — try again.');
+  };
+
   const submitDay = async (dayKey: string, values: Record<string, number | null>) => {
     setSavingDay(dayKey);
     setErrorDay((e) => ({ ...e, [dayKey]: null }));
@@ -124,10 +142,14 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
   // every calendar day meant today was always "not submitted", so a closer who
   // files each evening was told every morning that they were behind. Kept in
   // step with the web app and the missing-EOD nudge.
+  // A day they said they were off is not a day they owe. Bookings land on a
+  // closer's calendar whether or not they turned up, so "we measured work"
+  // alone would keep chasing someone through a week of holiday.
   const owed = rows.filter(
-    (r) => r.dayKey !== todayKey && !r.confirmedAt && (r.measured.booked > 0 || r.measured.taken > 0),
+    (r) => r.dayKey !== todayKey && !r.confirmedAt && !r.off && (r.measured.booked > 0 || r.measured.taken > 0),
   );
   const outstanding = owed.length;
+  const offDays = rows.filter((r) => r.off && !r.confirmedAt);
 
   return (
     <div className="p-6">
@@ -162,7 +184,38 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
             A day you don't submit doesn't count toward your totals or the team
             board — nothing is estimated for you.
           </p>
+          <button
+            type="button"
+            disabled={offBusy}
+            onClick={() => void markOff(owed[0].dayKey, true)}
+            className="shrink-0 self-center rounded-md border border-amber-300 px-2.5 py-1 text-[11px] font-medium text-amber-800 transition-colors hover:border-amber-500 disabled:opacity-50"
+          >
+            {offBusy ? 'Saving…' : `Didn't work ${dayLabel(owed[0].dayKey)}`}
+          </button>
         </div>
+      )}
+
+      {offDays.length > 0 && (
+        <p className="mb-5 text-[12px] text-gray-500">
+          Marked as days you didn't work:{' '}
+          {offDays.map((r, i) => (
+            <span key={r.dayKey}>
+              {i > 0 ? ', ' : ''}
+              {dayLabel(r.dayKey)}{' '}
+              <button
+                type="button"
+                disabled={offBusy}
+                onClick={() => void markOff(r.dayKey, false)}
+                className="underline underline-offset-2 hover:text-gray-900 disabled:opacity-50"
+              >
+                undo
+              </button>
+            </span>
+          ))}
+        </p>
+      )}
+      {offError && (
+        <p className="mb-5 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-[12px] text-gray-800">{offError}</p>
       )}
 
       <nav className="flex gap-1 border-b border-gray-200 mb-5">

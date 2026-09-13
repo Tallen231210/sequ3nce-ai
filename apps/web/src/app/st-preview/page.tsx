@@ -43,7 +43,15 @@ const CONFIRMATION_HOME: SetterHome = {
   today: "2026-09-09",
   filedToday: false,
   todayEntry: null,
-  recentDays: [{ dayKey: "2026-09-09", filed: false }, { dayKey: "2026-09-08", filed: true }],
+  recentDays: [
+    // Today is never "open" — the day isn't over. The server enforces that;
+    // the fixture has to agree or the preview shows a state that can't exist.
+    { dayKey: "2026-09-09", filed: false, off: null, open: false },
+    { dayKey: "2026-09-08", filed: true, off: null, open: false },
+    { dayKey: "2026-09-07", filed: false, off: { by: "self" as const, byName: null, note: null }, open: false },
+    { dayKey: "2026-09-06", filed: false, off: null, open: true },
+    { dayKey: "2026-09-05", filed: false, off: null, open: true },
+  ],
 };
 
 const FIXTURE = {

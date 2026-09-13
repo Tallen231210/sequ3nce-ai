@@ -46,7 +46,14 @@ export interface SetterHome {
   filedToday: boolean;
   todayEntry: EodEntryView | null;
   /** Today and the days a setter may still file for, newest first. */
-  recentDays: Array<{ dayKey: string; filed: boolean }>;
+  recentDays: Array<{
+    dayKey: string;
+    filed: boolean;
+    /** Somebody said they didn't work. Null is "not marked", not "they worked". */
+    off: { by: "self" | "manager"; byName: string | null; note: string | null } | null;
+    /** The server's "somebody would chase you for this day". */
+    open: boolean;
+  }>;
 }
 
 export const SetterContext = createContext<{

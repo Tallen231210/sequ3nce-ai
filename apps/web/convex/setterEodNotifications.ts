@@ -18,6 +18,7 @@ import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { loadUserDays, localDayBounds } from "./settersPageActivity";
 import { activityShowsWork } from "./lib/eodCrossCheck";
+import { loadOffDays, offKey } from "./eodOffDays";
 import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 
 /** Same ceiling the cross-check uses; the old read here was unbounded. */
@@ -214,6 +215,10 @@ export const getRosterFilingState = internalQuery({
     const bounds = localDayBounds(today, today, tz);
     const connectSec = (team as any)?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
 
+    // Somebody saying they're off outranks anything we measure — for a
+    // setter with no CRM user it is the only evidence there is.
+    const off = await loadOffDays(ctx, args.teamId, today, today, "setter");
+
     const rows = [];
     for (const r of roster) {
       const filed = await ctx.db
@@ -222,14 +227,21 @@ export const getRosterFilingState = internalQuery({
           q.eq("rosterId", r._id).eq("dayKey", today),
         )
         .first();
+      // Off stays in the roll-call with everybody else — dropping the row
+      // would take them out of the reminder's list too, and out of the "of
+      // N" the missing post counts against. It only stops them being named.
+      // Filing outranks the mark, the same way it does everywhere else.
+      const markedOff = off.byKey.has(offKey(String(r._id), today)) && !filed;
       // No CRM user means their dials are invisible, not zero — we keep
       // asking, because silence we caused must never read as a day off.
       let worked = true;
-      if (r.crmUserId) {
+      if (markedOff) {
+        worked = false;
+      } else if (r.crmUserId) {
         const days = await loadUserDays(ctx, args.teamId, r.crmUserId, bounds, connectSec);
         worked = days.truncatedDays.length > 0 || activityShowsWork(days.byDay.get(today));
       }
-      rows.push({ name: r.name, token: r.token, filedToday: !!filed, worked });
+      rows.push({ name: r.name, token: r.token, filedToday: !!filed, worked, markedOff });
     }
     rows.sort((a, b) => a.name.localeCompare(b.name));
     return { today, setters: rows };

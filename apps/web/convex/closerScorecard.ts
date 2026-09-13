@@ -14,6 +14,7 @@
  * must not touch their behaviour.
  */
 import { ConvexError, v } from "convex/values";
+import { loadOffDays, offKey } from "./eodOffDays";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
@@ -133,6 +134,9 @@ export const getRange = query({
     const active = closers.filter((c: any) => c.status !== "deactivated");
     const departed = closers.filter((c: any) => c.status === "deactivated");
 
+    const offDays = await loadOffDays(ctx, teamId, args.weekStart, endKey, "closer");
+    const offByKey = new Set(Array.from(offDays.byKey.values()).map((o) => offKey(o.subjectId, o.dayKey)));
+
     const [stats, entries, overrides] = await Promise.all([
       ctx.db
         .query("closerDailyStats")
@@ -225,7 +229,11 @@ export const getRange = query({
         // MEASURED activity, filed when an entry row exists. Today is never
         // "missed"; the day isn't over.
         const worked = !!st && ((st.booked ?? 0) > 0 || (st.taken ?? 0) > 0);
-        if (worked && dayKey !== todayKey) {
+        // A day they said they were off owes nothing, so it is neither
+        // expected nor missed — same rule the board and the nudge use.
+        if (offByKey.has(offKey(String(row.closerId), dayKey)) && !en) {
+          // Nothing owed — unless they filed it anyway, which outranks the mark.
+        } else if (worked && dayKey !== todayKey) {
           row.expectedDays += 1;
           if (en) row.filedDays += 1;
           else row.missedDayKeys.push(dayKey);

@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { useUser } from "@clerk/nextjs";
+import { api } from "../../../../../convex/_generated/api";
 import type { CheckField, CrossCheckFlag } from "../../../../../convex/lib/eodCrossCheck";
 import type { CrossCheckData, RosterCheck } from "../lib/cards";
 import { humanDay, int } from "../lib/format";
@@ -58,6 +62,30 @@ export function EodRows({
   rosterId: string;
   checks: CrossCheckData | null | undefined;
 }) {
+  const { user } = useUser();
+  const setOffDay = useMutation(api.eodOffDays.setOffDayAsManager);
+  const [busyDay, setBusyDay] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // The mutation refuses days older than the setter form's own backfill
+  // window, so don't offer a button that can only throw.
+  const oldestMarkable = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+
+  // A manager marking somebody else's day covers what the rep can't: a week
+  // of holiday nobody is opening the app during, someone off sick, someone
+  // who has already left. One day at a time, undoable by either side.
+  async function markOff(dayKey: string, off: boolean) {
+    if (!user) return;
+    setBusyDay(dayKey);
+    setError(null);
+    try {
+      await setOffDay({ clerkId: user.id, subjectKind: "setter", subjectId: rosterId, dayKey, off });
+    } catch (e) {
+      const data = (e as { data?: unknown })?.data;
+      setError(typeof data === "string" && data ? data : "Could not save that.");
+    } finally {
+      setBusyDay(null);
+    }
+  }
   if (checks === undefined)
     return (
       <p className="py-6 text-sm text-muted-foreground">Reading their days…</p>
@@ -140,14 +168,35 @@ export function EodRows({
                   <span className="block text-[11px] text-muted-foreground">
                     {d.filed
                       ? "they said"
-                      : d.status === "missing"
-                        ? "no form filed"
-                        : d.status === "unmeasured"
-                          ? "no form filed — we couldn't measure this day"
-                          : d.status === "no-activity"
-                            ? "no activity, nothing owed"
-                            : "no form due"}
+                      : d.status === "off"
+                        ? `off${d.off?.by === "manager" ? ` · marked by ${d.off.byName ?? "a manager"}` : " · they said so"}${d.off?.note ? ` · ${d.off.note}` : ""}`
+                        : d.status === "missing"
+                          ? "no form filed"
+                          : d.status === "unmeasured"
+                            ? "no form filed — we couldn't measure this day"
+                            : d.status === "no-activity"
+                              ? "no activity, nothing owed"
+                              : "no form due"}
                   </span>
+                  {/* The mark is never blocked by what we measured — we report
+                      what happened rather than ruling on it — but a day off
+                      with real work behind it says so, right here. */}
+                  {d.offContradicted && (
+                    <span className="block text-[11px] text-amber-700">
+                      marked off, but the CRM recorded {d.offEvidence}
+                    </span>
+                  )}
+                  {!d.filed && d.status !== null && d.dayKey >= oldestMarkable && (
+                    <button
+                      type="button"
+                      disabled={busyDay === d.dayKey}
+                      onClick={() => void markOff(d.dayKey, d.status !== "off")}
+                      className="mt-0.5 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+                    >
+                      {busyDay === d.dayKey ? "saving…" : d.status === "off" ? "undo" : "mark as a day off"}
+                    </button>
+                  )}
+                  {error && <span className="block text-[11px] text-amber-700">{error}</span>}
                 </td>
                 {columns.map((c) => {
                   const v = d.filed?.[c.field];

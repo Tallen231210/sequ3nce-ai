@@ -15,6 +15,7 @@ import { resolveAuthUser } from "./setterGhlOauth";
 import { collectTeamBookings } from "./setterTeamBookings";
 import { loadUserDays, localDayBounds } from "./settersPageActivity";
 import { activityShowsWork, type DayActivity } from "./lib/eodCrossCheck";
+import { loadOffDays, offKey } from "./eodOffDays";
 import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 
@@ -54,6 +55,8 @@ async function healthForWeek(
   const weekDays = workingDaysOfWeek(weekStartKey, until);
   const connectSec = (team as { setterConnectionThresholdSec?: number }).setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
   const dayBounds = weekDays.length > 0 ? localDayBounds(weekDays[0], weekDays[weekDays.length - 1], tz) : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const off = weekDays.length > 0 ? await loadOffDays(ctx as any, team._id, weekDays[0], weekDays[weekDays.length - 1], "setter") : { byKey: new Map() };
   for (const r of data.rosters) {
     // A deactivated setter stays in the roster refs so their old bookings
     // keep their credit, but they owe nothing.
@@ -67,6 +70,7 @@ async function healthForWeek(
     }
     for (const dayKey of weekDays) {
       if (joinedKey && dayKey < joinedKey) continue;
+      if (off.byKey.has(offKey(r.rosterId, dayKey))) continue;
       // No CRM user, or a day we couldn't read, means we cannot see them —
       // and silence we caused must never be reported as a day off.
       if (activity && activity.has(dayKey) && !activityShowsWork(activity.get(dayKey))) continue;

@@ -2418,6 +2418,8 @@ export interface DailyEntryRow {
   measuredExists: boolean;
   reported: Record<string, number | undefined> | null;
   confirmedAt: number | null;
+  /** Somebody said they didn't work that day. Null means "open", not "worked". */
+  off: { by: "self" | "manager"; byName: string | null; note: string | null } | null;
   managerCorrected: Record<string, number | undefined> | null;
 }
 
@@ -2568,6 +2570,25 @@ export async function addManualCall(
  * that our numbers are right is the point of the confirm step, not a no-op.
  * Returns the server's message on failure so the closer can fix the value.
  */
+/** "I didn't work that day." off:false undoes it. */
+export async function setCloserOffDay(
+  closerId: string,
+  dayKey: string,
+  off: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/setCloserOffDay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, dayKey, off }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to set off day:", error);
+    return { success: false, error: "Could not save" };
+  }
+}
+
 export async function saveCloserDailyEntry(
   closerId: string,
   dayKey: string,

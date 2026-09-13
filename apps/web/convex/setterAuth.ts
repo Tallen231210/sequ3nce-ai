@@ -309,6 +309,8 @@ export type SetterIdentity = {
   /** "booking" (absent) or "confirmation" — decides the EOD form shape. */
   role?: "booking" | "confirmation";
   crmUserId?: string;
+  /** When they joined the roster. Nothing is owed before it. */
+  joinedAt: number;
 };
 
 /** Shared resolver for queries/mutations in other files. Deactivating the
@@ -334,6 +336,8 @@ export async function resolveSetterSessionCtx(
     pod: roster.pod,
     role: roster.role,
     crmUserId: roster.crmUserId,
+    /** When they joined. Nothing is owed before it. */
+    joinedAt: roster.createdAt ?? roster._creationTime,
   };
 }
 

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
+import { loadOffDays } from "./eodOffDays";
 import { mergeDailyRows } from "./closerPerformanceMetrics";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -211,10 +212,11 @@ export const countMissedEodDays = internalQuery({
     ]);
 
     let missed = 0;
-    for (const row of mergeDailyRows(stats, overrides, entries)) {
+    const off = await loadOffDays(ctx, args.teamId, args.fromDay, args.toDay, "closer");
+    for (const row of mergeDailyRows(stats, overrides, entries, Array.from(off.byKey.values()))) {
       if (String(row.closerId) !== String(args.closerId)) continue;
       const worked = row.measured.booked > 0 || row.measured.taken > 0;
-      if (worked && !row.confirmed) missed++;
+      if (worked && !row.confirmed && !row.markedOff) missed++;
     }
     return missed;
   },

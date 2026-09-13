@@ -15,6 +15,7 @@ import { getLocalDateRangeUtc } from "./setterDataNotifications";
 import { RANGE_COHORT_TAKE, loadCohortRecords, measuredDayFor, type DayActivity } from "./setterEodMeasured";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { teamHasSetterTeams } from "./setterTeamQueries";
+import { loadOffDays, offKey, offViewOf, type OffView } from "./eodOffDays";
 import { loadUserDays, localDayBounds } from "./settersPageActivity";
 import { resolveSettersPageAccess } from "./settersPageGate";
 import { DEFAULT_CONNECT_SEC, ladderFor } from "./lib/dialAnswered";
@@ -27,6 +28,16 @@ export interface DayCheck {
   dayKey: string;
   /** Which of the four this day is. See dayStatusOf in lib/eodCrossCheck. */
   status: DayStatus | null;
+  /** Set when somebody said they didn't work. Null otherwise — "we saw nothing" is not this. */
+  off: OffView | null;
+  /**
+   * Marked off on a day the CRM shows real work on. The mark stands — we
+   * report what happened rather than ruling on it — but the manager sees
+   * the contradiction beside it.
+   */
+  offContradicted: boolean;
+  /** What we saw on a day marked off — "47 dials", "2 sets", never a bare zero. */
+  offEvidence: string | null;
   /** Shorthand for "counts in the denominator of filed N of M" — filed, missing or unmeasured. */
   due: boolean;
   filed: FiledDay | null;
@@ -52,6 +63,8 @@ export interface RosterCheck {
   daysNoActivity: number;
   /** Days we could not see them at all. Chased, because zero is not evidence. */
   daysUnmeasured: number;
+  /** Days somebody said they didn't work. Outside the filed N of M fraction, on purpose. */
+  daysOff: number;
   /** Filed days with at least one flag. */
   daysFlagged: number;
   flagCount: number;
@@ -126,6 +139,8 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
     .withIndex("by_team_and_day", (q) => q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey))
     .take(ENTRIES_TAKE);
   if (entries.length >= ENTRIES_TAKE) truncated.push("eod entries");
+  const offDays = await loadOffDays(ctx, teamId, startKey, endKey, "setter");
+  if (offDays.truncated) truncated.push("days marked off");
   const entryByRosterDay = new Map<string, Entry>();
   for (const e of entries) entryByRosterDay.set(`${String(e.rosterId)}|${e.dayKey}`, e);
 
@@ -214,6 +229,7 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
       // fields, so they read as a booking day and get compared against
       // outbound-lane bookings she has none of — three false flags on a day
       // she filed honestly. Her old numbers stand; we just don't check them.
+      const offMark = offDays.byKey.get(offKey(rosterId, key));
       const legacyShape = !!entry && role === "confirmation" && !entry.formShape;
       const flags = filed && !legacyShape ? crossCheckDay(filed, measured, tolerances) : [];
       const status = dayStatusOf({
@@ -229,9 +245,28 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
         // calendar and the booking records instead.
         teamBlind: heartbeatUsable && activity !== null && (lastLiveDay === null || key > lastLiveDay),
         worked: didWork(measured, dayActivity),
+        markedOff: !!offMark,
       });
       const ladder = dayRole === "booking" && dayActivity?.answeredAt ? { thresholds: ladderThresholds, counts: dayActivity.answeredAt } : null;
-      days.push({ dayKey: key, due: countsAsDue(status), status, filed, measured, flags, ladder });
+      days.push({
+        dayKey: key,
+        due: countsAsDue(status),
+        status,
+        off: status === "off" ? offViewOf(offMark) : null,
+        offContradicted: status === "off" && didWork(measured, dayActivity),
+        offEvidence:
+          status === "off" && didWork(measured, dayActivity)
+            ? [
+                dayActivity && dayActivity.dials > 0 ? `${dayActivity.dials} dials` : null,
+                (measured.sets ?? 0) > 0 ? `${measured.sets} sets` : null,
+                (measured.contacted ?? 0) > 0 ? `${measured.contacted} contacted` : null,
+              ].filter(Boolean).join(", ") || "activity"
+            : null,
+        filed,
+        measured,
+        flags,
+        ladder,
+      });
     }
     const filedDays = days.filter((d) => d.filed !== null);
     if (filedDays.length === 0 && !active) continue; // gone, and nothing to check
@@ -245,6 +280,7 @@ export async function crossCheckRange(ctx: QueryCtx, team: Doc<"teams">, startMs
       daysFiled: filedDays.length,
       daysNoActivity: days.filter((d) => d.status === "no-activity").length,
       daysUnmeasured: days.filter((d) => d.status === "unmeasured").length,
+      daysOff: days.filter((d) => d.status === "off").length,
       daysFlagged: filedDays.filter((d) => d.flags.length > 0).length,
       flagCount: filedDays.reduce((n, d) => n + d.flags.length, 0),
       days,

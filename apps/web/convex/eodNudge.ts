@@ -36,6 +36,8 @@ export interface EodFilingState {
 }
 
 /** Who worked a team-local day and whether they filed their end-of-day — the nudge's and the Manager EOD's one source. */
+import { loadOffDays } from "./eodOffDays";
+
 export async function eodFilingState(ctx: QueryCtx, teamId: Id<"teams">, dayKey: string): Promise<EodFilingState> {
   const args = { dayKey };
 
@@ -71,7 +73,13 @@ export async function eodFilingState(ctx: QueryCtx, teamId: Id<"teams">, dayKey:
     let filed = 0;
     let expected = 0;
 
-    for (const row of mergeDailyRows(stats, overrides, entries)) {
+    const off = await loadOffDays(ctx, teamId, args.dayKey, args.dayKey, "closer");
+    for (const row of mergeDailyRows(stats, overrides, entries, Array.from(off.byKey.values()))) {
+      // Said they didn't work. Never named, whatever their calendar shows —
+      // bookings land on a closer's calendar whether or not they turned up.
+      // Filing outranks the mark, so a day they went on to submit still
+      // counts; otherwise filing could never undo a mistaken tap.
+      if (row.markedOff && !row.confirmed) continue;
       const closer = byId.get(row.closerId);
       // A closer removed from the team mid-day still has rows. Chasing someone
       // who no longer works here is the fastest way to get a channel muted.

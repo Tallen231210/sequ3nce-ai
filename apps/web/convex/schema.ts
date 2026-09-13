@@ -1626,6 +1626,42 @@ export default defineSchema({
     .index("by_team_and_start", ["teamId", "startTime"])
     .index("by_team_and_claimed_at", ["teamId", "claimedAt"]),
 
+  /**
+   * "I didn't work that day."
+   *
+   * Kept apart from the EOD rows on purpose: half the product reads "an
+   * entry exists" as "they filed", so a day off written as a row of zeros
+   * would quietly start lying in all of those places at once.
+   *
+   * An off day leaves the "filed N of M" denominator and is reported on its
+   * own, so a manager can still tell attendance from compliance — someone
+   * who worked three days and someone who worked twenty-two must not both
+   * read 100%.
+   *
+   * Never deleted on filing: if a form arrives for the same day, `filed`
+   * simply outranks this and the row goes inert.
+   */
+  eodOffDays: defineTable({
+    teamId: v.id("teams"),
+    /** Team-local "YYYY-MM-DD", the same key every other daily number uses. */
+    dayKey: v.string(),
+    /** Setters and closers live in different tables, so the id needs a type beside it. */
+    subjectKind: v.union(v.literal("setter"), v.literal("closer")),
+    /** setterRoster._id or closers._id as a string — see subjectKind. */
+    subjectId: v.string(),
+    /** Optional and free-form: "sick", "holiday". Never required. */
+    note: v.optional(v.string()),
+    /** Who said so. "we guessed" is a different thing and is never stored here. */
+    markedBy: v.union(v.literal("self"), v.literal("manager")),
+    markedByClerkId: v.optional(v.string()),
+    /** Shown as "off · marked by Zion". */
+    markedByName: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_and_day", ["teamId", "dayKey"])
+    .index("by_subject_and_day", ["subjectId", "dayKey"]),
+
   setterEodEntries: defineTable({
     teamId: v.id("teams"),
     rosterId: v.id("setterRoster"),

@@ -1,4 +1,5 @@
 import type { Doc, Id } from "./_generated/dataModel";
+import { offKey } from "./lib/eodCrossCheck";
 
 // ============================================================================
 // Team Performance Sheet — read-time aggregation.
@@ -112,6 +113,12 @@ export interface MergedDailyRow {
   overridden: string[];
   /** True when the closer submitted this day at all — changed or not. */
   confirmed: boolean;
+  /**
+   * Somebody said the closer didn't work this day. Only the "did they owe a
+   * form" readers consult it — the money on a day off is still real money,
+   * so totals are untouched.
+   */
+  markedOff: boolean;
   capacityKnown: boolean | undefined;
   openMinutes: number | undefined;
 }
@@ -132,7 +139,9 @@ export function mergeDailyRows(
   stats: Array<Doc<"closerDailyStats">>,
   overrides: Array<Doc<"closerDailyOverrides">>,
   entries: Array<Doc<"closerDailyEntries">> = [],
+  offDays: Array<Doc<"eodOffDays">> = [],
 ): MergedDailyRow[] {
+  const offByKey = new Set(offDays.filter((o) => o.subjectKind === "closer").map((o) => offKey(o.subjectId, o.dayKey)));
   const byKey = new Map<
     string,
     {
@@ -208,6 +217,7 @@ export function mergeDailyRows(
       reportedFields,
       overridden,
       confirmed: !!entry,
+      markedOff: offByKey.has(offKey(base.closerId, base.dayKey)),
       capacityKnown: base.capacityKnown,
       openMinutes: base.openMinutes,
     };

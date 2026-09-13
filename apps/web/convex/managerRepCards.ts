@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { loadOffDays } from "./eodOffDays";
 import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
@@ -116,7 +117,8 @@ export const listRepCards = query({
       return idx >= 0 && idx < TREND_WEEKS ? idx : null;
     };
 
-    for (const row of mergeDailyRows(stats, overrides, entries)) {
+    const off = await loadOffDays(ctx, teamId, trendFrom, today, "closer");
+    for (const row of mergeDailyRows(stats, overrides, entries, Array.from(off.byKey.values()))) {
       const id = String(row.closerId);
       if (!nameById.has(id)) continue;
 
@@ -141,7 +143,7 @@ export const listRepCards = query({
       // merged total which already contains whatever they typed.
       if (row.dayKey >= recentFrom) {
         const worked = row.measured.booked > 0 || row.measured.taken > 0;
-        if (worked && !row.confirmed) {
+        if (worked && !row.confirmed && !row.markedOff) {
           missedEod.set(id, (missedEod.get(id) ?? 0) + 1);
         }
       }

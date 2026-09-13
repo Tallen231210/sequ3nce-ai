@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
+import { loadOffDays, offKey, offViewOf } from "./eodOffDays";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   DEFAULT_TARGETS,
@@ -93,7 +94,8 @@ export const getSelfPerformance = internalQuery({
         .first(),
     ]);
 
-    const mine = mergeDailyRows(stats, overrides, entries).filter(
+    const off = await loadOffDays(ctx, teamId, start, end, "closer");
+    const mine = mergeDailyRows(stats, overrides, entries, Array.from(off.byKey.values())).filter(
       (r) => r.closerId === String(args.closerId),
     );
 
@@ -108,6 +110,12 @@ export const getSelfPerformance = internalQuery({
     // the same "you're behind when you aren't" the banner below it just
     // stopped saying. Same rule as the banner and the missing-EOD nudge.
     let daysOwed = 0;
+    // Days they were on the floor for, off days included. The projection
+    // paces cash against THIS, never against daysOwed: marking a day off
+    // removes it from the compliance fraction, and if it also shrank the
+    // pace denominator the same tap would inflate projected cash — the
+    // money number would become a self-service dial.
+    let daysPresent = 0;
     // Their cash by week, for the same sparkline the manager board carries.
     const weekCash = [0, 0, 0, 0, 0];
     const todayKeyForOwed = dayKeyInTz(Date.now(), tz);
@@ -117,7 +125,11 @@ export const getSelfPerformance = internalQuery({
       // which pushed "submitted" past "owed" and made the header read 10/10
       // while the banner below it said he still owed Friday.
       const dayIsOver = row.dayKey < todayKeyForOwed;
-      if (dayIsOver && (row.measured.booked > 0 || row.measured.taken > 0)) {
+      const worked = row.measured.booked > 0 || row.measured.taken > 0;
+      if (dayIsOver && (worked || row.confirmed)) daysPresent += 1;
+      // A day they said they were off is not a day they owe a form for —
+      // unless they went on to file it, which outranks the mark.
+      if (dayIsOver && (row.confirmed || (!row.markedOff && worked))) {
         daysOwed += 1;
         if (row.confirmed) daysOwedSubmitted += 1;
       }
@@ -152,7 +164,7 @@ export const getSelfPerformance = internalQuery({
 
     const todayKey = dayKeyInTz(Date.now(), tz);
     const isCurrentMonth = monthKey === todayKey.slice(0, 7);
-    const daysElapsed = daysOwed;
+    const daysElapsed = daysPresent;
 
     return {
       monthKey,
@@ -249,6 +261,7 @@ export const getSelfDailyEntries = internalQuery({
         .map((o) => [key(o.dayKey), o]),
     );
 
+    const offMonth = await loadOffDays(ctx, teamId, start, end, "closer");
     const todayKey = dayKeyInTz(Date.now(), tz);
     const dim = daysInMonth(args.monthKey);
     const rows = [];
@@ -281,6 +294,8 @@ export const getSelfDailyEntries = internalQuery({
             }
           : null,
         confirmedAt: en?.confirmedAt ?? null,
+        /** They said they didn't work. The banner skips it; the row says so. */
+        off: offViewOf(offMonth.byKey.get(offKey(String(args.closerId), dayKey))),
         // Shown read-only: a closer should know their manager changed a figure.
         managerCorrected: ov
           ? {

@@ -69,7 +69,7 @@ export interface CardVM {
   note: string | null;
   metrics: MetricVM[];
   /** EOD filing over the range: days owed, days filed, days whose numbers sat outside tolerance of Close / the calendar. Null for DM setters and while loading. */
-  consistency: { daysDue: number; daysFiled: number; daysNoActivity: number; daysUnmeasured: number; daysFlagged: number; flagCount: number } | null;
+  consistency: { daysDue: number; daysFiled: number; daysNoActivity: number; daysUnmeasured: number; daysOff: number; daysFlagged: number; flagCount: number } | null;
 }
 
 const G = {
@@ -152,7 +152,7 @@ export function buildCards(
   const checkById = new Map((checks?.byRoster ?? []).map((c) => [c.rosterId, c]));
   const consistencyOf = (rosterId: string): CardVM["consistency"] => {
     const c = checkById.get(rosterId);
-    return c ? { daysDue: c.daysDue, daysFiled: c.daysFiled, daysNoActivity: c.daysNoActivity, daysUnmeasured: c.daysUnmeasured, daysFlagged: c.daysFlagged, flagCount: c.flagCount } : null;
+    return c ? { daysDue: c.daysDue, daysFiled: c.daysFiled, daysNoActivity: c.daysNoActivity, daysUnmeasured: c.daysUnmeasured, daysOff: c.daysOff, daysFlagged: c.daysFlagged, flagCount: c.flagCount } : null;
   };
   const cadenceById = new Map((cadence?.bySetter ?? []).map((c) => [c.rosterId, c]));
   const setsById = new Map((sets?.outbound ?? []).map((s) => [s.rosterId, s]));

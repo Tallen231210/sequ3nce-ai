@@ -238,6 +238,8 @@ export interface DayActivity {
 export type DayStatus =
   /** They submitted the form. */
   | "filed"
+  /** Somebody said they didn't work. Not chased, and not in the denominator. */
+  | "off"
   /** We looked, we can see this person, and they did nothing. Nobody is chased. */
   | "no-activity"
   /** We cannot see this person or this day. Chased, because zero is not evidence. */
@@ -299,17 +301,40 @@ export interface DayStatusInput {
    */
   teamBlind: boolean;
   worked: boolean;
+  /**
+   * They (or their manager) said they didn't work. Outranks every guess we
+   * make below it, including "we can't see this person" — somebody telling
+   * us is better evidence than our own measurement, and for an unmeasurable
+   * person it is the only evidence there is.
+   *
+   * It does NOT outrank a filed form: numbers they actually submitted beat a
+   * button they pressed.
+   */
+  markedOff: boolean;
 }
 
 /** Null means the day is not owed and does not count either way. */
 export function dayStatusOf(a: DayStatusInput): DayStatus | null {
   if (a.hasEntry) return "filed";
   if (!a.active || a.beforeJoin || !a.dayIsOver) return null;
+  // Marked off while we measured real work is not silently accepted and not
+  // silently rejected: the mark stands, and the contradiction is shown to the
+  // manager beside it. We report what happened; we don't rule on it.
+  if (a.markedOff) return "off";
   if (!a.measurable || !a.readable || !a.linkAlive || a.teamBlind) return "unmeasured";
   return a.worked ? "missing" : "no-activity";
 }
 
-/** Days that belong in the denominator of "filed N of M". */
+/** How every reader keys an off mark: subject first, then the day. */
+export const offKey = (subjectId: string, dayKey: string) => `${subjectId}|${dayKey}`;
+
+/**
+ * Days that belong in the denominator of "filed N of M".
+ *
+ * A day off is deliberately NOT one of them. It leaves the fraction and is
+ * counted on its own, so compliance ("did you report the days you worked")
+ * and attendance ("how many days did you work") stay separate numbers.
+ */
 export function countsAsDue(s: DayStatus | null): boolean {
   return s === "filed" || s === "missing" || s === "unmeasured";
 }

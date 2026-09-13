@@ -159,6 +159,7 @@ import type * as eodCrossCheckBench from "../eodCrossCheckBench.js";
 import type * as eodNudge from "../eodNudge.js";
 import type * as eodNudgeNotifications from "../eodNudgeNotifications.js";
 import type * as eodNudgeSettings from "../eodNudgeSettings.js";
+import type * as eodOffDays from "../eodOffDays.js";
 import type * as fathom from "../fathom.js";
 import type * as fathomClassify from "../fathomClassify.js";
 import type * as fathomConnect from "../fathomConnect.js";
@@ -484,6 +485,7 @@ declare const fullApi: ApiFromModules<{
   eodNudge: typeof eodNudge;
   eodNudgeNotifications: typeof eodNudgeNotifications;
   eodNudgeSettings: typeof eodNudgeSettings;
+  eodOffDays: typeof eodOffDays;
   fathom: typeof fathom;
   fathomClassify: typeof fathomClassify;
   fathomConnect: typeof fathomConnect;

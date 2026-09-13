@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { teamHasSetterTeams } from "./setterTeamQueries";
+import { loadOffDays, offKey, offViewOf, type OffView } from "./eodOffDays";
 import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
@@ -80,7 +81,36 @@ export const getSetterHome = query({
 
     // The days the setter may file for, newest first, with what's already
     // there — the EOD tab's day picker. Team clock, never the browser's.
-    const recentDays: Array<{ dayKey: string; filed: boolean }> = [];
+    //
+    // `off` is what somebody SAID; a day with neither is simply open. The
+    // form turns the open ones into a catch-up list, because the moment
+    // this is ever used is the Monday after, not the day off itself.
+    const joinedKey = dayKeyInTz(me.joinedAt, tz);
+    const oldestDay = addDaysKey(today, -SETTER_EOD_LOOKBACK_DAYS);
+    const off = await loadOffDays(ctx, me.teamId, oldestDay, today, "setter");
+
+    // `open` drives the catch-up list: the days worth offering to close.
+    //
+    // It is a HINT, not the rule. The dashboard's cross-check is the
+    // authority on who owes what, and it can see things this cannot — a day
+    // too busy to read, a dead CRM link, the sync going quiet. Deliberately
+    // so: this query backs the setter app's chrome and is live on every tab,
+    // so reading their call events here would re-run a fortnight-wide scan
+    // on every dial the sync ingests, all day, for every open client.
+    //
+    // Instead it leans on the working days already derived nightly from
+    // their own calls and stored on the roster row — one point read, and it
+    // is what keeps a Monday-to-Friday setter from being shown every
+    // Saturday as something to deal with.
+    const rosterRow = await ctx.db.get(me.rosterId);
+    const scheduled = rosterRow?.hoursOverride?.days ?? rosterRow?.derivedHours?.days ?? null;
+    const worksOn = (dayKey: string) => {
+      if (!scheduled || scheduled.length === 0) return true; // not derived yet — offer it
+      const [y, m, d] = dayKey.split("-").map(Number);
+      return scheduled.includes(new Date(Date.UTC(y, m - 1, d)).getUTCDay());
+    };
+
+    const recentDays: Array<{ dayKey: string; filed: boolean; off: OffView | null; open: boolean }> = [];
     for (let back = 0; back <= SETTER_EOD_LOOKBACK_DAYS; back++) {
       const dayKey = addDaysKey(today, -back);
       const filed =
@@ -92,7 +122,9 @@ export const getSetterHome = query({
                 q.eq("rosterId", me.rosterId).eq("dayKey", dayKey),
               )
               .first());
-      recentDays.push({ dayKey, filed });
+      const offView = offViewOf(off.byKey.get(offKey(String(me.rosterId), dayKey)));
+      const open = !filed && !offView && dayKey !== today && dayKey >= joinedKey && worksOn(dayKey);
+      recentDays.push({ dayKey, filed, off: offView, open });
     }
 
     const shape = shapeForRole(me.role);

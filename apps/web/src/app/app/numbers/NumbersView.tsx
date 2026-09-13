@@ -6,6 +6,7 @@ import {
   getCloserPerformance,
   getCloserDailyEntries,
   saveCloserDailyEntry,
+  setCloserOffDay,
   getTeamLeaderboardForCloser,
   getCloserYearPerformance,
   type SelfPerformance,
@@ -127,6 +128,23 @@ export function NumbersView() {
     };
   }, [section, year, closerId, guard]);
 
+  const [offBusy, setOffBusy] = useState(false);
+  const [offError, setOffError] = useState<string | null>(null);
+
+  /**
+   * "I didn't work that day", and taking it back. Undo matters more than the
+   * mark does: one mistap otherwise removes a day from your record with no
+   * way back. Never offered for today — the day isn't over.
+   */
+  const markOff = async (dayKey: string, off: boolean) => {
+    setOffBusy(true);
+    setOffError(null);
+    const res = await setCloserOffDay(closerId, dayKey, off);
+    setOffBusy(false);
+    if (res.success) await load();
+    else setOffError(res.error ?? "Could not save — try again.");
+  };
+
   const submitDay = async (
     dayKey: string,
     values: Record<string, number | null>,
@@ -169,10 +187,14 @@ export function NumbersView() {
   // and was told they were behind. Weekends and days off never cleared
   // either. Same rule the missing-EOD nudge uses, so the app and Slack say
   // the same thing.
+  // A day they said they were off is not a day they owe. Bookings land on a
+  // closer's calendar whether or not they turned up, so "we measured work"
+  // alone would keep chasing someone through a week of holiday.
   const owed = rows.filter(
-    (r) => r.dayKey !== todayKey && !r.confirmedAt && (r.measured.booked > 0 || r.measured.taken > 0),
+    (r) => r.dayKey !== todayKey && !r.confirmedAt && !r.off && (r.measured.booked > 0 || r.measured.taken > 0),
   );
   const outstanding = owed.length;
+  const offDays = rows.filter((r) => r.off && !r.confirmedAt);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -207,7 +229,38 @@ export function NumbersView() {
             A day you don&apos;t submit doesn&apos;t count toward your totals or
             the team board — nothing is estimated for you.
           </p>
+          <button
+            type="button"
+            disabled={offBusy}
+            onClick={() => void markOff(owed[0].dayKey, true)}
+            className="shrink-0 self-center rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-foreground hover:text-foreground disabled:opacity-50"
+          >
+            {offBusy ? "Saving…" : `Didn't work ${dayLabel(owed[0].dayKey)}`}
+          </button>
         </div>
+      )}
+
+      {offDays.length > 0 && (
+        <p className="mb-5 text-xs text-muted-foreground">
+          Marked as days you didn&apos;t work:{" "}
+          {offDays.map((r, i) => (
+            <span key={r.dayKey}>
+              {i > 0 ? ", " : ""}
+              {dayLabel(r.dayKey)}{" "}
+              <button
+                type="button"
+                disabled={offBusy}
+                onClick={() => void markOff(r.dayKey, false)}
+                className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+              >
+                undo
+              </button>
+            </span>
+          ))}
+        </p>
+      )}
+      {offError && (
+        <p className="mb-5 rounded-lg border border-border bg-muted/40 px-4 py-2 text-xs text-foreground">{offError}</p>
       )}
 
       {/* Scrolls sideways rather than wrapping: four tabs on a narrow laptop

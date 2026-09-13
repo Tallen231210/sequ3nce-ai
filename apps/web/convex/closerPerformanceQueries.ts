@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { loadOffDays } from "./eodOffDays";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import {
@@ -152,7 +153,8 @@ export const getTeamPerformance = query({
 
     // Union of measured rows and corrections — a manager's entry on a day we
     // measured nothing must still appear. See mergeDailyRows.
-    const merged = mergeDailyRows(stats, overrides, entries);
+    const off = await loadOffDays(ctx, teamId, startKey, endKey, "closer");
+    const merged = mergeDailyRows(stats, overrides, entries, Array.from(off.byKey.values()));
 
     // The board reports what closers said, not what we inferred. A day nobody
     // submitted contributes nothing — showing a measured number as if it were
@@ -220,7 +222,9 @@ export const getTeamPerformance = query({
       if (!inScope(row.dayKey)) continue;
       const dayIsOver = !isCurrentMonth || row.dayKey < todayKey;
       const worked = row.measured.booked > 0 || row.measured.taken > 0;
-      if (!dayIsOver || !worked || !activeCloserIds.has(row.closerId)) continue;
+      // markedOff loses to a filed day — see the note on eodOffDays.
+      if (!dayIsOver || !activeCloserIds.has(row.closerId)) continue;
+      if (!row.confirmed && (!worked || row.markedOff)) continue;
       closerDaysExpected += 1;
       workedDayKeys.add(row.dayKey);
       if (row.confirmed) {

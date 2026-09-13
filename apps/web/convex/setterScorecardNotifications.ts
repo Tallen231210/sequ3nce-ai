@@ -9,6 +9,7 @@ import { deliver } from "./setterEodNotifications";
 import { crossCheckDayFor } from "./setterEodCrossCheck";
 import { activityShowsWork, type CrossCheckFlag } from "./lib/eodCrossCheck";
 import { loadUserDays, localDayBounds } from "./settersPageActivity";
+import { loadOffDays, offKey } from "./eodOffDays";
 import { DEFAULT_CONNECT_SEC } from "./lib/dialAnswered";
 import { teamHasSetterTeams } from "./setterTeamQueries";
 import {
@@ -136,10 +137,13 @@ export const getSetterScorecardData = internalQuery({
     const tz = (teamDoc as { timezone?: string } | null)?.timezone || DEFAULT_TIMEZONE;
     const connectSec = (teamDoc as { setterConnectionThresholdSec?: number } | null)?.setterConnectionThresholdSec ?? DEFAULT_CONNECT_SEC;
     const dayBounds = localDayBounds(args.reportDayKey, args.reportDayKey, tz);
+    const off = await loadOffDays(ctx, args.teamId, args.reportDayKey, args.reportDayKey, "setter");
     for (const r of roster) {
-      if (!r.crmUserId) continue;
       const row = byRoster.get(String(r._id));
       if (!row) continue;
+      // Told us they were off: never named, whatever the CRM shows.
+      if (off.byKey.has(offKey(String(r._id), args.reportDayKey))) continue;
+      if (!r.crmUserId) continue;
       const days = await loadUserDays(ctx, args.teamId, r.crmUserId, dayBounds, connectSec);
       row.worked = days.truncatedDays.length > 0 || activityShowsWork(days.byDay.get(args.reportDayKey));
     }
@@ -164,7 +168,9 @@ export const getSetterScorecardData = internalQuery({
       team,
       week,
       filedCount: rows.filter((r) => r.filed).length,
-      rosterCount: rows.length,
+      // Only the people the day was owed by, so the fraction agrees with the
+      // "no EOD filed" line below it — anyone off leaves both sides.
+      rosterCount: rows.filter((r) => r.filed || r.worked).length,
     };
   },
 });
