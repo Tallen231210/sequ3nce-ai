@@ -170,7 +170,12 @@ export const getSelfPerformance = internalQuery({
 
     const todayKey = dayKeyInTz(Date.now(), tz);
     const isCurrentMonth = monthKey === todayKey.slice(0, 7);
-    const daysElapsed = daysPresent;
+    // Two denominators, deliberately, because they answer two questions.
+    // The header sits directly above "Friday isn't submitted", so its bottom
+    // half MUST be the same set of days the top half counts — anything else
+    // and it reads "12/11", which is the exact contradiction this work keeps
+    // being about. The projection paces cash and takes daysPresent instead.
+    const daysElapsed = daysOwed;
 
     return {
       monthKey,
@@ -195,7 +200,7 @@ export const getSelfPerformance = internalQuery({
         totals.cash,
         goal?.cashGoal ?? 0,
         daysInMonth(monthKey),
-        daysElapsed,
+        daysPresent,
         !isCurrentMonth,
       ),
       prize:
