@@ -35,6 +35,41 @@ function currentMonthKey(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Days apart, on the calendar, both keys being team-local "YYYY-MM-DD". */
+function daysBetween(from: string, to: string): number {
+  const ms = (k: string) => {
+    const [y, m, d] = k.split("-").map((n) => parseInt(n, 10));
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((ms(to) - ms(from)) / 86_400_000);
+}
+
+/**
+ * "Yesterday · Sat, Sep 12". Never just "yesterday", and never just a date.
+ *
+ * The original complaint was a message that said someone was an EOD behind
+ * without saying which one, read in the morning and taken to mean that
+ * morning. A relative word answers "is this the one I just did?" and the
+ * date settles it beyond argument.
+ */
+function owedDayLabel(dayKey: string, todayKey: string | null): string {
+  const date = dayLabel(dayKey);
+  if (!todayKey) return date;
+  const back = daysBetween(dayKey, todayKey);
+  if (back === 0) return `Today · ${date}`;
+  if (back === 1) return `Yesterday · ${date}`;
+  return date;
+}
+
+/** For a button, where "Didn't work Today · Sun, Sep 13" reads badly. */
+function shortOwedLabel(dayKey: string, todayKey: string | null): string {
+  if (!todayKey) return dayLabel(dayKey);
+  const back = daysBetween(dayKey, todayKey);
+  if (back === 0) return "today";
+  if (back === 1) return "yesterday";
+  return dayLabel(dayKey);
+}
+
 function dayLabel(dayKey: string): string {
   const [y, m, d] = dayKey.split("-").map((s) => parseInt(s, 10));
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, {
@@ -224,22 +259,38 @@ export function NumbersView() {
       {outstanding > 0 && (
         <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
           <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground" />
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            <span className="font-semibold text-foreground">
-              {owed.length === 1
-                ? `${dayLabel(owed[0].dayKey)} isn't submitted.`
-                : `${outstanding} days aren't submitted: ${owed.slice(0, 4).map((r) => dayLabel(r.dayKey)).join(", ")}${owed.length > 4 ? ` and ${owed.length - 4} more` : ""}.`}
-            </span>{" "}
-            A day you don&apos;t submit doesn&apos;t count toward your totals or
-            the team board — nothing is estimated for you.
-          </p>
+          <div className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+            {owed.length === 1 ? (
+              <p className="font-semibold text-foreground">
+                {owedDayLabel(owed[0].dayKey, todayKey)} isn&apos;t submitted.
+              </p>
+            ) : (
+              <>
+                <p className="font-semibold text-foreground">
+                  {outstanding} days aren&apos;t submitted:
+                </p>
+                <ul className="mt-1 mb-1.5 space-y-0.5">
+                  {owed.slice(0, 5).map((r) => (
+                    <li key={r.dayKey} className="font-medium text-foreground">
+                      {owedDayLabel(r.dayKey, todayKey)}
+                    </li>
+                  ))}
+                  {owed.length > 5 && <li>and {owed.length - 5} more</li>}
+                </ul>
+              </>
+            )}
+            <p>
+              A day you don&apos;t submit doesn&apos;t count toward your totals or
+              the team board — nothing is estimated for you.
+            </p>
+          </div>
           <button
             type="button"
             disabled={offBusy}
             onClick={() => void markOff(owed[0].dayKey, true)}
             className="shrink-0 self-center rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-foreground hover:text-foreground disabled:opacity-50"
           >
-            {offBusy ? "Saving…" : `Didn't work ${dayLabel(owed[0].dayKey)}`}
+            {offBusy ? "Saving…" : `Didn't work ${shortOwedLabel(owed[0].dayKey, todayKey)}`}
           </button>
         </div>
       )}
@@ -250,7 +301,7 @@ export function NumbersView() {
           {offDays.map((r, i) => (
             <span key={r.dayKey}>
               {i > 0 ? ", " : ""}
-              {dayLabel(r.dayKey)}{" "}
+              {owedDayLabel(r.dayKey, todayKey)}{" "}
               <button
                 type="button"
                 disabled={offBusy}

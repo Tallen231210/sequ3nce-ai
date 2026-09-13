@@ -405,7 +405,17 @@ export default defineSchema({
     eodNudgeSlackChannelId: v.optional(v.string()),
     eodNudgeSlackChannelName: v.optional(v.string()),
     eodNudgeDiscordWebhookUrl: v.optional(v.string()),
-    eodNudgeHourLocal: v.optional(v.number()), // 0-23 in team.timezone
+    eodNudgeHourLocal: v.optional(v.number()),
+    /**
+     * When the closer app's own "not submitted" banner starts asking about
+     * TODAY, team-local. Its own setting on purpose: eodNudgeHourLocal drives
+     * the Slack post, and that has a rule where 20:00-or-later chases today
+     * and anything earlier chases yesterday. Moving that one down to 6pm to
+     * make the banner earlier would silently flip the Slack post back to
+     * asking about yesterday — which is the confusion it was moved away from.
+     * Defaults to CLOSER_EOD_BANNER_HOUR (18:00).
+     */
+    closerEodBannerHourLocal: v.optional(v.number()), // 0-23 in team.timezone
     eodNudgeDays: v.optional(v.array(v.number())), // 0=Sun..6=Sat; undefined = Mon-Fri
     eodNudgeTestSentAt: v.optional(v.number()),
 

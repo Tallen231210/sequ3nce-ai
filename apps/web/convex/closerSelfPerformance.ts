@@ -44,6 +44,9 @@ async function loadCloser(ctx: any, closerId: Id<"closers">) {
 }
 
 /** One closer's own month: funnel, rates, goal progress. */
+/** Dinner time, team-local: when the closer app starts asking about today. */
+export const CLOSER_EOD_BANNER_HOUR = 18;
+
 export const getSelfPerformance = internalQuery({
   args: { closerId: v.id("closers"), monthKey: v.optional(v.string()) },
   handler: async (ctx, args): Promise<any> => {
@@ -333,19 +336,21 @@ export const getSelfDailyEntries = internalQuery({
     // 12:03am on a Saturday night was greeted with Saturday. Meanwhile the
     // Slack nudge had already asked them about that same day at 8pm.
     //
-    // Both now start at the same moment: the hour the team already set for
-    // its end-of-day post. Same clock, same day, one story. Eastern for
-    // everyone at E2 — a couple of them sit elsewhere, but Eastern is the
-    // hours the company keeps.
+    // It now starts around the end of the working day instead — dinner time,
+    // when people actually fill these in. Its own setting rather than the
+    // Slack post's: that one treats 20:00-or-later as "ask about today", so
+    // dialling it down to 6pm would quietly flip the post back to asking
+    // about yesterday. Eastern for everyone at E2 — a couple of them sit
+    // elsewhere, but Eastern is the hours the company keeps.
     //
     // This is a prompt, not a judgement: the manager board and the
     // compliance counts still wait for the day to be over.
-    const eodHour = (team as { eodNudgeHourLocal?: number }).eodNudgeHourLocal;
+    const eodHour = (team as { closerEodBannerHourLocal?: number }).closerEodBannerHourLocal ?? CLOSER_EOD_BANNER_HOUR;
     // The same clock the nudge reads, deliberately: two different hour
     // functions can disagree across a DST boundary, and then the banner and
     // the Slack post would be describing different days on the same evening.
     const nowLocalHour = formatInTimeZone(new Date(), tz).hour;
-    const todayIsOwedYet = typeof eodHour === "number" && nowLocalHour >= eodHour;
+    const todayIsOwedYet = nowLocalHour >= eodHour;
 
     return { monthKey: args.monthKey, timezone: tz, todayKey, todayIsOwedYet, rows, tierPrices };
   },
