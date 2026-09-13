@@ -2459,6 +2459,8 @@ export async function getCloserDailyEntries(
 ): Promise<{
   monthKey: string;
   todayKey: string;
+  /** True once the team's end-of-day hour has passed, so today can be chased. */
+  todayIsOwedYet?: boolean;
   rows: DailyEntryRow[];
   /** Team's package prices; drives the tier-pitch inputs on the day form. */
   tierPrices?: number[] | null;

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
 import { loadOffDays, offKey, offViewOf } from "./eodOffDays";
+import { formatInTimeZone } from "./setterDataNotifications";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   DEFAULT_TARGETS,
@@ -325,7 +326,28 @@ export const getSelfDailyEntries = internalQuery({
     const team = await ctx.db.get(teamId);
     const tierPrices = (team as Doc<"teams"> | null)?.closerTierPrices ?? null;
 
-    return { monthKey: args.monthKey, timezone: tz, todayKey, rows, tierPrices };
+    // Should today already be on the "not submitted" list?
+    //
+    // The banner used to say nothing about today and then have it appear the
+    // instant the clock passed midnight — so a closer opening the app at
+    // 12:03am on a Saturday night was greeted with Saturday. Meanwhile the
+    // Slack nudge had already asked them about that same day at 8pm.
+    //
+    // Both now start at the same moment: the hour the team already set for
+    // its end-of-day post. Same clock, same day, one story. Eastern for
+    // everyone at E2 — a couple of them sit elsewhere, but Eastern is the
+    // hours the company keeps.
+    //
+    // This is a prompt, not a judgement: the manager board and the
+    // compliance counts still wait for the day to be over.
+    const eodHour = (team as { eodNudgeHourLocal?: number }).eodNudgeHourLocal;
+    // The same clock the nudge reads, deliberately: two different hour
+    // functions can disagree across a DST boundary, and then the banner and
+    // the Slack post would be describing different days on the same evening.
+    const nowLocalHour = formatInTimeZone(new Date(), tz).hour;
+    const todayIsOwedYet = typeof eodHour === "number" && nowLocalHour >= eodHour;
+
+    return { monthKey: args.monthKey, timezone: tz, todayKey, todayIsOwedYet, rows, tierPrices };
   },
 });
 

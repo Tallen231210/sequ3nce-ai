@@ -67,6 +67,9 @@ export function NumbersView() {
   // from rows[0]: that only happens to be today while this view is pinned to
   // the current month, and a month picker would silently break the count.
   const [todayKey, setTodayKey] = useState<string | null>(null);
+  // Today joins the list at the team's end-of-day hour, not at midnight —
+  // the same moment the Slack nudge asks about it. See getSelfDailyEntries.
+  const [todayOwed, setTodayOwed] = useState(false);
   const [tierPrices, setTierPrices] = useState<number[] | null>(null);
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
   const [year, setYear] = useState<number>(() => new Date().getFullYear());
@@ -93,6 +96,7 @@ export function NumbersView() {
       setPerf(p);
       setRows(entries?.rows ?? []);
       setTodayKey(entries?.todayKey ?? null);
+      setTodayOwed(entries?.todayIsOwedYet === true);
       setTierPrices(entries?.tierPrices ?? null);
       setBoard(lb?.rows ?? []);
     } catch {
@@ -191,7 +195,7 @@ export function NumbersView() {
   // closer's calendar whether or not they turned up, so "we measured work"
   // alone would keep chasing someone through a week of holiday.
   const owed = rows.filter(
-    (r) => r.dayKey !== todayKey && !r.confirmedAt && !r.off && (r.measured.booked > 0 || r.measured.taken > 0),
+    (r) => (r.dayKey !== todayKey || todayOwed) && !r.confirmedAt && !r.off && (r.measured.booked > 0 || r.measured.taken > 0),
   );
   const outstanding = owed.length;
   const offDays = rows.filter((r) => r.off && !r.confirmedAt);
