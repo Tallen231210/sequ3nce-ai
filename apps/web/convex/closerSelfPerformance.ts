@@ -110,11 +110,17 @@ export const getSelfPerformance = internalQuery({
     // the same "you're behind when you aren't" the banner below it just
     // stopped saying. Same rule as the banner and the missing-EOD nudge.
     let daysOwed = 0;
-    // Days they were on the floor for, off days included. The projection
-    // paces cash against THIS, never against daysOwed: marking a day off
-    // removes it from the compliance fraction, and if it also shrank the
-    // pace denominator the same tap would inflate projected cash — the
-    // money number would become a self-service dial.
+    // Days that could actually have produced cash. The projection paces
+    // against THIS and nothing else, which is what keeps the money number
+    // out of reach of anything a rep can press:
+    //   - it never reads markedOff, so "I didn't work" cannot move it. An
+    //     earlier cut subtracted off days here and one tap inflated
+    //     projected cash by 14%.
+    //   - it never reads confirmed either. Somebody clicking submit on an
+    //     empty Sunday is not a day of selling, and counting it diluted a
+    //     real closer's projection by 8% the day this shipped.
+    // Compliance (daysOwed, below) asks a different question and answers it
+    // differently on purpose.
     let daysPresent = 0;
     // Their cash by week, for the same sparkline the manager board carries.
     const weekCash = [0, 0, 0, 0, 0];
@@ -126,7 +132,7 @@ export const getSelfPerformance = internalQuery({
       // while the banner below it said he still owed Friday.
       const dayIsOver = row.dayKey < todayKeyForOwed;
       const worked = row.measured.booked > 0 || row.measured.taken > 0;
-      if (dayIsOver && (worked || row.confirmed)) daysPresent += 1;
+      if (dayIsOver && worked) daysPresent += 1;
       // A day they said they were off is not a day they owe a form for —
       // unless they went on to file it, which outranks the mark.
       if (dayIsOver && (row.confirmed || (!row.markedOff && worked))) {
