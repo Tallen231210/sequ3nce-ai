@@ -7,18 +7,28 @@ import { Loader2 } from "lucide-react";
 import Script from "next/script";
 import { ProgressRail } from "../ProgressRail";
 
+// ============================================================================
+// The forced booking step. After opt-in, this is the ONLY way forward — the
+// calendar is the whole page, no skip. That is deliberate: booking is a
+// commitment device, and someone who won't book simply leaves, by which point
+// we already have their opt-in and call them regardless. Do not add an escape
+// hatch here.
+//
+// Detecting the booking: the widget announces a completed appointment with one
+// specific event, pinned from GHL's own shipped bundle (2026-09-14) and then
+// confirmed by a live booking, rather than guessed at.
+// ============================================================================
+
 const BOOKING_WIDGET_URL =
   "https://booking.sequ3nce.com/widget/bookings/cash-collectors-onboarding-cal";
 
-// Read out of the widget's own bundle, where it fires the instant the
-// appointment is created and before any redirect handling:
+// From the widget's bundle, fired the instant the appointment is created:
 //   window.parent.postMessage(
 //     ["msgsndr-booking-complete", { fingerprint, calendarId }], "*")
-// It carries no appointment time, which is why the redirect path below is still
-// worth configuring. An earlier version of this page pattern-matched words like
-// "booked" and "scheduled" and would have missed this entirely.
+// It carries no appointment time. That is why the calendar's own redirect URL is
+// still worth configuring in GHL: it is the only route that delivers the booked
+// slot, as query params that /start/thanks reads off its own URL.
 const BOOKING_COMPLETE_EVENT = "msgsndr-booking-complete";
-
 
 // The widget posts this as an array; tolerate a stringified payload too.
 function isBookingComplete(data: unknown): boolean {
@@ -26,17 +36,6 @@ function isBookingComplete(data: unknown): boolean {
   if (typeof data === "string") return data.includes(BOOKING_COMPLETE_EVENT);
   return false;
 }
-
-// ============================================================================
-// The forced booking step. After opt-in, this is the ONLY way forward — the
-// calendar is the whole page, no skip. Someone who won't book simply leaves;
-// we already captured their opt-in and call them regardless.
-//
-// Detecting the booking: the widget announces a completed appointment with a
-// specific event, pinned from GHL's own shipped bundle (2026-09-14) rather than
-// guessed — see BOOKING_COMPLETE_EVENT below. On that signal we advance to
-// /start/thanks.
-// ============================================================================
 
 const GROUND: React.CSSProperties = {
   backgroundImage: "radial-gradient(circle, rgb(228 228 231) 1px, transparent 1px)",
@@ -60,7 +59,6 @@ function BookInner() {
 
   const toThanks = () =>
     router.push(`/start/thanks?booked=1${phone ? `&p=${encodeURIComponent(phone)}` : ""}`);
-
 
   useEffect(() => {
     // Only one signal matters. Read from GHL's bundle: on a successful booking
