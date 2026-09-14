@@ -10,16 +10,38 @@ import { ProgressRail } from "../ProgressRail";
 const BOOKING_WIDGET_URL =
   "https://booking.sequ3nce.com/widget/bookings/cash-collectors-onboarding-cal";
 
+// Read out of the widget's own bundle, where it fires the instant the
+// appointment is created and before any redirect handling:
+//   window.parent.postMessage(
+//     ["msgsndr-booking-complete", { fingerprint, calendarId }], "*")
+// It carries no appointment time, which is why the redirect path below is still
+// worth configuring. An earlier version of this page pattern-matched words like
+// "booked" and "scheduled" and would have missed this entirely.
+const BOOKING_COMPLETE_EVENT = "msgsndr-booking-complete";
+
+// How long to hold after the completion event, waiting to see whether GHL's
+// configured redirect is about to load our /start/thanks inside the iframe and
+// hand us the booked slot. The slot is what pre-fills add-to-calendar, the main
+// show-rate lever on that page, so it is worth a moment. The wait is not dead
+// air: the widget shows its own confirmation screen underneath meanwhile.
+const REDIRECT_GRACE_MS = 3000;
+
+// The widget posts this as an array; tolerate a stringified payload too.
+function isBookingComplete(data: unknown): boolean {
+  if (Array.isArray(data)) return data[0] === BOOKING_COMPLETE_EVENT;
+  if (typeof data === "string") return data.includes(BOOKING_COMPLETE_EVENT);
+  return false;
+}
+
 // ============================================================================
 // The forced booking step. After opt-in, this is the ONLY way forward — the
 // calendar is the whole page, no skip. Someone who won't book simply leaves;
 // we already captured their opt-in and call them regardless.
 //
-// Detecting the booking: GHL's calendar widget posts a message to us when the
-// appointment is confirmed; on that signal we advance to /start/thanks. Prod
-// reinforcement is a redirect-on-booking set inside the GHL calendar. Every
-// widget message is logged so the exact event can be pinned against a live
-// booking.
+// Detecting the booking: the widget announces a completed appointment with a
+// specific event, pinned from GHL's own shipped bundle (2026-09-14) rather than
+// guessed — see BOOKING_COMPLETE_EVENT below. On that signal we advance to
+// /start/thanks.
 // ============================================================================
 
 const GROUND: React.CSSProperties = {
@@ -53,35 +75,49 @@ function BookInner() {
   };
 
   useEffect(() => {
+    // Two signals can arrive. The widget's completion event always fires but
+    // carries no time; GHL's optional post-booking redirect loads our own
+    // /start/thanks inside the iframe, which reports up WITH the booked slot.
+    // So on the bare completion event, hold briefly and prefer the richer one.
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const advance = (search: string) => {
+      if (pending) {
+        clearTimeout(pending);
+        pending = null;
+      }
+      toThanks(search);
+    };
+
     function onMessage(e: MessageEvent) {
-      // Path 1, deterministic: GHL's post-booking redirect points at our own
-      // /start/thanks, which loads INSIDE this iframe and reports up. Our
-      // origin, our payload — no guessing at the widget's vocabulary. Requires
-      // the redirect URL to be set on the GHL calendar.
+      // Path 1: our own thanks page, redirected into the widget iframe by GHL,
+      // forwarding its ?start=&end= so add-to-calendar lands on the real slot.
       if (e.origin === window.location.origin) {
         const d = e.data as { source?: string; event?: string; search?: string } | null;
         if (d && d.source === "sequ3nce-funnel" && d.event === "booked") {
-          toThanks(typeof d.search === "string" ? d.search : "");
+          advance(typeof d.search === "string" ? d.search : "");
         }
         return;
       }
-      // Path 2, fallback: the widget's own messages. Verified 2026-09-14 on
-      // localhost that nothing it posts before a booking matches the pattern
-      // below — 15 messages across mount, day select, time select and the
-      // contact form, all iframe-resizer and setHeight plumbing, no false
-      // advance. The confirmation event itself is still unconfirmed; one real
-      // booking pins it. Ignore anything not from the booking domain.
+      // Anything not from the white-labeled booking domain is noise.
       if (typeof e.origin === "string" && !e.origin.includes("booking.sequ3nce.com")) return;
-      // eslint-disable-next-line no-console
-      console.log("[book] widget message", e.origin, e.data);
-      const raw = e.data;
-      const text = typeof raw === "string" ? raw : (() => { try { return JSON.stringify(raw); } catch { return ""; } })();
-      if (/appointment|booked|booking[_\s-]?confirm|scheduled|slot[_\s-]?selected/i.test(text)) {
-        toThanks();
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.log("[book] widget message", e.data);
+      }
+      // Path 2: the widget's own completion event.
+      if (isBookingComplete(e.data) && !pending) {
+        pending = setTimeout(() => {
+          pending = null;
+          toThanks("");
+        }, REDIRECT_GRACE_MS);
       }
     }
+
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    return () => {
+      if (pending) clearTimeout(pending);
+      window.removeEventListener("message", onMessage);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone]);
 
