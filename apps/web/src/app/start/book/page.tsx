@@ -19,12 +19,6 @@ const BOOKING_WIDGET_URL =
 // "booked" and "scheduled" and would have missed this entirely.
 const BOOKING_COMPLETE_EVENT = "msgsndr-booking-complete";
 
-// How long to hold after the completion event, waiting to see whether GHL's
-// configured redirect is about to load our /start/thanks inside the iframe and
-// hand us the booked slot. The slot is what pre-fills add-to-calendar, the main
-// show-rate lever on that page, so it is worth a moment. The wait is not dead
-// air: the widget shows its own confirmation screen underneath meanwhile.
-const REDIRECT_GRACE_MS = 3000;
 
 // The widget posts this as an array; tolerate a stringified payload too.
 function isBookingComplete(data: unknown): boolean {
@@ -64,60 +58,29 @@ function BookInner() {
     if (qs) setBookingSrc(`${BOOKING_WIDGET_URL}?${qs}`);
   }, []);
 
-  // `extraSearch` carries GHL's post-booking query (?start=&end=) through when
-  // the redirect path is used, so the add-to-calendar button lands on the real
-  // slot instead of an untimed event.
-  const toThanks = (extraSearch = "") => {
-    const q = new URLSearchParams(extraSearch.replace(/^\?/, ""));
-    q.set("booked", "1");
-    if (phone) q.set("p", phone);
-    router.push(`/start/thanks?${q.toString()}`);
-  };
+  const toThanks = () =>
+    router.push(`/start/thanks?booked=1${phone ? `&p=${encodeURIComponent(phone)}` : ""}`);
+
 
   useEffect(() => {
-    // Two signals can arrive. The widget's completion event always fires but
-    // carries no time; GHL's optional post-booking redirect loads our own
-    // /start/thanks inside the iframe, which reports up WITH the booked slot.
-    // So on the bare completion event, hold briefly and prefer the richer one.
-    let pending: ReturnType<typeof setTimeout> | null = null;
-    const advance = (search: string) => {
-      if (pending) {
-        clearTimeout(pending);
-        pending = null;
-      }
-      toThanks(search);
-    };
-
+    // Only one signal matters. Read from GHL's bundle: on a successful booking
+    // it posts the completion event and then, in the same synchronous function,
+    // sets `window.top.location.href` to the calendar's configured redirect. So
+    // if a redirect IS configured, GHL replaces this whole page itself and the
+    // handler below never gets the chance to run; the booked slot arrives as
+    // query params on that URL and /start/thanks reads them. If it is NOT
+    // configured, this handler is the only thing that moves them along. Either
+    // way there is nothing to wait for, so advance immediately.
     function onMessage(e: MessageEvent) {
-      // Path 1: our own thanks page, redirected into the widget iframe by GHL,
-      // forwarding its ?start=&end= so add-to-calendar lands on the real slot.
-      if (e.origin === window.location.origin) {
-        const d = e.data as { source?: string; event?: string; search?: string } | null;
-        if (d && d.source === "sequ3nce-funnel" && d.event === "booked") {
-          advance(typeof d.search === "string" ? d.search : "");
-        }
-        return;
-      }
-      // Anything not from the white-labeled booking domain is noise.
       if (typeof e.origin === "string" && !e.origin.includes("booking.sequ3nce.com")) return;
       if (process.env.NODE_ENV !== "production") {
         // eslint-disable-next-line no-console
         console.log("[book] widget message", e.data);
       }
-      // Path 2: the widget's own completion event.
-      if (isBookingComplete(e.data) && !pending) {
-        pending = setTimeout(() => {
-          pending = null;
-          toThanks("");
-        }, REDIRECT_GRACE_MS);
-      }
+      if (isBookingComplete(e.data)) toThanks();
     }
-
     window.addEventListener("message", onMessage);
-    return () => {
-      if (pending) clearTimeout(pending);
-      window.removeEventListener("message", onMessage);
-    };
+    return () => window.removeEventListener("message", onMessage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone]);
 
@@ -165,7 +128,7 @@ function BookInner() {
         <div className="mx-auto mt-4 max-w-2xl text-center">
           <button
             type="button"
-            onClick={() => toThanks()}
+            onClick={toThanks}
             className="text-xs font-medium text-zinc-400 underline underline-offset-2 hover:text-zinc-600"
           >
             (dev only) simulate a completed booking &rarr;

@@ -1,10 +1,21 @@
-// Verifies how /start/book decides a booking happened.
+// Verifies how /start/book decides a booking happened, and that /start/thanks
+// makes use of the booked slot when GHL's redirect supplies it.
 //
-// Why this exists: the first version of that page pattern-matched words like
-// "booked" and "scheduled" in the calendar widget's postMessages. GHL actually
-// sends "msgsndr-booking-complete" (read out of its shipped bundle), which that
-// pattern did not match — so the funnel would have silently stalled on the
-// booking step after a real booking. This check pins the behaviour.
+// Why this exists: the first version of the booking step pattern-matched words
+// like "booked" and "scheduled" in the widget's postMessages. GHL actually
+// announces a completed appointment as "msgsndr-booking-complete" (read out of
+// its shipped bundle, and confirmed by a live booking on 2026-09-14). That
+// pattern did not match it, so the funnel would have stalled on the booking
+// step after every booking, and nothing downstream would have been reached.
+//
+// How the two mechanisms really work, also from the bundle:
+//  - The widget posts the completion event, then SYNCHRONOUSLY sets
+//    window.top.location.href to the calendar's configured redirect URL. So a
+//    configured redirect replaces the whole page by itself; our listener never
+//    gets the chance to run, and the booked slot arrives as query params on
+//    that URL.
+//  - With no redirect configured, our listener is the only thing that advances
+//    the visitor, and there is nothing to wait for.
 //
 // Not a Playwright spec yet: apps/web/playwright.config.ts routes unknown specs
 // into the authenticated project and boots its own server on port 3000. Making
@@ -13,18 +24,17 @@
 //
 // Run:  cd apps/web && npx next dev --webpack -p 3007
 //       node tests/funnel/booking-signal-check.mjs
-//       FUNNEL_BASE=http://localhost:3007 node tests/funnel/booking-signal-check.mjs
 import { chromium } from "@playwright/test";
 
 const BASE = process.env.FUNNEL_BASE ?? "http://localhost:3007";
 const BOOK = `${BASE}/start/book?p=%2B12015550123`;
-const SLOT = "start=2026-09-15T21%3A30%3A00-04%3A00&end=2026-09-15T22%3A00%3A00-04%3A00";
 const COMPLETE = `parent.postMessage(['msgsndr-booking-complete',{fingerprint:'fp-1',calendarId:'D8EJ1x5XjDS4biQOW5GO'}],'*');`;
 
 // Exactly what the live widget posted while loading, picking a day, picking a
 // time and reaching the contact form: 15 messages, all plumbing. None of it may
 // advance the page. modify-parent-url carries the PARENT's own cleaned URL,
-// which is what the widget really sends and what GHL's form_embed.js acts on.
+// which is what the widget really sends and what GHL's form_embed.js acts on —
+// never feed that one a foreign URL in a test, it will navigate the page.
 const NOISE = `
   parent.postMessage('[iFrameResizerChild]Ready','*');
   parent.postMessage('[iFrameSizer]cash-collectors-onboarding-cal_book:700:1120:init','*');
@@ -36,56 +46,84 @@ const NOISE = `
   parent.postMessage('[iFrameSizer]cash-collectors-onboarding-cal_book:805:670:mutationObserver','*');
 `;
 
-// The widget is replaced by a stub so no real appointment is created. GHL guards
-// the real submit with a bot challenge, so an automated end-to-end booking is
-// not possible; a human has to make one to confirm the live event.
-async function run({ widgetScript, redirectAfterMs = null, waitMs }) {
-  const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true });
+let failed = 0;
+const check = (name, ok, detail) => {
+  if (!ok) failed++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}`);
+  if (detail) console.log(`      ${detail}`);
+};
+
+// The widget is replaced by a stub, so no real appointment is created. GHL
+// guards the real submit with a bot challenge, which is why an automated
+// end-to-end booking is not possible; the live confirmation was done by hand.
+async function bookPageWith(widgetScript, waitMs) {
   const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, timezoneId: "America/New_York" });
   await page.route("**/widget/bookings/**", (r) =>
     r.fulfill({
       status: 200,
       contentType: "text/html",
-      // Delayed so the page's listener is attached, as it always is in real use:
-      // a booking takes the visitor tens of seconds.
-      body: `<!doctype html><title>stub widget</title><body>stub<script>setTimeout(function(){${widgetScript}},2500);</script></body>`,
+      // Delayed so the page's listener is attached, as it always is in real
+      // use: a booking takes the visitor tens of seconds.
+      body: `<!doctype html><title>stub widget</title><body>stub<script>setTimeout(function(){${widgetScript}},2000);</script></body>`,
     }),
   );
   await page.goto(BOOK, { waitUntil: "domcontentloaded" });
-  if (redirectAfterMs !== null) {
-    // Stand in for GHL's post-booking redirect loading /start/thanks in the
-    // iframe. Driven from the parent because an https-served stub cannot
-    // navigate to an http dev origin; production is https on both sides.
-    await page.evaluate(
-      ({ delay, slot }) => {
-        setTimeout(() => {
-          const f = document.querySelector("iframe#cash-collectors-onboarding-cal_book");
-          if (f) f.src = `/start/thanks?${slot}`;
-        }, delay);
-      },
-      { delay: 2500 + redirectAfterMs, slot: SLOT },
-    );
-  }
+  const t0 = Date.now();
+  let elapsed = null;
+  page.on("framenavigated", (fr) => {
+    if (fr === page.mainFrame() && fr.url().includes("/start/thanks") && elapsed === null) elapsed = Date.now() - t0 - 2000;
+  });
   await page.waitForTimeout(waitMs);
   const url = page.url();
-  await browser.close();
-  return { onThanks: url.includes("/start/thanks"), hasSlot: url.includes("start=2026-09-15T21"), url };
+  await page.close();
+  return { url, elapsed };
 }
 
-const cases = [
-  { name: "plumbing noise only, nobody booked", opts: { widgetScript: NOISE, waitMs: 9000 }, want: { onThanks: false, hasSlot: false } },
-  { name: "completion event alone, no redirect configured", opts: { widgetScript: NOISE + COMPLETE, waitMs: 9000 }, want: { onThanks: true, hasSlot: false } },
-  { name: "completion, then the redirect hands over the slot", opts: { widgetScript: NOISE + COMPLETE, redirectAfterMs: 400, waitMs: 12000 }, want: { onThanks: true, hasSlot: true } },
-];
-
-let failed = 0;
-for (const c of cases) {
-  const got = await run(c.opts);
-  const ok = got.onThanks === c.want.onThanks && got.hasSlot === c.want.hasSlot;
-  if (!ok) failed++;
-  console.log(`${ok ? "PASS" : "FAIL"}  ${c.name}`);
-  console.log(`      on thanks ${got.onThanks} (want ${c.want.onThanks}) · carries slot ${got.hasSlot} (want ${c.want.hasSlot})`);
-  if (!ok) console.log(`      url: ${got.url}`);
+// 1. Ordinary widget chatter must never advance the visitor.
+{
+  const { url } = await bookPageWith(NOISE, 6000);
+  check("plumbing noise alone does not advance", !url.includes("/start/thanks"), `url ${url.replace(BASE, "")}`);
 }
-console.log(`\n${cases.length - failed}/${cases.length} passed`);
+
+// 2. The completion event advances, and does so immediately — no configured
+//    redirect means there is nothing worth waiting for.
+{
+  const { url, elapsed } = await bookPageWith(NOISE + COMPLETE, 6000);
+  check("completion event advances to thanks", url.includes("/start/thanks"), `url ${url.replace(BASE, "")}`);
+  check("and advances promptly, not after a delay", elapsed !== null && elapsed < 1500, `took ~${elapsed}ms after the event`);
+  check("phone is carried through", url.includes("p=%2B12015550123"));
+}
+
+// 3. When GHL's configured redirect supplies the slot on the URL, the thanks
+//    page must put the real time into the add-to-calendar link, as UTC basic
+//    format. Stripping punctuation off the raw ISO string ate the timezone
+//    offset's minus sign and produced the wrong hour, which is what this guards.
+{
+  const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, timezoneId: "America/New_York" });
+  const q = "start=2026-09-15T21%3A30%3A00-04%3A00&end=2026-09-15T22%3A00%3A00-04%3A00";
+  await page.goto(`${BASE}/start/thanks?booked=1&p=%2B12015550123&${q}`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+  const href = await page.getByRole("link", { name: /calendar/i }).first().getAttribute("href");
+  const dates = decodeURIComponent((href.match(/dates=([^&]+)/) || [])[1] || "");
+  // 21:30-22:00 Eastern on the 15th is 01:30-02:00 UTC on the 16th; the day rolls.
+  check("booked slot becomes a correct UTC calendar link", dates === "20260916T013000Z/20260916T020000Z", `dates=${dates || "(none)"}`);
+  await page.close();
+}
+
+// 4. No slot on the URL must still give a usable, untimed event rather than a
+//    broken one.
+{
+  const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, timezoneId: "America/New_York" });
+  await page.goto(`${BASE}/start/thanks?booked=1`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+  const href = await page.getByRole("link", { name: /calendar/i }).first().getAttribute("href");
+  const body = await page.locator("body").innerText();
+  check("no slot means no dates param and no NaN", !/dates=|NaN/.test(href));
+  check("and the page never prints the words 'your number'", !/your number/i.test(body));
+  await page.close();
+}
+
+await browser.close();
+console.log(`\n${failed === 0 ? "all checks passed" : failed + " check(s) failed"}`);
 process.exit(failed ? 1 : 0);

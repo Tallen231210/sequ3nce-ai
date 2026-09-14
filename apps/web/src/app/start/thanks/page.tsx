@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Check, CalendarPlus, Loader2 } from "lucide-react";
 import { VslPlayer } from "../VslPlayer";
@@ -69,22 +69,6 @@ function ThanksInner() {
   const phone = params.get("p");
   const calendarUrl = googleCalendarUrl(params.get("start"), params.get("end"));
 
-  // When GHL's post-booking redirect is configured to point here, this page
-  // loads inside the booking widget's iframe on /start/book. Report up so the
-  // parent takes the whole window to thanks, forwarding GHL's ?start=&end= so
-  // the add-to-calendar button is pre-filled. Same-origin and a fixed payload,
-  // which is why this is the reliable signal rather than sniffing the widget.
-  useEffect(() => {
-    if (typeof window === "undefined" || window.parent === window) return;
-    try {
-      window.parent.postMessage(
-        { source: "sequ3nce-funnel", event: "booked", search: window.location.search },
-        window.location.origin,
-      );
-    } catch {
-      // Parent is elsewhere; the book page's fallback listener still covers it.
-    }
-  }, []);
 
   return (
     <main className="relative mx-auto max-w-[1120px] px-6 py-12 lg:py-16">
