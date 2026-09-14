@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Check, CalendarPlus, Loader2 } from "lucide-react";
 import { VslPlayer } from "../VslPlayer";
@@ -39,14 +39,24 @@ function googleCalendarUrl(startISO: string | null, endISO: string | null) {
   const details = encodeURIComponent(
     "Your onboarding call with a Sequ3nce coach. We come up as Sequ3nce — keep your phone close; we often call a little sooner.",
   );
-  const toStamp = (iso: string) => iso.replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  if (startISO) {
-    const start = toStamp(startISO);
-    const end = toStamp(
-      endISO ?? new Date(new Date(startISO).getTime() + 20 * 60 * 1000).toISOString(),
-    );
-    return `${base}&text=${text}&dates=${start}/${end}&details=${details}`;
+  // Google wants UTC basic format ("20260915T130000Z"). Go through Date rather
+  // than stripping punctuation off the raw ISO string: GHL sends an offset
+  // ("...T09:00:00-04:00") and a blind strip eats the offset's minus sign,
+  // gluing it on as "0900000400" — which Google reads as the wrong time.
+  const toStamp = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+      ? null
+      : d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  };
+  const start = startISO ? toStamp(startISO) : null;
+  if (startISO && start) {
+    const end =
+      (endISO ? toStamp(endISO) : null) ??
+      toStamp(new Date(new Date(startISO).getTime() + 30 * 60 * 1000).toISOString());
+    if (end) return `${base}&text=${text}&dates=${start}/${end}&details=${details}`;
   }
+  // No usable time: still give them a titled event they can place themselves.
   return `${base}&text=${text}&details=${details}`;
 }
 
@@ -54,6 +64,23 @@ function ThanksInner() {
   const params = useSearchParams();
   const phone = params.get("p") || "your number";
   const calendarUrl = googleCalendarUrl(params.get("start"), params.get("end"));
+
+  // When GHL's post-booking redirect is configured to point here, this page
+  // loads inside the booking widget's iframe on /start/book. Report up so the
+  // parent takes the whole window to thanks, forwarding GHL's ?start=&end= so
+  // the add-to-calendar button is pre-filled. Same-origin and a fixed payload,
+  // which is why this is the reliable signal rather than sniffing the widget.
+  useEffect(() => {
+    if (typeof window === "undefined" || window.parent === window) return;
+    try {
+      window.parent.postMessage(
+        { source: "sequ3nce-funnel", event: "booked", search: window.location.search },
+        window.location.origin,
+      );
+    } catch {
+      // Parent is elsewhere; the book page's fallback listener still covers it.
+    }
+  }, []);
 
   return (
     <main className="relative mx-auto max-w-[1120px] px-6 py-12 lg:py-16">

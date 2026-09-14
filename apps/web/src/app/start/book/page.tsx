@@ -42,13 +42,35 @@ function BookInner() {
     if (qs) setBookingSrc(`${BOOKING_WIDGET_URL}?${qs}`);
   }, []);
 
-  const toThanks = () =>
-    router.push(`/start/thanks?booked=1${phone ? `&p=${encodeURIComponent(phone)}` : ""}`);
+  // `extraSearch` carries GHL's post-booking query (?start=&end=) through when
+  // the redirect path is used, so the add-to-calendar button lands on the real
+  // slot instead of an untimed event.
+  const toThanks = (extraSearch = "") => {
+    const q = new URLSearchParams(extraSearch.replace(/^\?/, ""));
+    q.set("booked", "1");
+    if (phone) q.set("p", phone);
+    router.push(`/start/thanks?${q.toString()}`);
+  };
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      // The widget is served from the white-labeled booking domain; ignore
-      // messages from anything else (extensions, other embeds).
+      // Path 1, deterministic: GHL's post-booking redirect points at our own
+      // /start/thanks, which loads INSIDE this iframe and reports up. Our
+      // origin, our payload — no guessing at the widget's vocabulary. Requires
+      // the redirect URL to be set on the GHL calendar.
+      if (e.origin === window.location.origin) {
+        const d = e.data as { source?: string; event?: string; search?: string } | null;
+        if (d && d.source === "sequ3nce-funnel" && d.event === "booked") {
+          toThanks(typeof d.search === "string" ? d.search : "");
+        }
+        return;
+      }
+      // Path 2, fallback: the widget's own messages. Verified 2026-09-14 on
+      // localhost that nothing it posts before a booking matches the pattern
+      // below — 15 messages across mount, day select, time select and the
+      // contact form, all iframe-resizer and setHeight plumbing, no false
+      // advance. The confirmation event itself is still unconfirmed; one real
+      // booking pins it. Ignore anything not from the booking domain.
       if (typeof e.origin === "string" && !e.origin.includes("booking.sequ3nce.com")) return;
       // eslint-disable-next-line no-console
       console.log("[book] widget message", e.origin, e.data);
@@ -107,7 +129,7 @@ function BookInner() {
         <div className="mx-auto mt-4 max-w-2xl text-center">
           <button
             type="button"
-            onClick={toThanks}
+            onClick={() => toThanks()}
             className="text-xs font-medium text-zinc-400 underline underline-offset-2 hover:text-zinc-600"
           >
             (dev only) simulate a completed booking &rarr;
