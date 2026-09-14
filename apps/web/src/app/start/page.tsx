@@ -11,7 +11,13 @@ import { LeadModal } from "./LeadModal";
 import { Cta, FaqList, Guarantee, LegalFooter, SeatsLine, Steps, ValueStack, WhyTiles } from "./sections";
 import { SHARED_TILES, type VariantCopy } from "./copy";
 
-const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
+// Production by default, deliberately: this funnel is the live acquisition path
+// and must never depend on an env var being set correctly on Vercel. The
+// override exists so localhost testing can point at a dev deployment — without
+// it, filling in the opt-in form on localhost creates a REAL production lead
+// and a REAL GoHighLevel contact, which is how one got created on 2026-09-14.
+const CONVEX_SITE_URL =
+  process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? "https://ideal-ram-982.convex.site";
 
 // The cohort countdown bar stays off until there is a REAL session date to
 // count to — with null, urgency.js renders no bar at all. Set an ISO date
