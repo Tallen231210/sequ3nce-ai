@@ -62,7 +62,11 @@ function googleCalendarUrl(startISO: string | null, endISO: string | null) {
 
 function ThanksInner() {
   const params = useSearchParams();
-  const phone = params.get("p") || "your number";
+  // Absent when someone lands here without coming through the opt-in (a
+  // refresh, a bookmark, a direct link). Don't fake it: the card below promises
+  // a number, so with nothing to show it drops the promise and keeps only the
+  // reassurance, which is true either way.
+  const phone = params.get("p");
   const calendarUrl = googleCalendarUrl(params.get("start"), params.get("end"));
 
   // When GHL's post-booking redirect is configured to point here, this page
@@ -131,11 +135,15 @@ function ThanksInner() {
           </a>
 
           <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-              This is the number we&apos;re calling
-            </p>
-            <p className="mt-1 text-[20px] font-semibold tracking-[-0.01em]">{phone}</p>
-            <p className="mt-1 text-[12.5px] leading-normal text-zinc-500">
+            {phone && (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                  This is the number we&apos;re calling
+                </p>
+                <p className="mt-1 text-[20px] font-semibold tracking-[-0.01em]">{phone}</p>
+              </>
+            )}
+            <p className={`text-[12.5px] leading-normal text-zinc-500${phone ? " mt-1" : ""}`}>
               We&apos;ll come up as <strong>Sequ3nce</strong> — not an unknown number.
             </p>
           </div>
